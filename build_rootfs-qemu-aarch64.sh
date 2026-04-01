@@ -54,7 +54,7 @@ set -e
 
 # 3. Core Build Process
 TEMP_TAR="custom-${PREFIX}-rootfs.tar"
-FINAL_NAME="${PREFIX}-Droidspaces-rootfs-${DATE}-${VERSION}.tar.gz"
+FINAL_NAME="${PREFIX}-Droidspaces-rootfs-${DATE}-${VERSION}.tar.xz"
 
 echo "Running Docker Buildx (linux/arm64)..."
 docker buildx build \
@@ -65,11 +65,11 @@ docker buildx build \
   .
 
 # 4. Packaging
-echo "Compressing build output..."
-gzip -9 -f "$TEMP_TAR"
+echo "Compressing build output (xz ultra - Multi-threaded)..."
+xz -T0 -9 -f "$TEMP_TAR"
 
 echo "Finalizing: $FINAL_NAME"
-mv "${TEMP_TAR}.gz" "$FINAL_NAME"
+mv "${TEMP_TAR}.xz" "$FINAL_NAME"
 
 echo "========================================================="
 echo " Successfully completed: $FINAL_NAME"

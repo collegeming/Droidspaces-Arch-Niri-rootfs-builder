@@ -55,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.template }}-rootfs
-          path: "*.tar.gz"
+          path: "*.tar.xz"
           retention-days: 1
 
   release:
@@ -75,7 +75,7 @@ jobs:
         with:
           tag_name: ${{ needs.setup.outputs.build_id }}
           name: "Droidspaces RootFS ${{ needs.setup.outputs.build_id }}"
-          files: "*.tar.gz"
+          files: "*.tar.xz"
           body: |
             Automated Droidspaces RootFS Multi-Build
             Built on: ${{ needs.setup.outputs.build_date }}
