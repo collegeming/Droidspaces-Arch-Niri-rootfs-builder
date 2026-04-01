@@ -25,6 +25,7 @@ RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     # Core utilities
+    systemd-sysv \
     bash \
     coreutils \
     file \

@@ -36,6 +36,7 @@ RUN apt-get update && \
     bash-completion \
     udev \
     dbus \
+    systemd-sysv \
     # Basic tools
     git \
     nano \
