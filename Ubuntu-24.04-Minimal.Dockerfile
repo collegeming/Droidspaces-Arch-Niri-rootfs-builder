@@ -35,7 +35,8 @@ RUN apt-get update && \
     bash-completion \
     udev \
     dbus \
-    # Basic tools requested by user
+    systemd-sysv \
+    # Basic tools
     git \
     nano \
     sudo \

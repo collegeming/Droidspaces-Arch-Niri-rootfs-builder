@@ -45,6 +45,7 @@ RUN apt-get update && \
     bash-completion \
     udev \
     dbus \
+    systemd-sysv \
     # Compression tools
     zip \
     unzip \

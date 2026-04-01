@@ -50,6 +50,7 @@ RUN apt-get update && \
     iptables \
     kmod \
     procps \
+    systemd-sysv \
     # Compression tools
     zip \
     unzip \
