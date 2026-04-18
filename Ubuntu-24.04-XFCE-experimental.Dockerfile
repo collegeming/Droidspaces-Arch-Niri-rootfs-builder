@@ -85,6 +85,7 @@ RUN apt-get update && \
     wpasupplicant \
     isc-dhcp-client \
     network-manager \
+    network-manager-gnome \
     # Logging & Rotation
     logrotate \
     # C/C++ Development
@@ -130,6 +131,10 @@ RUN apt-get update && \
     xfce4-terminal \
     xfce4-session \
     xscreensaver \
+    xfce4-power-manager \
+    xfce4-power-manager-plugins \
+    xfce4-battery-plugin \
+    upower \
     xfce4-goodies \
     xubuntu-wallpapers \
     xfce4-taskmanager \
@@ -252,12 +257,13 @@ Audit=no
 Storage=volatile
 EOT
 
-# Enable essential services (dbus, udev, network, resolved)
+# Enable essential services (dbus, udev, network, resolved, NetworkManager)
 mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /lib/systemd/system/dbus.service /etc/systemd/system/multi-user.target.wants/dbus.service
 ln -sf /lib/systemd/system/systemd-udevd.service /etc/systemd/system/multi-user.target.wants/systemd-udevd.service
 ln -sf /lib/systemd/system/systemd-resolved.service /etc/systemd/system/multi-user.target.wants/systemd-resolved.service
 ln -sf /lib/systemd/system/systemd-networkd.service /etc/systemd/system/multi-user.target.wants/systemd-networkd.service
+ln -sf /lib/systemd/system/NetworkManager.service /etc/systemd/system/multi-user.target.wants/NetworkManager.service
 
 # Force LightDM to use VT7
 mkdir -p /etc/lightdm/lightdm.conf.d
@@ -293,12 +299,52 @@ for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-sett
   printf "[Unit]\nConditionPathIsReadWrite=\n" > /etc/systemd/system/\$unit.d/override.conf; \
 done
 
-# Configure systemd-logind power key behavior
+# logind - ignore power key, xfce4-power-manager takes over via inhibitor lock
 mkdir -p /etc/systemd/logind.conf.d
 cat <<EOT > /etc/systemd/logind.conf.d/99-power-key.conf
 [Login]
-HandlePowerKey=suspend
+HandlePowerKey=ignore
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
 EOT
+
+# xinitrc - disable xset blanking, xfce4-power-manager owns everything from here
+cat <<EOT > /root/.xinitrc
+#!/bin/bash
+xset s off
+xset dpms 0 0 0
+exec startxfce4
+EOT
+chmod +x /root/.xinitrc
+
+# xscreensaver - blank only, no lock (root workaround)
+cat <<EOT > /root/.xscreensaver
+mode: blank
+lock: False
+EOT
+
+# xfce-autostart service - boots XFCE on vt7 at startup
+cat <<EOT > /etc/systemd/system/xfce-autostart.service
+[Unit]
+Description=Start Xfce Desktop (Custom Android Port)
+After=systemd-user-sessions.service network.target
+Conflicts=getty@tty7.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/startx /root/.xinitrc -- :0 vt7
+StandardInput=tty
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=graphical.target
+EOT
+
+ln -sf /etc/systemd/system/xfce-autostart.service \
+       /etc/systemd/system/graphical.target.wants/xfce-autostart.service
 EOF
 
 # Update icon and font caches in a final setup layer
