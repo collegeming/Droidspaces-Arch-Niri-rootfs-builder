@@ -8,10 +8,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Update base system
 RUN apt-get update && apt-get upgrade -y
 
-# Install Custom Mesa (Turnip) before anything else
-COPY scripts/install_mesa.sh /tmp/install_mesa.sh
-RUN chmod +x /tmp/install_mesa.sh && /tmp/install_mesa.sh && rm /tmp/install_mesa.sh
-
 # Copy custom scripts first
 COPY scripts/download-firmware /usr/local/bin/
 
@@ -117,14 +113,15 @@ RUN apt-get update && \
     valgrind \
     strace \
     ltrace \
+    # Docker
+    docker.io \
+    docker-compose-v2 \
     && apt-get purge -y gdm3 gnome-session gnome-shell whoopsie && \
     apt-get autoremove -y
 
-# Install Docker and set iptables-legacy
+# Configure iptables-legacy (Required for Android compatibility)
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
-    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
-    curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh && \
-    rm get-docker.sh
+    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 # Configure locales, environment, SSH, Docker, and user setup in a single layer
 RUN locale-gen en_US.UTF-8 && \
@@ -157,71 +154,94 @@ RouteMetric=100
 EOF
 
 # Apply Android compatibility fixes (Systemd and Udev)
-RUN <<EOF
-# Fix internet (DNS configuration)
-mkdir -p /etc/systemd/resolved.conf.d
-cat <<EOT > /etc/systemd/resolved.conf.d/dns.conf
-[Resolve]
-DNSStubListener=no
-EOT
-
+RUN <<EOF_RUN
+# --- 1. General Fixes ---
 # Android network group setup (required for socket access on Android kernels)
 grep -q '^aid_inet:' /etc/group    || echo 'aid_inet:x:3003:'    >> /etc/group
 grep -q '^aid_net_raw:' /etc/group || echo 'aid_net_raw:x:3004:' >> /etc/group
 grep -q '^aid_net_admin:' /etc/group || echo 'aid_net_admin:x:3005:' >> /etc/group
 
-# Root gets network access
-usermod -a -G aid_inet,aid_net_raw root
+# Root permissions for Android hardware access
+usermod -a -G aid_inet,aid_net_raw,input,video,tty root || true
 
-# _apt needs aid_inet as primary group so apt works
+# _apt needs aid_inet as primary group so apt works on Android
 grep -q '^_apt:' /etc/passwd && usermod -g aid_inet _apt || true
 
 # Future users created with adduser automatically get network access
-sed -i '/^EXTRA_GROUPS=/d; /^ADD_EXTRA_GROUPS=/d' /etc/adduser.conf
-echo 'ADD_EXTRA_GROUPS=1'               >> /etc/adduser.conf
-echo 'EXTRA_GROUPS="aid_inet aid_net_raw"' >> /etc/adduser.conf
+if [ -f /etc/adduser.conf ]; then
+    sed -i '/^EXTRA_GROUPS=/d; /^ADD_EXTRA_GROUPS=/d' /etc/adduser.conf
+    echo 'ADD_EXTRA_GROUPS=1' >> /etc/adduser.conf
+    echo 'EXTRA_GROUPS="aid_inet aid_net_raw input video tty"' >> /etc/adduser.conf
+fi
 
-# Enable systemd-resolved and systemd-networkd
-mkdir -p /etc/systemd/system/multi-user.target.wants
-ln -sf /lib/systemd/system/systemd-resolved.service /etc/systemd/system/multi-user.target.wants/systemd-resolved.service
-ln -sf /lib/systemd/system/systemd-networkd.service /etc/systemd/system/multi-user.target.wants/systemd-networkd.service
-
-# Mask systemd-networkd-wait-online.service
+# --- 2. Systemd-Specific Fixes ---
+# Mask problematic services for Android kernels
 ln -sf /dev/null /etc/systemd/system/systemd-networkd-wait-online.service
+ln -sf /dev/null /etc/systemd/system/systemd-journald-audit.socket
+
+# Journald configuration (skip Audit, KMsg, etc)
+cat >> /etc/systemd/journald.conf << 'EOT'
+[Journal]
+ReadKMsg=no
+Audit=no
+Storage=volatile
+EOT
+
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/ds-logging.conf << 'EOT'
+[Journal]
+SystemMaxUse=200M
+RuntimeMaxUse=200M
+MaxRetentionSec=7day
+MaxLevelStore=info
+EOT
+
+# Enable essential services
+mkdir -p /etc/systemd/system/multi-user.target.wants
+GUEST_SYSTEMD_PATH="/lib/systemd/system"
+for service in dbus.service systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
+    if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then
+        ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"
+    fi
+done
 
 # Disable power button handling in systemd-logind
 mkdir -p /etc/systemd/logind.conf.d
-cat <<EOT > /etc/systemd/logind.conf.d/99-disable-power-button.conf
+cat > /etc/systemd/logind.conf.d/99-power-key.conf << 'EOF'
 [Login]
 HandlePowerKey=ignore
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
 HandlePowerKeyLongPress=ignore
 HandlePowerKeyLongPressHibernate=ignore
-EOT
-
-# Mask dangerous standard udev triggers
-ln -sf /dev/null /etc/systemd/system/systemd-udev-trigger.service
-ln -sf /dev/null /etc/systemd/system/systemd-udev-settle.service
-
-# Create a SAFE udev trigger service
-cat <<EOT > /etc/systemd/system/safe-udev-trigger.service
-[Unit]
-Description=Safe Udev Trigger for Android
-After=systemd-udevd-kernel.socket systemd-udevd-control.socket
-Wants=systemd-udevd.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=-/usr/bin/udevadm trigger --subsystem-match=usb --subsystem-match=block --subsystem-match=input --subsystem-match=tty
-
-[Install]
-WantedBy=multi-user.target
-EOT
-
-# Enable the safe trigger and ensure the main daemon is unmasked
-rm -f /etc/systemd/system/systemd-udevd.service
-ln -sf /etc/systemd/system/safe-udev-trigger.service /etc/systemd/system/multi-user.target.wants/safe-udev-trigger.service
 EOF
+
+# Apply udev overrides
+# 1. Trigger override (Prevents coldplugging Android hardware)
+mkdir -p /etc/systemd/system/systemd-udev-trigger.service.d
+cat > /etc/systemd/system/systemd-udev-trigger.service.d/override.conf << 'EOF'
+[Service]
+ExecStart=
+ExecStart=-/usr/bin/udevadm trigger --subsystem-match=usb --subsystem-match=block --subsystem-match=input --subsystem-match=tty
+EOF
+
+# 2. Read-only path overrides to prevent failures
+for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service systemd-udevd-kernel.socket systemd-udevd-control.socket; do
+    mkdir -p "/etc/systemd/system/${unit}.d"
+    printf "[Unit]\nConditionPathIsReadWrite=\n" > "/etc/systemd/system/${unit}.d/99-readonly-fix.conf"
+done
+
+# Configure logrotate for Android
+if [ -f /etc/logrotate.conf ]; then
+    sed -i 's/^#maxsize.*/maxsize 50M/' /etc/logrotate.conf
+    if ! grep -q "maxsize 50M" /etc/logrotate.conf; then
+        echo "maxsize 50M" >> /etc/logrotate.conf
+    fi
+fi
+
+# Mark fixes as completed
+echo "Post-extraction fixes applied on $(date)" > /etc/droidspaces
+EOF_RUN
 
 # Purge and reinstall qemu and binfmt in the exact order specified
 RUN apt-get purge -y qemu-* binfmt-support && \
@@ -236,25 +256,6 @@ RUN apt-get purge -y qemu-* binfmt-support && \
     # Install ONLY these packages (in this specific order)
     apt-get install -y qemu-user-static && \
     apt-get install -y binfmt-support
-
-# Apply Logging Hardening (journald 200MB limit and logrotate maxsize 50M)
-RUN <<EOF
-# Configure journald to limit logs to 200MB
-mkdir -p /etc/systemd/journald.conf.d
-cat <<EOT > /etc/systemd/journald.conf.d/ds-logging.conf
-[Journal]
-SystemMaxUse=200M
-RuntimeMaxUse=200M
-MaxRetentionSec=7day
-MaxLevelStore=info
-EOT
-
-# Configure logrotate to rotate based on size (50MB) to prevent disk fill
-sed -i 's/^#maxsize.*/maxsize 50M/' /etc/logrotate.conf
-if ! grep -q "maxsize 50M" /etc/logrotate.conf; then
-    echo "maxsize 50M" >> /etc/logrotate.conf
-fi
-EOF
 
 # Final cleanup of APT cache
 RUN apt-get clean && \
