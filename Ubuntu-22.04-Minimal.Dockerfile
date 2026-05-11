@@ -156,7 +156,7 @@ mkdir -p /etc/systemd/system/systemd-udev-trigger.service.d
 cat > /etc/systemd/system/systemd-udev-trigger.service.d/override.conf << 'EOF'
 [Service]
 ExecStart=
-ExecStart=-/usr/bin/udevadm trigger --subsystem-match=usb --subsystem-match=block --subsystem-match=input --subsystem-match=tty
+ExecStart=-/usr/bin/udevadm trigger --subsystem-match=usb --subsystem-match=block --subsystem-match=input --subsystem-match=tty --subsystem-match=net
 EOF
 
 # 2. Read-only path overrides to prevent failures
