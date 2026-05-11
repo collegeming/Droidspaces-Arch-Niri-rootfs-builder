@@ -98,6 +98,7 @@ RUN apt-get update && \
     # Docker
     docker.io \
     docker-compose \
+    docker-cli \
     && apt-get autoremove -y
 
 # Configure iptables-legacy (Required for Android compatibility)
