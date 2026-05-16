@@ -66,8 +66,6 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
 RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     locale-gen && \
     update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && \
-    # Set global environment variables
-    echo 'XDG_RUNTIME_DIR=/tmp/runtime' >> /etc/environment && \
     # Configure SSH (Disable Root Login)
     mkdir -p /var/run/sshd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \

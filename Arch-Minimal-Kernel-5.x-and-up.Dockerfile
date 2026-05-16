@@ -39,12 +39,11 @@ RUN pacman -Syu --noconfirm && \
     procps-ng \
     && pacman -Scc --noconfirm
 
-# Copy custom scripts
-COPY scripts/download-firmware /usr/local/bin/
+# Copy our bashrc script to the rootfs
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
 # Make scripts executable
-RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
+RUN chmod +x /etc/profile.d/ds-aliases.sh
 
 # Configure legacy iptables (MANDATORY for Android compatibility)
 RUN ln -sf /usr/bin/iptables-legacy /usr/bin/iptables && \
@@ -56,8 +55,6 @@ RUN ln -sf /usr/bin/iptables-legacy /usr/bin/iptables && \
 RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     locale-gen && \
     echo "LANG=en_US.UTF-8" > /etc/locale.conf && \
-    # Set global environment variables
-    echo 'XDG_RUNTIME_DIR=/tmp/runtime' >> /etc/environment && \
     # Configure SSH (Disable Root Login)
     mkdir -p /var/run/sshd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
