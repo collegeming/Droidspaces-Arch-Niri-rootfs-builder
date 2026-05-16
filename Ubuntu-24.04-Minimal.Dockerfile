@@ -37,6 +37,7 @@ RUN apt-get update && \
     udev \
     dbus \
     systemd-sysv \
+    systemd-resolved \
     # Basic tools
     git \
     nano \
@@ -52,15 +53,20 @@ RUN apt-get update && \
     logrotate \
     # Procps for system monitoring
     procps \
+    # Essential kernel module support
+    kmod \
     && apt-get purge -y gdm3 gnome-session gnome-shell whoopsie && \
-    apt-get autoremove -y
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Configure iptables-legacy (MANDATORY for Android compatibility)
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 # Configure locales, environment, SSH, and user setup
-RUN locale-gen en_US.UTF-8 && \
+RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
+    locale-gen && \
     update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && \
     # Set global environment variables
     echo 'XDG_RUNTIME_DIR=/tmp/runtime' >> /etc/environment && \
@@ -68,8 +74,6 @@ RUN locale-gen en_US.UTF-8 && \
     mkdir -p /var/run/sshd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    # Create default user directories if xdg-user-dirs is present (it's not in minimal, but we'll leave the logic clean)
-    # xdg-user-dirs-update && \
     # Remove default ubuntu user if it exists
     deluser --remove-home ubuntu || true
 
@@ -179,9 +183,19 @@ fi
 echo "Post-extraction fixes applied on $(date)" > /etc/droidspaces
 EOF_RUN
 
-# Install QEMU and binfmt (Essential for multi-arch/emulation support if needed)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+# Purge and reinstall qemu and binfmt in the exact order specified
+RUN apt-get purge -y qemu-* binfmt-support || true && \
+    apt-get autoremove -y && \
+    apt-get autoclean && \
+    # Remove any leftover config files
+    rm -rf /var/lib/binfmts/* && \
+    rm -rf /etc/binfmt.d/* && \
+    rm -rf /usr/lib/binfmt.d/qemu-* && \
+    # Update package lists
+    apt-get update && \
+    # Install ONLY these packages (in this specific order)
+    apt-get install -y qemu-user-static && \
+    apt-get install -y binfmt-support
 
 # Final cleanup of APT cache
 RUN apt-get clean && \

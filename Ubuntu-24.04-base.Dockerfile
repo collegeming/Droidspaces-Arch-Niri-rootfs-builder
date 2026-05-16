@@ -47,6 +47,7 @@ RUN apt-get update && \
     udev \
     dbus \
     systemd-sysv \
+    systemd-resolved \
     # Compression tools
     zip \
     unzip \
@@ -73,6 +74,7 @@ RUN apt-get update && \
     psmisc \
     procps \
     fastfetch \
+    kmod \
     # Wireless networking tools for hotspot functionality
     iw \
     # Logging & Rotation
@@ -124,7 +126,8 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 # Configure locales, environment, SSH, Docker, and user setup in a single layer
-RUN locale-gen en_US.UTF-8 && \
+RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
+    locale-gen && \
     update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && \
     # Set global environment variables
     echo 'XDG_RUNTIME_DIR=/tmp/runtime' >> /etc/environment && \
@@ -244,7 +247,7 @@ echo "Post-extraction fixes applied on $(date)" > /etc/droidspaces
 EOF_RUN
 
 # Purge and reinstall qemu and binfmt in the exact order specified
-RUN apt-get purge -y qemu-* binfmt-support && \
+RUN apt-get purge -y qemu-* binfmt-support || true && \
     apt-get autoremove -y && \
     apt-get autoclean && \
     # Remove any leftover config files

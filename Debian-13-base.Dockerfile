@@ -38,26 +38,7 @@ RUN apt-get update && \
     udev \
     dbus \
     systemd-sysv \
-    # Basic tools
-    git \
-    nano \
-    sudo \
-    procps \
-    # Networking & SSH
-    openssh-server \
-    net-tools \
-    iptables \
-    iputils-ping \
-    iproute2 \
-    dnsutils \
     systemd-resolved \
-    # Logging & Rotation
-    logrotate \
-    # Wireless networking tools
-    iw \
-    # System monitoring & Editors
-    htop \
-    vim \
     # Compression tools
     zip \
     unzip \
@@ -66,6 +47,29 @@ RUN apt-get update && \
     xz-utils \
     tar \
     gzip \
+    # System tools
+    htop \
+    vim \
+    nano \
+    git \
+    sudo \
+    openssh-server \
+    net-tools \
+    iptables \
+    iputils-ping \
+    iproute2 \
+    dnsutils \
+    usbutils \
+    pciutils \
+    lsof \
+    psmisc \
+    procps \
+    fastfetch \
+    kmod \
+    # Wireless networking tools
+    iw \
+    # Logging & Rotation
+    logrotate \
     # C/C++ Development
     build-essential \
     gcc \
@@ -77,11 +81,18 @@ RUN apt-get update && \
     automake \
     libtool \
     pkg-config \
+    # Additional dev tools
+    clang \
+    llvm \
+    valgrind \
+    strace \
+    ltrace \
     # Python Development
     python3 \
     python3-pip \
     python3-dev \
     python3-venv \
+    python-is-python3 \
     # File system tools
     dosfstools \
     exfatprogs \
@@ -98,15 +109,17 @@ RUN apt-get update && \
     # Docker
     docker.io \
     docker-compose \
-    docker-cli \
-    && apt-get autoremove -y
+    && apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Configure iptables-legacy (Required for Android compatibility)
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 # Configure locales, environment, SSH, and user setup
-RUN locale-gen en_US.UTF-8 && \
+RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
+    locale-gen && \
     update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && \
     # Set global environment variables
     echo 'XDG_RUNTIME_DIR=/tmp/runtime' >> /etc/environment && \
@@ -224,10 +237,19 @@ fi
 echo "Post-extraction fixes applied on $(date)" > /etc/droidspaces
 EOF_RUN
 
-# Install QEMU and binfmt
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends qemu-user-static binfmt-support
-
+# Purge and reinstall qemu and binfmt in the exact order specified
+RUN apt-get purge -y qemu-* binfmt-support || true && \
+    apt-get autoremove -y && \
+    apt-get autoclean && \
+    # Remove any leftover config files
+    rm -rf /var/lib/binfmts/* && \
+    rm -rf /etc/binfmt.d/* && \
+    rm -rf /usr/lib/binfmt.d/qemu-* && \
+    # Update package lists
+    apt-get update && \
+    # Install ONLY these packages (in this specific order)
+    apt-get install -y qemu-user-static && \
+    apt-get install -y binfmt-support
 
 # Final cleanup of APT cache
 RUN apt-get clean && \

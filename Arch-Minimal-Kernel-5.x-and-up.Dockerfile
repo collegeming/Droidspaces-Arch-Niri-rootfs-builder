@@ -53,7 +53,7 @@ RUN ln -sf /usr/bin/iptables-legacy /usr/bin/iptables && \
     ln -sf /usr/bin/ebtables-legacy /usr/bin/ebtables
 
 # Configure locales and environment
-RUN echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && \
+RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     locale-gen && \
     echo "LANG=en_US.UTF-8" > /etc/locale.conf && \
     # Set global environment variables
