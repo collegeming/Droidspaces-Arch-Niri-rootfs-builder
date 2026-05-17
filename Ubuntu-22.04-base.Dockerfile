@@ -245,6 +245,13 @@ fi
 echo "Post-extraction fixes applied on $(date)" > /etc/droidspaces
 EOF_RUN
 
+# Copy binfmt scripts
+COPY scripts/binfmt/qemu-binfmt-register.sh /usr/local/bin/
+COPY scripts/binfmt/qemu-binfmt-register.service /etc/systemd/system/
+RUN chmod +x /usr/local/bin/qemu-binfmt-register.sh && \
+    chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
+    ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service
+
 # Purge and reinstall qemu and binfmt in the exact order specified
 RUN apt-get purge -y qemu-* binfmt-support || true && \
     apt-get autoremove -y && \
@@ -257,7 +264,11 @@ RUN apt-get purge -y qemu-* binfmt-support || true && \
     apt-get update && \
     # Install ONLY these packages (in this specific order)
     apt-get install -y qemu-user-static && \
-    apt-get install -y binfmt-support
+    apt-get install -y binfmt-support && \
+    # Add amd64 architecture and install libc6:amd64
+    dpkg --add-architecture amd64 && \
+    apt-get update && \
+    apt-get install -y libc6:amd64
 
 # Final cleanup of APT cache
 RUN apt-get clean && \
