@@ -202,6 +202,10 @@ RUN apt-get purge -y qemu-* binfmt-support || true && \
     apt-get install -y binfmt-support && \
     # Add amd64 architecture and install libc6:amd64
     dpkg --add-architecture amd64 && \
+    sed -i 's/^deb /deb [arch=arm64,armhf] /g' /etc/apt/sources.list && \
+    echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list && \
     apt-get update && \
     apt-get install -y libc6:amd64
 
