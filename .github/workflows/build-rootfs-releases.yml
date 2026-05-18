@@ -60,8 +60,33 @@ jobs:
           path: "*.tar.xz"
           retention-days: 1
 
+  build-nixos:
+    needs: setup
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Build NixOS Finix Experimental RootFS
+        run: |
+          nix build github:ravindu644/Droidspaces-OSS#legacyPackages.aarch64-linux.finixDroidspacesTarballs.aarch64-linux.experimental
+
+      - name: Package artifact
+        run: |
+          DATE=$(date +%Y%m%d)
+          TARBALL=$(find result/tarball -name "*.tar.xz" | head -1)
+          FINAL="NixOS-Finix-Experimental-Droidspaces-rootfs-aarch64-${DATE}-${{ needs.setup.outputs.build_id }}.tar.xz"
+          cp "$TARBALL" "$FINAL"
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NixOS-Finix-Experimental-rootfs
+          path: "*.tar.xz"
+          retention-days: 1
+
   release:
-    needs: [setup, build]
+    needs: [setup, build, build-nixos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
