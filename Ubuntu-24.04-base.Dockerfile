@@ -232,6 +232,19 @@ for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-sett
     printf "[Unit]\nConditionPathIsReadWrite=\n" > "/etc/systemd/system/${unit}.d/99-readonly-fix.conf"
 done
 
+# Limit specific network services to only start in NAT mode
+# Prevents cellular network breakage when running in host network mode
+for unit in NetworkManager.service dhcpcd.service systemd-resolved.service systemd-networkd.service; do
+    if [ -f "$GUEST_SYSTEMD_PATH/$unit" ] || [ -f "/etc/systemd/system/multi-user.target.wants/$unit" ]; then
+        mkdir -p "/etc/systemd/system/${unit}.d"
+        cat > "/etc/systemd/system/${unit}.d/99-netmode-limit.conf" << 'EOF'
+[Service]
+ExecCondition=
+ExecCondition=/bin/sh -c "grep -q 'net_mode=nat' /run/droidspaces/container.config"
+EOF
+    fi
+done
+
 # Configure logrotate for Android
 if [ -f /etc/logrotate.conf ]; then
     sed -i 's/^#maxsize.*/maxsize 50M/' /etc/logrotate.conf
