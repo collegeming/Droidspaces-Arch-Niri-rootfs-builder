@@ -13,12 +13,12 @@ on:
         options:                           
           - 'Debian-13-KDE'  
           - 'all'
-enable_binfmt:
+      enable_binfmt:
         description: '开启 跨架构 支持'
         required: true
         type: boolean
         default: false
-enable_yj:
+      enable_yj:
         description: '开启 容器识别部分硬件和网络 支持'
         required: true
         type: boolean
