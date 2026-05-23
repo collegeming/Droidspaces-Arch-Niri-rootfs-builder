@@ -155,7 +155,7 @@ grep -q '^aid_net_raw:' /etc/group || echo 'aid_net_raw:x:3004:' >> /etc/group
 grep -q '^aid_net_admin:' /etc/group || echo 'aid_net_admin:x:3005:' >> /etc/group
 
 # 检查并创建 droidspaces-gpu 组
-getent group droidspaces-gpu >/dev/null || groupadd -r droidspaces-gpu
+getent group droidspaces-gpu >/dev/null || groupadd -g 786 -r droidspaces-gpu
 # 为 root 用户赋予访问 Android 硬件及网络的权限组
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,sudo,droidspaces-gpu Gold || true
