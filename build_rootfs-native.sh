@@ -14,6 +14,7 @@ while getopts "i:v:a:b" opt; do
     v) VERSION="$OPTARG" ;;    # -v 参数赋值给 VERSION 变量
     a) ENABLE_binfmt="$OPTARG" ;; # -a 跨架构支持
     b) ENABLE_yj="$OPTARG" ;; 
+    c) ENABLE_mesa="$OPTARG" ;; 
     *) echo "用法: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
   esac
 done
@@ -76,6 +77,7 @@ docker buildx build \
   --output type=tar,dest="$TEMP_TAR" \
   --build-arg ENABLE_binfmt_ARG="$ENABLE_binfmt" \
   --build-arg ENABLE_yj_ARG="$ENABLE_yj" \
+  --build-arg ENABLE_mesa_ARG="$ENABLE_mesa" \
   -f "$DOCKERFILE" \
   .
 
