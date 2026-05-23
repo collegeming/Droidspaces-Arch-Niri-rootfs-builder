@@ -12,7 +12,7 @@ on:
         default: 'all'
         options:
           - 'all'                            
-          - 'Debian13-KDE'                                          
+          - 'Debian-13-KDE'                                          
 
 jobs:
   # --------------------------------------------------------
