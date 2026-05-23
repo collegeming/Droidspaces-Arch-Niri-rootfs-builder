@@ -60,9 +60,25 @@ RUN apt-get update && \
     fonts-noto-cjk \
     fonts-noto-color-emoji\
     kde-plasma-desktop \
+    pipewire \
+    pipewire-pulse \ 
+    wireplumber \
+    powerdevil \
+    kscreen \
+    plasma-pa \
+    ark \
+    kwin-x11 \
+    kinfocenter \
+    upower \
     konsole \
     dolphin \
     kate \
+    kinfocenter \
+    mesa-utils \
+    pulseaudio-utils \
+    vulkan-tools \
+    powerdevil \
+    desktop-base \
     && apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
