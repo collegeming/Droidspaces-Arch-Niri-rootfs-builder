@@ -1,6 +1,12 @@
 ARG TARGETPLATFORM
 FROM debian:trixie AS customizer
 
+#######################################################
+ARG ENABLE_binfmt_ARG
+ARG ENABLE_yj_ARG
+ARG ENABLE_mesa_ARG
+######################################################
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 更新基础系统并启用 non-free（非自由）和 contrib 软件源
@@ -58,7 +64,7 @@ RUN apt-get update && \
     dbus-x11 \
     x11-xserver-utils \
     fonts-noto-cjk \
-    fonts-noto-color-emoji\
+    fonts-noto-color-emoji \
     kde-plasma-desktop \
     pipewire \
     pipewire-pulse \ 
@@ -123,29 +129,18 @@ Enabled=false
 EOF
 RUN chown -R Gold:Gold /home/Gold
 
-RUN mkdir -p /etc/systemd/network && \
-    cat <<'EOF' > /etc/systemd/network/10-eth-dhcp.network
-[Match]
-Name=eth*
-
-[Network]
-DHCP=yes
-IPv6AcceptRA=yes
-
-[DHCPv4]
-UseDNS=yes
-UseDomains=yes
-RouteMetric=100
-EOF
-
-# 安装最新版mesa驱动
-RUN URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
-    jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_debian_trixie_arm64\\.tar\\.gz")) | .browser_download_url' | head -1) && \
-    if [ -z "$URL" ] || [ "$URL" = "null" ]; then echo "获取下载链接失败，可能是触发了 GitHub API 速率限制"; exit 1; fi && \
-    wget -q --tries=5 --waitretry=3 -O /tmp/mesa.tar.gz "$URL" && \
-    tar -zxf /tmp/mesa.tar.gz -C / && \
-    rm /tmp/mesa.tar.gz && \
-    ldconfig
+RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
+        echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
+        URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
+        jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_debian_trixie_arm64\\.tar\\.gz")) | .browser_download_url' | head -1) && \
+        if [ -z "$URL" ] || [ "$URL" = "null" ]; then echo "获取下载链接失败，可能是触发了 GitHub API 速率限制"; exit 1; fi && \
+        wget -q --tries=5 --waitretry=3 -O /tmp/mesa.tar.gz "$URL" && \
+        tar -zxf /tmp/mesa.tar.gz -C / && \
+        rm /tmp/mesa.tar.gz && \
+        ldconfig; \
+    else \
+        echo "--> [跳过] 未开启 Mesa 驱动安装"; \
+    fi
 
 # 修复容器内的 DHCP 网络服务配置
 RUN mkdir -p /etc/systemd/network && \
@@ -210,26 +205,22 @@ MaxRetentionSec=7day
 MaxLevelStore=info
 EOT
 
-# 启用容器所需的核心系统服务(可选)
-mkdir -p /etc/systemd/system/multi-user.target.wants
-GUEST_SYSTEMD_PATH="/lib/systemd/system"
-# for service in dbus.service systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
-#     if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then
-#         ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"
-#     fi
-# done
-
-# 禁用容器硬件刷新，防止容器接管安卓硬件
-for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
-    # 强行将服务指向空设备，等同于 systemctl mask
-    ln -sf /dev/null "/etc/systemd/system/$service"
-done
-
-for service in dbus.service ; do
-    if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then
-        ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"
+RUN mkdir -p /etc/systemd/system/multi-user.target.wants && \
+    GUEST_SYSTEMD_PATH="/lib/systemd/system" && \
+    if [ -f "$GUEST_SYSTEMD_PATH/dbus.service" ]; then \
+        ln -sf "$GUEST_SYSTEMD_PATH/dbus.service" "/etc/systemd/system/multi-user.target.wants/dbus.service"; \
+    fi && \
+    if [ "$ENABLE_yj_ARG" = "true" ]; then \
+        for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do \
+            if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then \
+                ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"; \
+            fi; \
+        done; \
+    else \
+        for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do \
+            ln -sf /dev/null "/etc/systemd/system/$service"; \
+        done; \
     fi
-done
 
 # 在 systemd-logind 中禁用电源键行为处理（防止容器误拦截或处理宿主机的实体电源按键事件）
 mkdir -p /etc/systemd/logind.conf.d
@@ -282,30 +273,32 @@ fi
 echo "Post-extraction fixes applied on $(date)" > /etc/droidspaces
 EOF_RUN
 
-# 复制自定义的异构架构运行环境（binfmt）相关脚本与服务单元 (启动qemu，使得容器可以直接运行x86软件)
-# COPY scripts/binfmt/qemu-binfmt-register.sh /usr/local/bin/
-# COPY scripts/binfmt/qemu-binfmt-register.service /etc/systemd/system/
-# RUN chmod +x /usr/local/bin/qemu-binfmt-register.sh && \
-#    chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
-#    ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service
-# 
-# 严格按照指定顺序彻底卸载并重新安装 qemu 和 binfmt，防止出现异构架构注册冲突 
-# RUN apt-get purge -y qemu-* binfmt-support || true && \
-#    apt-get autoremove -y && \
-#    apt-get autoclean && \
-#    # 彻底清除所有旧的、可能导致冲突的 binfmt 配置文件
-#    rm -rf /var/lib/binfmts/* && \
-#    rm -rf /etc/binfmt.d/* && \
-#    rm -rf /usr/lib/binfmt.d/qemu-* && \
-#    # 重新更新软件源
-#    apt-get update && \
-#    # 必须严格按照此顺序安装这两个核心包
-#    apt-get install -y qemu-user-static && \
-#    apt-get install -y binfmt-support && \
-#    # 显式添加 amd64 异构架构支持，并安装对应的基础 libc 库（常用于在 ARM64 宿主机上容器化运行 x86_64 应用）
-#    dpkg --add-architecture amd64 && \
-#    apt-get update && \
-#    apt-get install -y libc6:amd64
+
+COPY scripts/binfmt/qemu-binfmt-register.sh /usr/local/bin/
+COPY scripts/binfmt/qemu-binfmt-register.service /etc/systemd/system/
+RUN if [ "$ENABLE_binfmt_ARG" = "false" ]; then \
+        rm -rf /usr/local/bin/qemu-binfmt-register.sh && \
+        rm -rf /etc/systemd/system/qemu-binfmt-register.service
+    fi
+
+RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
+        chmod +x /usr/local/bin/qemu-binfmt-register.sh && \
+        chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
+        mkdir -p /etc/systemd/system/multi-user.target.wants && \
+        ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service && \
+        (apt-get purge -y qemu-* binfmt-support || true) && \
+        apt-get autoremove -y && \
+        apt-get autoclean && \
+        rm -rf /var/lib/binfmts/* /etc/binfmt.d/* /usr/lib/binfmt.d/qemu-* && \
+        apt-get update && \
+        apt-get install -y qemu-user-static binfmt-support && \
+        # 显式添加 amd64 异构架构支持
+        dpkg --add-architecture amd64 && \
+        apt-get update && \
+        apt-get install -y libc6:amd64; \
+    else \
+        rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
+    fi
 
 # 最终清理 APT 包管理器缓存，尽可能缩减镜像层体积
 RUN apt-get clean && \
