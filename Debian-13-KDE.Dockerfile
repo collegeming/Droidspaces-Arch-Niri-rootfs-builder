@@ -278,7 +278,7 @@ COPY scripts/binfmt/qemu-binfmt-register.sh /usr/local/bin/
 COPY scripts/binfmt/qemu-binfmt-register.service /etc/systemd/system/
 RUN if [ "$ENABLE_binfmt_ARG" = "false" ]; then \
         rm -rf /usr/local/bin/qemu-binfmt-register.sh && \
-        rm -rf /etc/systemd/system/qemu-binfmt-register.service
+        rm -rf /etc/systemd/system/qemu-binfmt-register.service ; \
     fi
 
 RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
