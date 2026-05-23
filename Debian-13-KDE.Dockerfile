@@ -121,9 +121,10 @@ RouteMetric=100
 EOF
 
 # 安装最新版mesa驱动
-RUN curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
-    jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_debian_trixie_arm64\\.tar\\.gz")) | .browser_download_url' | \
-    head -1 | xargs wget -O /tmp/mesa.tar.gz && \
+RUN URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
+    jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_debian_trixie_arm64\\.tar\\.gz")) | .browser_download_url' | head -1) && \
+    if [ -z "$URL" ] || [ "$URL" = "null" ]; then echo "获取下载链接失败，可能是触发了 GitHub API 速率限制"; exit 1; fi && \
+    wget -q --tries=5 --waitretry=3 -O /tmp/mesa.tar.gz "$URL" && \
     tar -zxf /tmp/mesa.tar.gz -C / && \
     rm /tmp/mesa.tar.gz && \
     ldconfig
