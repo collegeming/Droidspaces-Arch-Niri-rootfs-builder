@@ -35,18 +35,14 @@ jobs:
           TARGET="${{ github.event.inputs.build_target }}"
           RUN_NIXOS="false"
           
-          # 判断用户的下拉选择
           if [ "$TARGET" = "all" ]; then
-            # 如果选了 all，动态获取所有 Dockerfile
             TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
             RUN_NIXOS="true"
           elif [ "$TARGET" = "NixOS-All" ]; then
-            # 如果只构建 NixOS，清空 Docker 模板并允许 NixOS 运行
             TEMPLATES="[]"
             RUN_NIXOS="true"
           else
-            # 如果选择了单个常规系统，将其转为 JSON 数组传给下游
-            TEMPLATES=$(jq -n --arg t "$TARGET" '[$t]')
+            TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
           fi
           
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
