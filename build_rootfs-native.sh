@@ -8,7 +8,7 @@ DATE=$(date +%Y%m%d)      # 获取当前日期，格式如：20260523
 ARCH=$(uname -m)          # 获取当前系统架构，如：x86_64 或 aarch64
 ENABLE_binfmt="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:" opt; do
+while getopts "i:v:a:b" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; # -i 参数赋值给 DOCKERFILE 变量
     v) VERSION="$OPTARG" ;;    # -v 参数赋值给 VERSION 变量
@@ -75,7 +75,7 @@ docker buildx build \
   --target export \
   --output type=tar,dest="$TEMP_TAR" \
   --build-arg ENABLE_binfmt_ARG="$ENABLE_binfmt" \
-  --build-arg ENABLE_yj_ARG="$ENABLE_yjmt"
+  --build-arg ENABLE_yj_ARG="$ENABLE_yj" \
   -f "$DOCKERFILE" \
   .
 
