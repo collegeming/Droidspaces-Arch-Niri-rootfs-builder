@@ -1,67 +1,101 @@
-name: Build and Release Droidspaces RootFS
+# 工作流名称
+name: 编译并发布 Droidspaces RootFS
 
+# 触发条件 (on)
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * 0'
+  workflow_dispatch: 
+    inputs:
+      build_target:
+        description: '选择要构建的发行版'
+        required: true
+        type: choice
+        default: 'all'
+        options:
+          - 'all'                            
+          - 'Debian13-KDE'                                          
 
 jobs:
+  # --------------------------------------------------------
+  # 阶段 1: setup (环境准备与变量生成)
+  # --------------------------------------------------------
   setup:
     runs-on: ubuntu-latest
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
+      run_nixos: ${{ steps.find-templates.outputs.run_nixos }}
     steps:
-      - name: Checkout Repository
+      - name: 检出代码库
         uses: actions/checkout@v4
 
-      - name: Find Build Templates
+      - name: 解析用户的构建选择
         id: find-templates
         run: |
-          # Find all *.Dockerfile files, extract names, and format as JSON array
-          TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
+          TARGET="${{ github.event.inputs.build_target }}"
+          RUN_NIXOS="false"
+          
+          # 判断用户的下拉选择
+          if [ "$TARGET" = "all" ]; then
+            # 如果选了 all，动态获取所有 Dockerfile
+            TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
+            RUN_NIXOS="true"
+          elif [ "$TARGET" = "NixOS-All" ]; then
+            # 如果只构建 NixOS，清空 Docker 模板并允许 NixOS 运行
+            TEMPLATES="[]"
+            RUN_NIXOS="true"
+          else
+            # 如果选择了单个常规系统，将其转为 JSON 数组传给下游
+            TEMPLATES=$(jq -n --arg t "$TARGET" '[$t]')
+          fi
+          
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
-          echo "Detected templates: $TEMPLATES"
+          echo "run_nixos=$RUN_NIXOS" >> $GITHUB_OUTPUT
+          echo "最终决定的构建矩阵: $TEMPLATES"
+          echo "是否构建 NixOS: $RUN_NIXOS"
 
-      - name: Prepare Build Metadata
+      - name: 准备构建元数据
         id: prep
         run: |
           BUILD_DATE=$(date +'%Y-%m-%d %H:%M:%S')
           BUILD_ID="v$(date +'%Y%m%d-%H%M%S')"
           echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_OUTPUT
           echo "BUILD_ID=$BUILD_ID" >> $GITHUB_OUTPUT
-          echo "Build ID: $BUILD_ID"
+          echo "构建 ID: $BUILD_ID"
 
+  # --------------------------------------------------------
+  # 阶段 2: build (常规 Linux 发行版 RootFS 的构建)
+  # --------------------------------------------------------
   build:
     needs: setup
+    if: ${{ needs.setup.outputs.templates != '[]' }}
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
         template: ${{ fromJson(needs.setup.outputs.templates) }}
     steps:
-      - name: Checkout Repository
+      - name: 检出代码库
         uses: actions/checkout@v4
 
-      - name: Build RootFS (${{ matrix.template }})
+      - name: 编译 RootFS (${{ matrix.template }})
         run: |
           chmod +x build_rootfs-native.sh
-          # Native build without QEMU overhead
           ./build_rootfs-native.sh -i "${{ matrix.template }}.Dockerfile" -v "${{ needs.setup.outputs.build_id }}"
 
-      - name: Upload Build Artifact
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.template }}-rootfs
           path: "*.tar.xz"
           retention-days: 1
 
+  # --------------------------------------------------------
+  # 阶段 3: build-nixos (NixOS 系统的专属构建)
+  # --------------------------------------------------------
   build-nixos:
-    needs: setup
+    needs: setup 
+    if: ${{ needs.setup.outputs.run_nixos == 'true' }}
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
@@ -74,52 +108,54 @@ jobs:
           - name: NixOS-Minimal-Finix-Experimental
             attr: finixDroidspacesTarballs.aarch64-linux.experimental
     steps:
-      - name: Install Nix
+      - name: 安装 Nix
         uses: DeterminateSystems/nix-installer-action@v16
 
-      - name: Build ${{ matrix.name }} RootFS
+      - name: 编译 ${{ matrix.name }} RootFS
         run: |
           nix build github:ravindu644/Droidspaces-OSS#${{ matrix.attr }}
 
-      - name: Package artifact
+      - name: 打包产物
         run: |
           DATE=$(date +%Y%m%d)
           TARBALL=$(find result/tarball -name "*.tar.xz" | head -1)
           FINAL="${{ matrix.name }}-Droidspaces-rootfs-aarch64-${DATE}-${{ needs.setup.outputs.build_id }}.tar.xz"
           cp "$TARBALL" "$FINAL"
 
-      - name: Upload Build Artifact
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}-rootfs
           path: "*.tar.xz"
           retention-days: 1
 
+  # --------------------------------------------------------
+  # 阶段 4: release (汇总发布)
+  # --------------------------------------------------------
   release:
     needs: [setup, build, build-nixos]
+    if: ${{ always() && needs.setup.result == 'success' && needs.build.result != 'failure' && needs.build-nixos.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download All Artifacts
+      - name: 下载所有产物
         uses: actions/download-artifact@v4
         with:
           pattern: "*-rootfs"
           merge-multiple: true
 
-      - name: Create Unified Release
+      - name: 创建统一 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.setup.outputs.build_id }}
           name: "Droidspaces RootFS ${{ needs.setup.outputs.build_id }}"
           files: "*.tar.xz"
           body: |
-            Automated Droidspaces RootFS Multi-Build
+            Automated Droidspaces RootFS Build
             Built on: ${{ needs.setup.outputs.build_date }}
+            Build Target (用户选择的目标): ${{ github.event.inputs.build_target }}
             Build ID: ${{ needs.setup.outputs.build_id }}
-            
-            Included Templates:
-            ${{ join(fromJson(needs.setup.outputs.templates), ', ') }}
           draft: false
           prerelease: false
         env:
