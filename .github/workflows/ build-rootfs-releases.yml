@@ -9,11 +9,20 @@ on:
         description: '选择要构建的发行版'
         required: true
         type: choice
-        default: 'all'
-        options:
-          - 'all'                            
-          - 'Debian-13-KDE'                                          
-
+        default: 'Debian-13-KDE'
+        options:                           
+          - 'Debian-13-KDE'  
+          - 'all'
+enable_binfmt:
+        description: '开启 跨架构 支持'
+        required: true
+        type: boolean
+        default: false
+enable_yj:
+        description: '开启 容器识别部分硬件和网络 支持'
+        required: true
+        type: boolean
+        default: false
 jobs:
   # --------------------------------------------------------
   # 阶段 1: setup (环境准备与变量生成)
@@ -77,7 +86,11 @@ jobs:
       - name: 编译 RootFS (${{ matrix.template }})
         run: |
           chmod +x build_rootfs-native.sh
-          ./build_rootfs-native.sh -i "${{ matrix.template }}.Dockerfile" -v "${{ needs.setup.outputs.build_id }}"
+          ./build_rootfs-native.sh \
+            -i "${{ matrix.template }}.Dockerfile" \
+            -v "${{ needs.setup.outputs.build_id }}" \
+            -a "${{ inputs.enable_binfmt }}" \
+            -b "${{ inputs.enable_yj }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
