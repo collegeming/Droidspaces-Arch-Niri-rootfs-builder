@@ -79,6 +79,7 @@ RUN apt-get update && \
     vulkan-tools \
     powerdevil \
     desktop-base \
+    dbus-user-session \
     && apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -102,7 +103,8 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
-MESA_LOADER_DRIVER_OVERRIDE=freedreno
+MESA_LOADER_DRIVER_OVERRIDE=kgsl
+TU_DEBUG=noconform
 XCURSOR_SIZE=48
 XMODIFIERS=@im=fcitx5
 GTK_IM_MODULE=fcitx5
