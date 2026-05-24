@@ -28,6 +28,21 @@ on:
         required: true
         type: boolean
         default: false
+      enable_kfgj:
+        description: '开发工具 集成'
+        required: true
+        type: boolean
+        default: false
+      enable_zip:
+        description: '压缩工具 集成'
+        required: true
+        type: boolean
+        default: false
+      enable_docker:
+        description: 'docker 集成'
+        required: true
+        type: boolean
+        default: false    
 jobs:
   # --------------------------------------------------------
   # 阶段 1: setup (环境准备与变量生成)
@@ -96,7 +111,10 @@ jobs:
             -v "${{ needs.setup.outputs.build_id }}" \
             -a "${{ inputs.enable_binfmt }}" \
             -b "${{ inputs.enable_yj }}" \
-            -c "${{ inputs.enable_mesa }}"
+            -c "${{ inputs.enable_mesa }}" \
+            -d "${{ inputs.enable_kfgj }}" \
+            -e "${{ inputs.enable_zip }}" \
+            -f "${{ inputs.enable_docker }}" 
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
