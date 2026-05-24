@@ -24,7 +24,7 @@ on:
         description: '开启 高通骁龙GPU 支持'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_binfmt:
         description: '开启 跨架构 支持'
         required: true
@@ -44,7 +44,7 @@ on:
         description: '压缩工具 集成'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_docker:
         description: 'docker 集成'
         required: true
