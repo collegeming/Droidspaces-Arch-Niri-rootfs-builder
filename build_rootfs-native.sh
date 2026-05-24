@@ -1,14 +1,11 @@
 #!/bin/bash
-# 重构后的 Droidspaces RootFS 构建引擎（单模板模式）
-# 该脚本设计为由父级循环（Parent Loop）或 CI 矩阵（如 GitHub Actions Matrix）调用。
-
 # 基础配置项：如果外部没有环境变量，则默认 VERSION 变量为 'dev'
 : "${VERSION:=dev}"
 DATE=$(date +%Y%m%d)      # 获取当前日期，格式如：20260523
 ARCH=$(uname -m)          # 获取当前系统架构，如：x86_64 或 aarch64
 ENABLE_binfmt="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:a:b:c" opt; do
+while getopts "i:v:a:b:c:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; # -i 参数赋值给 DOCKERFILE 变量
     v) VERSION="$OPTARG" ;;    # -v 参数赋值给 VERSION 变量
