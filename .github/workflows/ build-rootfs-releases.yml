@@ -11,6 +11,15 @@ on:
         options:                           
           - 'Debian-13-KDE'  
           - 'all'
+      build_KDE:
+        description: 'KDE桌面选择(conc-精简 min-最小构造 none-不用KDE)'
+        required: true
+        type: choice
+        default: 'min'
+        options:    
+          - 'conc'
+          - 'min'  
+          - 'none' 
       enable_mesa:
         description: '开启 高通骁龙GPU 支持'
         required: true
@@ -107,6 +116,7 @@ jobs:
           ./build_rootfs-native.sh \
             -i "${{ matrix.template }}.Dockerfile" \
             -v "${{ needs.setup.outputs.build_id }}" \
+            -K "${{ inputs.build_KDE }}" \
             -a "${{ inputs.enable_binfmt }}" \
             -b "${{ inputs.enable_yj }}" \
             -c "${{ inputs.enable_mesa }}" \
