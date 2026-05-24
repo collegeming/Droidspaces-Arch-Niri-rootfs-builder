@@ -5,6 +5,9 @@ FROM debian:trixie AS customizer
 ARG ENABLE_binfmt_ARG
 ARG ENABLE_yj_ARG
 ARG ENABLE_mesa_ARG
+ARG ENABLE_kfgj_ARG
+ARG ENABLE_zip_ARG
+ARG ENABLE_docker_ARG
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -27,66 +30,34 @@ RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     # 核心工具组件
-    bash \
-    jq \
-    dialog \
-    coreutils \
-    file \
-    findutils \
-    grep \
-    sed \
-    gawk \
-    curl \
-    wget \
-    ca-certificates \
-    locales \
-    bash-completion \
-    udev \
-    dbus \
-    systemd-sysv \
-    systemd-resolved \
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates locales bash-completion udev dbus systemd-sysv systemd-resolved fastfetch \
     # 用户请求的基础开发/编辑工具
-    git \
-    nano \
-    sudo \
+    git nano  sudo \
     # 网络与 SSH 工具
-    openssh-server \
-    net-tools \
-    iptables \
-    iputils-ping \
-    iproute2 \
-    dnsutils \
+    openssh-server net-tools iptables iputils-ping iproute2 dnsutils \
     # 用于系统监控的 procps 进程工具
     procps \
     # 核心内核模块支持
     kmod \
     # 最小化KDE支持
-    dbus-x11 \
-    x11-xserver-utils \
-    fonts-noto-cjk \
-    fonts-noto-color-emoji \
-    kde-plasma-desktop \
-    pipewire \
-    pipewire-pulse \
-    wireplumber \
-    powerdevil \
-    kscreen \
-    plasma-pa \
-    ark \
-    kwin-x11 \
-    kinfocenter \
-    upower \
-    konsole \
-    dolphin \
-    kate \
-    kinfocenter \
-    mesa-utils \
-    pulseaudio-utils \
-    vulkan-tools \
-    powerdevil \
-    desktop-base \
-    dbus-user-session \
-    && apt-get autoremove -y && \
+    dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji kde-plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 kinfocenter upower konsole \
+    dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools powerdevil desktop-base dbus-user-session && \
+    ## 开发工具集成 (可选)
+    if [ "$ENABLE_kfgj_ARG" = "true" ]; then \
+        apt-get install -y --no-install-recommends \
+        build-essential gcc g++ make cmake autoconf automake libtool pkg-config clang llvm python3 python3-pip python3-dev python3-venv python-is-python3; \
+    fi && \
+    ## 压缩工具扩展 (可选)
+    if [ "$ENABLE_zip_ARG" = "true" ]; then \
+        apt-get install -y --no-install-recommends \
+        zip unzip p7zip-full bzip2 xz-utils tar gzip; \
+    fi && \
+    ## docker (可选)
+    if [ "$ENABLE_docker_ARG" = "true" ]; then \
+        apt-get install -y --no-install-recommends \
+        docker.io docker-compose; \
+    fi && \
+    apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
