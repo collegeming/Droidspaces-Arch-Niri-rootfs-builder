@@ -159,7 +159,7 @@ RouteMetric=100
 EOF
 
 # 应用 Android 运行环境兼容性修复（重点针对 Systemd 和 Udev）
-RUN <<EOF_RUN
+RUN <<'EOF_RUN'
 
 # --- 1. 常规兼容性修复 ---
 # 建立 Android 网络权限组（在 Android 内核上运行 Linux 容器时，必须有这些 GID 才能正常访问网络 socket）
@@ -205,22 +205,24 @@ MaxRetentionSec=7day
 MaxLevelStore=info
 EOT
 
-mkdir -p /etc/systemd/system/multi-user.target.wants && \
-    GUEST_SYSTEMD_PATH="/lib/systemd/system" && \
-    if [ -f "$GUEST_SYSTEMD_PATH/dbus.service" ]; then \
-        ln -sf "$GUEST_SYSTEMD_PATH/dbus.service" "/etc/systemd/system/multi-user.target.wants/dbus.service"; \
-    fi && \
-    if [ "$ENABLE_yj_ARG" = "true" ]; then \
-        for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do \
-            if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then \
-                ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"; \
-            fi; \
-        done; \
-    else \
-        for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do \
-            ln -sf /dev/null "/etc/systemd/system/$service"; \
-        done; \
-    fi
+mkdir -p /etc/systemd/system/multi-user.target.wants
+GUEST_SYSTEMD_PATH="/lib/systemd/system"
+
+if [ -f "$GUEST_SYSTEMD_PATH/dbus.service" ]; then
+    ln -sf "$GUEST_SYSTEMD_PATH/dbus.service" "/etc/systemd/system/multi-user.target.wants/dbus.service"
+fi
+
+if [ "$ENABLE_yj_ARG" = "true" ]; then
+    for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
+        if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then
+            ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"
+        fi
+    done
+else
+    for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
+        ln -sf /dev/null "/etc/systemd/system/$service"
+    done
+fi
 
 # 在 systemd-logind 中禁用电源键行为处理（防止容器误拦截或处理宿主机的实体电源按键事件）
 mkdir -p /etc/systemd/logind.conf.d
