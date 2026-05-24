@@ -67,7 +67,7 @@ RUN apt-get update && \
     fonts-noto-color-emoji \
     kde-plasma-desktop \
     pipewire \
-    pipewire-pulse \ 
+    pipewire-pulse \
     wireplumber \
     powerdevil \
     kscreen \
@@ -205,7 +205,7 @@ MaxRetentionSec=7day
 MaxLevelStore=info
 EOT
 
-RUN mkdir -p /etc/systemd/system/multi-user.target.wants && \
+mkdir -p /etc/systemd/system/multi-user.target.wants && \
     GUEST_SYSTEMD_PATH="/lib/systemd/system" && \
     if [ -f "$GUEST_SYSTEMD_PATH/dbus.service" ]; then \
         ln -sf "$GUEST_SYSTEMD_PATH/dbus.service" "/etc/systemd/system/multi-user.target.wants/dbus.service"; \
