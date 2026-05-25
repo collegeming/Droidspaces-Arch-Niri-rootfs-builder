@@ -2,6 +2,7 @@ ARG TARGETPLATFORM
 FROM debian:trixie AS customizer
 
 #######################################################
+ARG BUILD_KDE
 ARG ENABLE_binfmt_ARG
 ARG ENABLE_yj_ARG
 ARG ENABLE_mesa_ARG
@@ -39,9 +40,21 @@ RUN apt-get update && \
     procps \
     # 核心内核模块支持
     kmod \
-    # 最小化KDE支持
-    dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji kde-plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 upower konsole \
-    dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools  desktop-base dbus-user-session && \
+    ############################################## KDE支持 ################################################
+    # 最小化KDE
+    if [ "$ENABLE_kfgj_ARG" = "min" ]; then \
+        apt-get install -y --no-install-recommends \
+        dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji kde-plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 upower konsole \
+        dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools  desktop-base dbus-user-session; \
+    fi && \
+    # 精简KDE
+    if [ "$ENABLE_kfgj_ARG" = "conc" ]; then \
+        apt-get install -y --no-install-recommends \
+        kde-plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 upower konsole \
+        dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools  desktop-base dbus-user-session aha clinfo dmidecode libdisplay-info-bin pciutils wayland-utils xserver-xorg \
+        kfind plasma-systemmonitor filelight glmark2 vkmark; \
+    fi && \
+    ######################################################################################################
     ## 开发工具集成 (可选)
     if [ "$ENABLE_kfgj_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends \
