@@ -30,6 +30,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_srf:
+        description: '开启 输入法 fcitx5 支持'
+        required: true
+        type: boolean
+        default: false
       enable_binfmt:
         description: '开启 跨架构 支持'
         required: true
@@ -128,7 +133,8 @@ jobs:
             -c "${{ inputs.enable_mesa }}" \
             -d "${{ inputs.enable_kfgj }}" \
             -e "${{ inputs.enable_zip }}" \
-            -f "${{ inputs.enable_docker }}" 
+            -f "${{ inputs.enable_docker }}" \
+            -h "${{ inputs.enable_srf }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -208,6 +214,7 @@ jobs:
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
+            - 输入法 fcitx5 支持: ${{ github.event.inputs.enable_srf }}
             - 跨架构支持: ${{ github.event.inputs.enable_binfmt }}
             - 容器硬件与网络识别支持: ${{ github.event.inputs.enable_yj }}
             - 开发工具集成: ${{ github.event.inputs.enable_kfgj }}
