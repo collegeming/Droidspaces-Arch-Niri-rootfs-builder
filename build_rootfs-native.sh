@@ -17,6 +17,7 @@ while getopts "i:v:K:a:b:c:d:e:f:g:" opt; do
     d) ENABLE_kfgj="$OPTARG" ;; 
     e) ENABLE_zip="$OPTARG" ;; 
     f) ENABLE_docker="$OPTARG" ;; 
+    h) ENABLE_srf="$OPTARG" ;; # 输入法 fcitx5
     *) echo "用法: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
   esac
 done
@@ -84,6 +85,7 @@ docker buildx build \
   --build-arg ENABLE_kfgj_ARG="$ENABLE_kfgj" \
   --build-arg ENABLE_zip_ARG="$ENABLE_zip" \
   --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
+  --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
   -f "$DOCKERFILE" \
   .
 
