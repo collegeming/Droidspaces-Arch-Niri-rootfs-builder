@@ -265,6 +265,17 @@ ExecCondition=/bin/sh -c "grep -q 'net_mode=nat' /run/droidspaces/container.conf
 EOF
     fi
 done
+# 仅在启用硬件访问时限制 udev 服务启动
+for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service; do
+    if [ -f "$GUEST_SYSTEMD_PATH/$unit" ] || [ -f "/etc/systemd/system/multi-user.target.wants/$unit" ]; then
+        mkdir -p "/etc/systemd/system/${unit}.d"
+        cat > "/etc/systemd/system/${unit}.d/99-hwaccess-limit.conf" << 'EOF'
+[Service]
+ExecCondition=
+ExecCondition=/bin/sh -c "grep -q 'enable_hw_access=1' /run/droidspaces/container.config"
+EOF
+    fi
+done
 
 # 针对 Android 环境微调日志轮转（logrotate）的最大容量限制
 if [ -f /etc/logrotate.conf ]; then
