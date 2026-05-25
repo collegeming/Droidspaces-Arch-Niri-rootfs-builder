@@ -3,6 +3,7 @@ FROM debian:trixie AS customizer
 
 #######################################################
 ARG BUILD_KDE
+ARG ENABLE_zh-tz_ARG
 ARG ENABLE_binfmt_ARG
 ARG ENABLE_yj_ARG
 ARG ENABLE_mesa_ARG
@@ -39,7 +40,7 @@ RUN apt-get update && \
     # 用于系统监控的 procps 进程工具
     procps \
     # 核心内核模块支持
-    kmod && \
+    kmod tzdata && \
     ############################################## KDE支持 ################################################
     # 最小化KDE
     if [ "$BUILD_KDE" = "min" ]; then \
@@ -80,11 +81,19 @@ RUN apt-get update && \
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
-# 配置语言环境、环境变量、SSH 安全设置以及默认用户清理
 RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
-    sed -i '/zh_CN.UTF-8/s/^# //' /etc/locale.gen && \
-    locale-gen && \
-    update-locale LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 && \
+    if [ "$ENABLE_zh-tz_ARG" = "true" ]; then \
+        export DEBIAN_FRONTEND=noninteractive && \
+        ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+        echo "Asia/Shanghai" > /etc/timezone && \
+        dpkg-reconfigure -f noninteractive tzdata && \
+        sed -i '/zh_CN.UTF-8/s/^# //' /etc/locale.gen && \
+        locale-gen && \
+        update-locale LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8; \
+    else \
+        locale-gen && \
+        update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8; \
+    fi && \
     # 配置 SSH 服务（禁用 root 密码登录，但允许常规密码认证）
     mkdir -p /var/run/sshd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
