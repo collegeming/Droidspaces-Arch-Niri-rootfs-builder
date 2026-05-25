@@ -10,6 +10,7 @@ ARG ENABLE_mesa_ARG
 ARG ENABLE_kfgj_ARG
 ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
+ARG ENABLE_srf_ARG
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -58,6 +59,13 @@ RUN apt-get update && \
         xdg-desktop-portal xdg-desktop-portal-kde ; \
     fi && \
     ######################################################################################################
+    #输入法 fcitx5
+    if [ "$ENABLE_srf_ARG" = "true" ]; then \
+        apt-get install -y --no-install-recommends fcitx5; \
+    fi && \
+    if [ "$ENABLE_srf_ARG" = "true" ] && [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
+        apt-get install -y --no-install-recommends fcitx5-chinese-addons; \
+    fi && \
     ## 开发工具集成 (可选)
     if [ "$ENABLE_kfgj_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends \
