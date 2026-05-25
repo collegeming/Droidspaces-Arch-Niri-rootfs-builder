@@ -1,0 +1,122 @@
+name: Cleanup GitHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "输入 YES 才执行删除"
+        required: true
+        default: "NO"
+
+      keep_releases:
+        description: "保留最新 Releases 数量"
+        required: true
+        default: "3"
+
+      keep_runs:
+        description: "保留最新 Actions Runs 数量"
+        required: true
+        default: "10"
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Safety Check
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "YES" ]; then
+            echo "未输入 YES，终止执行"
+            exit 1
+          fi
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Delete old Releases and Tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_RELEASES: ${{ github.event.inputs.keep_releases }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "获取 Releases..."
+
+          gh api repos/$REPO/releases \
+            --paginate \
+            > releases.json
+
+          COUNT=$(jq length releases.json)
+
+          echo "总 Releases: $COUNT"
+
+          if [ "$COUNT" -le "$KEEP_RELEASES" ]; then
+            echo "无需清理 Releases"
+          else
+            jq -r 'sort_by(.created_at) | reverse | .[] | "\(.id) \(.tag_name)"' releases.json \
+              > releases.txt
+
+            INDEX=0
+
+            while read ID TAG; do
+              INDEX=$((INDEX + 1))
+
+              if [ "$INDEX" -le "$KEEP_RELEASES" ]; then
+                echo "保留 Release: $TAG"
+                continue
+              fi
+
+              echo "删除 Release: $TAG"
+
+              gh api \
+                --method DELETE \
+                repos/$REPO/releases/$ID
+
+              echo "删除 Tag: $TAG"
+
+              gh api \
+                --method DELETE \
+                repos/$REPO/git/refs/tags/$TAG \
+                || true
+
+            done < releases.txt
+          fi
+
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_RUNS: ${{ github.event.inputs.keep_runs }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "获取 workflow runs..."
+
+          gh api repos/$REPO/actions/runs \
+            --paginate \
+            > runs.json
+
+          jq -r '.workflow_runs | sort_by(.created_at) | reverse | .[] | .id' runs.json \
+            > runs.txt
+
+          INDEX=0
+
+          while read RUN_ID; do
+            INDEX=$((INDEX + 1))
+
+            if [ "$INDEX" -le "$KEEP_RUNS" ]; then
+              echo "保留 Run: $RUN_ID"
+              continue
+            fi
+
+            echo "删除 Run: $RUN_ID"
+
+            gh api \
+              --method DELETE \
+              repos/$REPO/actions/runs/$RUN_ID \
+              || true
+
+          done < runs.txt
