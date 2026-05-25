@@ -3,7 +3,7 @@ FROM debian:trixie AS customizer
 
 #######################################################
 ARG BUILD_KDE
-ARG ENABLE_zh-tz_ARG
+ARG ENABLE_zh_tz_ARG
 ARG ENABLE_binfmt_ARG
 ARG ENABLE_yj_ARG
 ARG ENABLE_mesa_ARG
@@ -82,7 +82,7 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
-    if [ "$ENABLE_zh-tz_ARG" = "true" ]; then \
+    if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         export DEBIAN_FRONTEND=noninteractive && \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
         echo "Asia/Shanghai" > /etc/timezone && \
