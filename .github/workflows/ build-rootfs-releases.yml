@@ -122,7 +122,7 @@ jobs:
             -i "${{ matrix.template }}.Dockerfile" \
             -v "${{ needs.setup.outputs.build_id }}" \
             -K "${{ inputs.build_KDE }}" \
-            -g "${{ inputs.enable_zh_tz }}"
+            -g "${{ inputs.enable_zh_tz }}" \
             -a "${{ inputs.enable_binfmt }}" \
             -b "${{ inputs.enable_yj }}" \
             -c "${{ inputs.enable_mesa }}" \
@@ -205,9 +205,9 @@ jobs:
             构建 ID: ${{ needs.setup.outputs.build_id }}
 
             构建选项:
-            - ** KDE 桌面: ${{ github.event.inputs.build_KDE }} **
-            - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_zh_tz }}
-            - 使用中文作为主语言: ${{ github.event.inputs.enable_binfmt }}
+            - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
+            - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
+            - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
             - 跨架构支持: ${{ github.event.inputs.enable_binfmt }}
             - 容器硬件与网络识别支持: ${{ github.event.inputs.enable_yj }}
             - 开发工具集成: ${{ github.event.inputs.enable_kfgj }}
