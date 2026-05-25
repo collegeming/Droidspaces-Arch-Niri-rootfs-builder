@@ -77,7 +77,7 @@ docker buildx build \
   --target export \
   --output type=tar,dest="$TEMP_TAR" \
   --build-arg BUILD_KDE="$BUILD_KDE" \
-  --build-arg ENABLE_zh-tz_ARG="$ENABLE_zh_tz" \
+  --build-arg ENABLE_zh_tz_ARG="$ENABLE_zh_tz" \
   --build-arg ENABLE_binfmt_ARG="$ENABLE_binfmt" \
   --build-arg ENABLE_yj_ARG="$ENABLE_yj" \
   --build-arg ENABLE_mesa_ARG="$ENABLE_mesa" \
