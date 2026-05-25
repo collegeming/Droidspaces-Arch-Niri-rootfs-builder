@@ -5,7 +5,7 @@ DATE=$(date +%Y%m%d)      # 获取当前日期，格式如：20260523
 ARCH=$(uname -m)          # 获取当前系统架构，如：x86_64 或 aarch64
 ENABLE_binfmt="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:a:b:c:d:e:f:g:" opt; do
+while getopts "i:v:K:a:b:c:d:e:f:g:h:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; # -i 参数赋值给 DOCKERFILE 变量
     v) VERSION="$OPTARG" ;;    # -v 参数赋值给 VERSION 变量
