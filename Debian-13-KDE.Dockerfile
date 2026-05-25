@@ -42,13 +42,13 @@ RUN apt-get update && \
     kmod \
     ############################################## KDE支持 ################################################
     # 最小化KDE
-    if [ "$ENABLE_kfgj_ARG" = "min" ]; then \
+    if [ "$BUILD_KDE" = "min" ]; then \
         apt-get install -y --no-install-recommends \
         dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji kde-plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 upower konsole \
         dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools  desktop-base dbus-user-session; \
     fi && \
     # 精简KDE
-    if [ "$ENABLE_kfgj_ARG" = "conc" ]; then \
+    if [ "$BUILD_KDE" = "conc" ]; then \
         apt-get install -y --no-install-recommends \
         kde-plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 upower konsole \
         dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools  desktop-base dbus-user-session aha clinfo dmidecode libdisplay-info-bin pciutils wayland-utils xserver-xorg \
