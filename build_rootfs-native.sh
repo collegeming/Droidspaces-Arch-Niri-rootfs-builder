@@ -1,8 +1,7 @@
 #!/bin/bash
-# 基础配置项：如果外部没有环境变量，则默认 VERSION 变量为 'dev'
 : "${VERSION:=dev}"
-DATE=$(date +%Y%m%d)      # 获取当前日期，格式如：20260523
-ARCH=$(uname -m)          # 获取当前系统架构，如：x86_64 或 aarch64
+DATE=$(date +%Y%m%d)      # 获取当前日期
+ARCH=$(uname -m)          # 获取当前系统架构
 ENABLE_binfmt="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
 while getopts "i:v:K:a:b:c:d:e:f:g:h:j:" opt; do
@@ -94,9 +93,8 @@ docker buildx build \
 
 
 
-# 4. 固件打包压缩
+
 echo "正在压缩构建产物 (使用 xz 最高压缩率 - 开启多线程加速)..."
-# -T0 表示使用所有可用的 CPU 核心，-9 表示极限压缩率
 xz -T0 -9 -f "$TEMP_TAR"
 
 echo "正在重命名最终文件: $FINAL_NAME"
