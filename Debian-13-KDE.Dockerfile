@@ -84,8 +84,8 @@ RUN apt-get update && \
     ## 集成tmoe (可选)
     if [ "$ENABLE_tmoe_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends ruby pv aria2 zstd bc && \
-        git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux && \
-        ln -sf /usr/local/etc/tmoe-linux/tmoe /usr/local/bin/tmoe && \
+        git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux/git && \
+        ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
     apt-get autoremove -y && \
