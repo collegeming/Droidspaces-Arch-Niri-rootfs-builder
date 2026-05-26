@@ -14,11 +14,15 @@ ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ######################################################
 
-RUN pacman -Sy --noconfirm archlinux-keyring && \
+
+RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
+    sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
+    sed -i '/NoExtract.*i18n/d' /etc/pacman.conf && \
+    pacman -Sy --noconfirm archlinux-keyring glibc && \
     pacman -Su --noconfirm && \
     pacman -S --noconfirm --needed \
     # 核心工具组件 (Arch 中 systemd 包含 udev，无需单独安装 udev)
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd fastfetch glibc \
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd fastfetch \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具
@@ -28,13 +32,13 @@ RUN pacman -Sy --noconfirm archlinux-keyring && \
     # 核心内核模块支持
     kmod tzdata && \
     ############################################## KDE支持 ################################################
-    # 最小化KDE (移除了不存在的 dbus-x11)
+    # 最小化KDE
     if [ "$BUILD_KDE" = "min" ]; then \
         pacman -S --noconfirm --needed \
         xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
         dolphin kate kinfocenter mesa-utils libpulse vulkan-tools; \
     fi && \
-    # 精简KDE (修正了 kscreenlocker 和 plasma-browser-integration，移除了 dbus-x11)
+    # 精简KDE
     if [ "$BUILD_KDE" = "conc" ]; then \
         pacman -S --noconfirm --needed \
         xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
@@ -71,9 +75,10 @@ RUN pacman -Sy --noconfirm archlinux-keyring && \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
-    # 清理 pacman 缓存
+    # 彻底清理 pacman 缓存
     rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
 
+# 配置 Locale 与 SSH
 RUN sed -i '/en_US.UTF-8/s/^#//' /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
@@ -93,9 +98,10 @@ RUN sed -i '/en_US.UTF-8/s/^#//' /etc/locale.gen && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     # 如果容器内存在默认的 alarm 或 arch 用户，则清理
     userdel -r alarm 2>/dev/null || true && \
-    useradd -m -s /bin/bash Gold && echo "Gold:1234" | chpasswd
+    useradd -m -s /bin/bash Gold && echo "Gold:1234" | chpasswd && \
+    systemctl enable sshd
 
-# 添加环境变量
+
 RUN cat <<'EOF' > /etc/environment
 MESA_LOADER_DRIVER_OVERRIDE=kgsl
 TU_DEBUG=noconform
@@ -109,7 +115,7 @@ PULSE_SERVER=tcp:127.0.0.1:4713
 DISPLAY=:1
 EOF
 
-# 输入法开机自启动
+# 输入法与 KDE 开机自启动配置
 RUN <<'EOF_RUN'
     if [ "$ENABLE_srf_ARG" = "true" ]; then
     mkdir -p /home/Gold/.config/autostart
@@ -138,6 +144,7 @@ EOF
     chown -R Gold:Gold /home/Gold
 EOF_RUN
 
+# 下载并安装 Mesa (已集成 SigLevel 绕过修复)
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
         URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
@@ -171,7 +178,6 @@ EOF
 
 # 应用 Android 运行环境兼容性修复（重点针对 Systemd 和 Udev）
 RUN <<'EOF_RUN'
-
 # --- 1. 常规兼容性修复 ---
 # 建立 Android 网络权限组
 grep -q '^aid_inet:' /etc/group     || echo 'aid_inet:x:3003:'    >> /etc/group
@@ -302,7 +308,8 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
         chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
         mkdir -p /etc/systemd/system/multi-user.target.wants && \
         ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service && \
-        pacman -S --noconfirm --needed qemu-user-static; \
+        pacman -S --noconfirm --needed qemu-user-static && \
+        rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/* ; \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
