@@ -5,7 +5,7 @@ DATE=$(date +%Y%m%d)      # 获取当前日期，格式如：20260523
 ARCH=$(uname -m)          # 获取当前系统架构，如：x86_64 或 aarch64
 ENABLE_binfmt="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:a:b:c:d:e:f:g:h:" opt; do
+while getopts "i:v:K:a:b:c:d:e:f:g:h:j" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; # -i 参数赋值给 DOCKERFILE 变量
     v) VERSION="$OPTARG" ;;    # -v 参数赋值给 VERSION 变量
@@ -18,6 +18,7 @@ while getopts "i:v:K:a:b:c:d:e:f:g:h:" opt; do
     e) ENABLE_zip="$OPTARG" ;; 
     f) ENABLE_docker="$OPTARG" ;; 
     h) ENABLE_srf="$OPTARG" ;; # 输入法 fcitx5
+    j) ENABLE_tmoe="$OPTARG" ;; # tmoe
     *) echo "用法: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
   esac
 done
@@ -86,6 +87,7 @@ docker buildx build \
   --build-arg ENABLE_zip_ARG="$ENABLE_zip" \
   --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
   --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
+  --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
   -f "$DOCKERFILE" \
   .
 
