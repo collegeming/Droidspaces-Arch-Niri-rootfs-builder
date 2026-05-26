@@ -83,7 +83,6 @@ RUN apt-get update && \
     fi && \
     ## 集成tmoe (可选)
     if [ "$ENABLE_tmoe_ARG" = "true" ]; then \
-        apt-get install -y --no-install-recommends ruby pv aria2 zstd bc && \
         git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux/git && \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
@@ -133,7 +132,7 @@ EOF
 
 # 输入法开机自启动
 RUN <<'EOF_RUN'
-if [ "$ENABLE_srf_ARG" = "true" ]; then
+    if [ "$ENABLE_srf_ARG" = "true" ]; then
     mkdir -p /home/Gold/.config/autostart
     cat <<'EOF' > /home/Gold/.config/autostart/fcitx5.desktop
 [Desktop Entry]
@@ -149,15 +148,15 @@ StartupNotify=false
 NoDisplay=true
 EOF
 fi
-EOF_RUN
-
-RUN echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
-RUN mkdir -p /home/Gold/.config && \
+    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
+    if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
+    mkdir -p /home/Gold/.config 
     cat <<'EOF' > /home/Gold/.config/kwinrc
 [Compositing]
 Enabled=false
 EOF
-RUN chown -R Gold:Gold /home/Gold
+    chown -R Gold:Gold /home/Gold
+EOF_RUN
 
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
