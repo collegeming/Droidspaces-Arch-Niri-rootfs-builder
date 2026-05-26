@@ -14,21 +14,11 @@ ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ######################################################
 
-# 优先复制自定义脚本
-COPY scripts/download-firmware /usr/local/bin/
-COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
-
-# 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
-
-RUN sed -i '/^#Color/s/^#//' /etc/pacman.conf && \
-    sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
-    pacman -Syu --noconfirm
-
-RUN pacman -Syu --noconfirm && \
+RUN pacman -Sy --noconfirm archlinux-keyring && \
+    pacman -Su --noconfirm && \
     pacman -S --noconfirm --needed \
-    # 核心工具组件 (Arch 中 systemd 包含多数核心组件，bind 提供 dnsutils)
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion udev dbus systemd fastfetch \
+    # 核心工具组件 (Arch 中 systemd 包含 udev，无需单独安装 udev)
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd fastfetch \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具
@@ -38,19 +28,19 @@ RUN pacman -Syu --noconfirm && \
     # 核心内核模块支持
     kmod tzdata && \
     ############################################## KDE支持 ################################################
-    # 最小化KDE
+    # 最小化KDE (移除了不存在的 dbus-x11)
     if [ "$BUILD_KDE" = "min" ]; then \
         pacman -S --noconfirm --needed \
-        dbus-x11 xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
+        xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
         dolphin kate kinfocenter mesa-utils libpulse vulkan-tools; \
     fi && \
-    # 精简KDE
+    # 精简KDE (修正了 kscreenlocker 和 plasma-browser-integration，移除了 dbus-x11)
     if [ "$BUILD_KDE" = "conc" ]; then \
         pacman -S --noconfirm --needed \
-        dbus-x11 xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
+        xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
         dolphin kate kinfocenter mesa-utils libpulse vulkan-tools aha clinfo dmidecode pciutils wayland-utils xorg-server \
-        kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kde-config-screenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
-        kimageformats webext-plasma-browser-integration libcanberra gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop chromium; \
+        kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
+        kimageformats plasma-browser-integration libcanberra gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop chromium; \
     fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)
