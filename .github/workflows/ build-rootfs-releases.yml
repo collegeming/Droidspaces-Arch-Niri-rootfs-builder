@@ -10,6 +10,7 @@ on:
         default: 'Debian-13-KDE'
         options:                           
           - 'Debian-13-KDE'  
+          - 'Arch-KDE'
           - 'all'
       build_KDE:
         description: 'KDE桌面选择(conc-精简 min-最小构造 none-不用KDE)'
