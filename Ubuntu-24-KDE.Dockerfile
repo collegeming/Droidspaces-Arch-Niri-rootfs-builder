@@ -327,16 +327,26 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
         chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
         mkdir -p /etc/systemd/system/multi-user.target.wants && \
         ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service && \
-        (apt-get purge -y qemu-* binfmt-support || true) && \
+        apt-get purge -y qemu-* binfmt-support || true && \
         apt-get autoremove -y && \
         apt-get autoclean && \
-        rm -rf /var/lib/binfmts/* /etc/binfmt.d/* /usr/lib/binfmt.d/qemu-* && \
+        rm -rf /var/lib/binfmts/* && \
+        rm -rf /etc/binfmt.d/* && \
+        rm -rf /usr/lib/binfmt.d/qemu-* && \
         apt-get update && \
-        apt-get install -y qemu-user-static binfmt-support && \
-        # 显式添加 amd64 异构架构支持
+        apt-get install -y qemu-user-static && \
+        apt-get install -y binfmt-support && \
         dpkg --add-architecture amd64 && \
+        sed -i '/^Types: deb$/a Architectures: arm64 armhf' /etc/apt/sources.list.d/ubuntu.sources && \
+        echo "" >> /etc/apt/sources.list.d/ubuntu.sources && \
+        echo "Types: deb" >> /etc/apt/sources.list.d/ubuntu.sources && \
+        echo "URIs: http://archive.ubuntu.com/ubuntu/" >> /etc/apt/sources.list.d/ubuntu.sources && \
+        echo "Suites: noble noble-updates noble-security" >> /etc/apt/sources.list.d/ubuntu.sources && \
+        echo "Components: main universe restricted multiverse" >> /etc/apt/sources.list.d/ubuntu.sources && \
+        echo "Architectures: amd64" >> /etc/apt/sources.list.d/ubuntu.sources && \
+        echo "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" >> /etc/apt/sources.list.d/ubuntu.sources && \
         apt-get update && \
-        apt-get install -y libc6:amd64; \
+        apt-get install -y libc6:amd64
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
