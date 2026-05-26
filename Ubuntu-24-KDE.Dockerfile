@@ -346,7 +346,7 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
         echo "Architectures: amd64" >> /etc/apt/sources.list.d/ubuntu.sources && \
         echo "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" >> /etc/apt/sources.list.d/ubuntu.sources && \
         apt-get update && \
-        apt-get install -y libc6:amd64
+        apt-get install -y libc6:amd64; \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
