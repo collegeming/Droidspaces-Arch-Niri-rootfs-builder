@@ -18,7 +18,7 @@ RUN pacman -Sy --noconfirm archlinux-keyring && \
     pacman -Su --noconfirm && \
     pacman -S --noconfirm --needed \
     # 核心工具组件 (Arch 中 systemd 包含 udev，无需单独安装 udev)
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd fastfetch \
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd fastfetch glibc \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具
@@ -72,7 +72,7 @@ RUN pacman -Sy --noconfirm archlinux-keyring && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
     # 清理 pacman 缓存
-    pacman -Scc --noconfirm
+    rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
 
 RUN sed -i '/en_US.UTF-8/s/^#//' /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
