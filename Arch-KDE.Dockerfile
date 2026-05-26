@@ -79,10 +79,10 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
 
 # 配置 Locale 与 SSH
-RUN sed -i '/en_US.UTF-8/s/^#//' /etc/locale.gen && \
+RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-        sed -i '/zh_CN.UTF-8/s/^#//' /etc/locale.gen && \
+        echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen && \
         locale-gen && \
         echo "LANG=zh_CN.UTF-8" > /etc/locale.conf && \
         echo "LC_ALL=zh_CN.UTF-8" >> /etc/locale.conf; \
