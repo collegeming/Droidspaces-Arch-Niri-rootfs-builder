@@ -60,10 +60,10 @@ RUN apt-get update && \
     ######################################################################################################
     #输入法 fcitx5
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
-        apt-get install -y --no-install-recommends fcitx5; \
+        apt-get install -y fcitx5; \
     fi && \
     if [ "$ENABLE_srf_ARG" = "true" ] && [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
-        apt-get install -y --no-install-recommends fcitx5-chinese-addons; \
+        apt-get install -y  fcitx5-chinese-addons; \
     fi && \
     ## 开发工具集成 (可选)
     if [ "$ENABLE_kfgj_ARG" = "true" ]; then \
@@ -122,6 +122,26 @@ GLFW_IM_MODULE=fcitx
 PULSE_SERVER=tcp:127.0.0.1:4713
 DISPLAY=:1
 EOF
+
+# 输入法开机自启动
+RUN <<'EOF_RUN'
+if [ "$ENABLE_srf_ARG" = "true" ]; then
+    mkdir -p /home/Gold/.config/autostart
+    cat <<'EOF' > /home/Gold/.config/autostart/fcitx5.desktop
+[Desktop Entry]
+Name=Fcitx5
+GenericName=Input Method
+Comment=Start Input Method
+Exec=fcitx5 -d
+Icon=fcitx
+Terminal=false
+Type=Application
+Categories=System;Utility;
+StartupNotify=false
+NoDisplay=true
+EOF
+fi
+EOF_RUN
 
 RUN echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
 RUN mkdir -p /home/Gold/.config && \
@@ -283,6 +303,8 @@ if [ -f /etc/logrotate.conf ]; then
         echo "maxsize 50M" >> /etc/logrotate.conf
     fi
 fi
+
+
 
 # 写入修复完成的标记和时间戳
 echo "Post-extraction fixes applied on $(date)" > /etc/droidspaces
