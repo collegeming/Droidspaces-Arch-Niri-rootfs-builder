@@ -11,6 +11,7 @@ ARG ENABLE_kfgj_ARG
 ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
+ARG ENABLE_tmoe_ARG
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -29,7 +30,7 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 # 赋予相关脚本可执行权限
 RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
 
-# 安装精简版基础软件包
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     # 核心工具组件
@@ -58,7 +59,7 @@ RUN apt-get update && \
         kimageformat6-plugins webext-plasma-browser-integration libcanberra-pulse gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop chromium chromium-l10n; \
     fi && \
     ######################################################################################################
-    #输入法 fcitx5
+    #输入法 fcitx5 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
         apt-get install -y fcitx5; \
     fi && \
@@ -79,6 +80,13 @@ RUN apt-get update && \
     if [ "$ENABLE_docker_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends \
         docker.io docker-compose; \
+    fi && \
+    ## 集成tmoe (可选)
+    if [ "$ENABLE_tmoe_ARG" = "true" ]; then \
+        apt-get install -y --no-install-recommends ruby pv aria2 zstd bc && \
+        git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux && \
+        ln -sf /usr/local/etc/tmoe-linux/tmoe /usr/local/bin/tmoe && \
+        chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
     apt-get autoremove -y && \
     apt-get clean && \
