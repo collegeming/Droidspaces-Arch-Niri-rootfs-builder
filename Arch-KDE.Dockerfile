@@ -145,8 +145,10 @@ RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         if [ -z "$URL" ] || [ "$URL" = "null" ]; then echo "获取下载链接失败，可能是触发了 GitHub API 速率限制"; exit 1; fi && \
         wget -q --tries=5 --waitretry=3 -O /tmp/mesa.tar "$URL" && \
         tar -xf /tmp/mesa.tar -C /tmp && \
-        pacman -U --noconfirm /tmp/*.pkg.tar.* && \
-        rm -f /tmp/mesa.tar /tmp/*.pkg.tar.* ; \
+        cp /etc/pacman.conf /tmp/pacman-nosig.conf && \
+        sed -i 's/.*SigLevel.*/SigLevel = Never/g' /tmp/pacman-nosig.conf && \
+        pacman --config /tmp/pacman-nosig.conf -U --noconfirm /tmp/*.pkg.tar.* && \
+        rm -f /tmp/mesa.tar /tmp/*.pkg.tar.* /tmp/pacman-nosig.conf /tmp/*.sig ; \
     else \
         echo "--> [跳过] 未开启 Mesa 驱动安装"; \
     fi
