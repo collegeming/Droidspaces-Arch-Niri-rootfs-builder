@@ -155,6 +155,7 @@ fi
 [Compositing]
 Enabled=false
 EOF
+    fi
     chown -R Gold:Gold /home/Gold
 EOF_RUN
 
