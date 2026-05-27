@@ -44,6 +44,8 @@ RUN apt-get update && \
     kmod tzdata && \
     ############################################## KDE支持 ################################################
     # 最小化KDE
+    # 解除底层系统对中文等翻译文件(.mo)的剔除规则，防止安装桌面时丢包
+    sed -i 's|^path-exclude=/usr/share/locale/\*/LC_MESSAGES/\*.mo|#&|' /etc/dpkg/dpkg.cfg.d/excludes || true && \
     if [ "$BUILD_KDE" = "min" ]; then \
         apt-get install -y --no-install-recommends \
         dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji kde-plasma-desktop kubuntu-settings-desktop kubuntu-wallpapers \
@@ -101,8 +103,6 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
 RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         export DEBIAN_FRONTEND=noninteractive && \
-        # 解除底层系统对中文等翻译文件(.mo)的剔除规则，防止安装桌面时丢包
-        sed -i 's|^path-exclude=/usr/share/locale/\*/LC_MESSAGES/\*.mo|#&|' /etc/dpkg/dpkg.cfg.d/excludes || true && \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
         echo "Asia/Shanghai" > /etc/timezone && \
         dpkg-reconfigure -f noninteractive tzdata && \
