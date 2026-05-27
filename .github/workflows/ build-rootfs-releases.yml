@@ -11,6 +11,7 @@ on:
         options:                           
           - 'Debian-13-KDE'  
           - 'Ubuntu-24-KDE'
+          - 'Ubuntu-25-KDE'
           - 'Arch-KDE'
           - 'all'
       build_KDE:
