@@ -101,6 +101,8 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
 RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         export DEBIAN_FRONTEND=noninteractive && \
+        # 解除底层系统对中文等翻译文件(.mo)的剔除规则，防止安装桌面时丢包
+        sed -i 's|^path-exclude=/usr/share/locale/\*/LC_MESSAGES/\*.mo|#&|' /etc/dpkg/dpkg.cfg.d/excludes || true && \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
         echo "Asia/Shanghai" > /etc/timezone && \
         dpkg-reconfigure -f noninteractive tzdata && \
@@ -120,6 +122,7 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     useradd -m -s /bin/bash -G shadow Gold && echo "Gold:1234" | chpasswd && \
     # 强制赋予密码校验程序 SUID 权限
     chmod +s /sbin/unix_chkpwd
+
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
