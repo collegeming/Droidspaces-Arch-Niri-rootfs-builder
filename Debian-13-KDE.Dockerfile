@@ -131,9 +131,9 @@ GLFW_IM_MODULE=fcitx
 DISPLAY=:1
 EOF
 # 音频选择
-RUN if [ "$PULSE_MODE" = "socket" ]; then \
+RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
-    elif [ "$PULSE_MODE" = "tcp" ]; then \
+    elif [ "$PulseAudio" = "tcp" ]; then \
         echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
     fi
 
