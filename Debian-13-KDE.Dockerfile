@@ -80,7 +80,7 @@ RUN apt-get update && \
     ## docker (可选)
     if [ "$ENABLE_docker_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends \
-        docker.io docker-compose; \
+        docker.io docker-compose docker-cli; \
     fi && \
     ## 集成tmoe (可选)
     if [ "$ENABLE_tmoe_ARG" = "true" ]; then \
