@@ -121,8 +121,7 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     deluser --remove-home ubuntu || true && \
     # 创建 Gold 用户并直接加入 shadow 组，确保锁屏验证权限
     useradd -m -s /bin/bash -G shadow Gold && echo "Gold:1234" | chpasswd && \
-    # 强制赋予密码校验程序 SUID 权限
-    chmod +s /sbin/unix_chkpwd
+    systemctl enable ssh
 
 
 # 添加环境变量
