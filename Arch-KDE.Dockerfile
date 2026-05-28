@@ -47,6 +47,10 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kimageformats plasma-browser-integration libcanberra gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop chromium; \
     fi && \
+    if [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "min" ] ; then \
+        mv /usr/lib/xdg-desktop-portal /usr/lib/xdg-desktop-portal.bak && \
+        mv /usr/lib/xdg-desktop-portal-kde /usr/lib/xdg-desktop-portal-kde.bak; \
+    fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
@@ -112,6 +116,7 @@ export QT_IM_MODULE=fcitx5
 export SDL_IM_MODULE=fcitx5
 export GLFW_IM_MODULE=fcitx
 export DISPLAY=:1
+alias startplasma-x11='dbus-run-session /usr/bin/startplasma-x11'
 EOF
 
 # 音频选择
