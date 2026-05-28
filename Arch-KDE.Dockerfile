@@ -75,9 +75,7 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
         git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux/git && \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
-    fi && \
-    # 彻底清理 pacman 缓存
-    rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
+    fi 
 
 # 配置 Locale 与 SSH
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
@@ -323,6 +321,8 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
 
+# 彻底清理 pacman 缓存
+RUN rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
 # 阶段 2：将完整的根文件系统导出到 scratch（空白层），以便外部直接提取或打包成 tarfs
 FROM scratch AS export
 COPY --from=customizer / /
