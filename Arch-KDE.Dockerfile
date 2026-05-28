@@ -21,7 +21,7 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     pacman -Sy --noconfirm archlinux-keyring glibc && \
     pacman -Su --noconfirm && \
     pacman -S --noconfirm --needed \
-    # 核心工具组件 (Arch 中 systemd 包含 udev，无需单独安装 udev)
+    # 核心工具组件 
     bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd fastfetch logrotate \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
