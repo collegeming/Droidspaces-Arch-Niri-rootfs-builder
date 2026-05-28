@@ -3,6 +3,7 @@ FROM ubuntu:24.04 AS customizer
 
 #######################################################
 ARG BUILD_KDE
+ARG PulseAudio
 ARG ENABLE_zh_tz_ARG
 ARG ENABLE_binfmt_ARG
 ARG ENABLE_yj_ARG
@@ -126,9 +127,14 @@ GTK_IM_MODULE=fcitx5
 QT_IM_MODULE=fcitx5
 SDL_IM_MODULE=fcitx5
 GLFW_IM_MODULE=fcitx
-PULSE_SERVER=tcp:127.0.0.1:4713
 DISPLAY=:1
 EOF
+# 音频选择
+RUN if [ "$PulseAudio" = "socket" ]; then \
+        echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
+    elif [ "$PulseAudio" = "tcp" ]; then \
+        echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
+    fi
 
 # 输入法开机自启动
 RUN <<'EOF_RUN'
