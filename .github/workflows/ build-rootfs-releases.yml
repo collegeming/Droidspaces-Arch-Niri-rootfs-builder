@@ -19,19 +19,19 @@ on:
         required: true
         type: choice
         default: 'min'
-        options:    
+        options: 
           - 'conc'
-          - 'min'  
-          - 'none' 
-     PulseAudio:
+          - 'min'
+          - 'none'
+      PulseAudio:
         description: 'PulseAudio 音频转发'
         required: true
         type: choice
         default: 'tcp'
-        options:    
+        options: 
           - 'socket'
-          - 'tcp'  
-          - 'none' 
+          - 'tcp'
+          - 'none'
       enable_zh_tz:
         description: '使用 中文 语言，并更改时区'
         required: true
