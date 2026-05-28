@@ -23,6 +23,15 @@ on:
           - 'conc'
           - 'min'  
           - 'none' 
+     PulseAudio:
+        description: 'PulseAudio 音频转发'
+        required: true
+        type: choice
+        default: 'tcp'
+        options:    
+          - 'socket'
+          - 'tcp'  
+          - 'none' 
       enable_zh_tz:
         description: '使用 中文 语言，并更改时区'
         required: true
@@ -135,6 +144,7 @@ jobs:
             -i "${{ matrix.template }}.Dockerfile" \
             -v "${{ needs.setup.outputs.build_id }}" \
             -K "${{ inputs.build_KDE }}" \
+            -P "${{ inputs.PulseAudio }}" \
             -g "${{ inputs.enable_zh_tz }}" \
             -a "${{ inputs.enable_binfmt }}" \
             -b "${{ inputs.enable_yj }}" \
@@ -221,6 +231,7 @@ jobs:
 
             构建选项:
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
+            - PulseAudio 音频转发: ${{ github.event.inputs.PulseAudio }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
             - 集成 TMOE : ${{ github.event.inputs.enable_tmoe }}
