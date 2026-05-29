@@ -12,6 +12,7 @@ on:
           - 'Debian-13-KDE'  
           - 'Ubuntu-24-KDE'
           - 'Ubuntu-25-KDE'
+          - 'Fedroa-43-KDE'
           - 'Arch-KDE'
           - 'all'
       build_KDE:
