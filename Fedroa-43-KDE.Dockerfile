@@ -17,25 +17,12 @@ ARG ENABLE_tmoe_ARG
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Fedora 默认已经启用了必要的源，如果需要 RPM Fusion 可以取消下方注释
-# RUN dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm && dnf upgrade -y --setopt=install_weak_deps=False
-RUN dnf upgrade -y --setopt=install_weak_deps=False
-
-# 优先复制自定义脚本
-COPY scripts/download-firmware /usr/local/bin/
-
-# 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
-COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
-
-# 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
-
 RUN dnf install -y --setopt=install_weak_deps=False \
-    # 核心工具组件 (Fedora 的包名略有不同)
+    # 核心工具组件 
     bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-resolved fastfetch \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
-    # 网络与 SSH 工具 (dnsutils -> bind-utils, iputils-ping -> iputils)
+    # 网络与 SSH 工具
     openssh-server net-tools iptables iptables-legacy iputils iproute bind-utils \
     # 用于系统监控的 procps 进程工具
     procps-ng \
@@ -45,13 +32,13 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     # 最小化KDE
     if [ "$BUILD_KDE" = "min" ]; then \
         dnf install -y --setopt=install_weak_deps=False \
-        dbus-x11 xorg-x11-server-utils google-noto-cjk-fonts google-noto-emoji-color-fonts plasma-desktop pipewire pipewire-pulseaudio wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
+        dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts plasma-desktop pipewire pipewire-pulseaudio wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
         dolphin kate kinfocenter glx-utils pulseaudio-utils vulkan-tools fedora-logos; \
     fi && \
     # 精简KDE
     if [ "$BUILD_KDE" = "conc" ]; then \
         dnf install -y --setopt=install_weak_deps=False \
-        dbus-x11 xorg-x11-server-utils google-noto-cjk-fonts google-noto-emoji-color-fonts plasma-desktop pipewire pipewire-pulseaudio wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
+        dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts plasma-desktop pipewire pipewire-pulseaudio wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
         dolphin kate kinfocenter glx-utils pulseaudio-utils vulkan-tools fedora-logos aha clinfo dmidecode libdisplay-info pciutils wayland-utils xorg-x11-server-Xorg \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kf6-kimageformats plasma-browser-integration libcanberra-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop chromium; \
@@ -74,7 +61,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         dnf install -y --setopt=install_weak_deps=False \
         zip unzip p7zip p7zip-plugins bzip2 xz tar gzip; \
     fi && \
-    ## docker (可选) (Fedora 推荐使用 moby-engine)
+    ## docker (可选) 
     if [ "$ENABLE_docker_ARG" = "true" ]; then \
         dnf install -y --setopt=install_weak_deps=False \
         moby-engine docker-compose docker-cli; \
