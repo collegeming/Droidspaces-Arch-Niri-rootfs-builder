@@ -166,12 +166,24 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: 检出代码库
+        uses: actions/checkout@v4
+        
       - name: 下载所有产物
         uses: actions/download-artifact@v4
         with:
           pattern: "*-rootfs"
           merge-multiple: true
-
+          
+      - name: 整理资源
+        run: |
+          mkdir -p release_assets
+          mv *.tar.xz release_assets/
+          PA_CHOICE="${{ github.event.inputs.PulseAudio }}"
+          if [ "$PA_CHOICE" != "none" ]; then
+            cp "scripts/on_aaudio_${PA_CHOICE}.sh" release_assets/
+          fi
+          
       - name: 创建统一 Release
         uses: softprops/action-gh-release@v2
         with:
