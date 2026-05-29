@@ -47,7 +47,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     ######################################################################################################
     # 输入法 fcitx5 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
-        dnf install -y --setopt=install_weak_deps=False fcitx5; \
+        dnf install -y  fcitx5 fcitx5-qt fcitx5-gtk ; \
     fi && \
     if [ "$ENABLE_srf_ARG" = "true" ] && [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         dnf install -y --setopt=install_weak_deps=False fcitx5-chinese-addons; \
