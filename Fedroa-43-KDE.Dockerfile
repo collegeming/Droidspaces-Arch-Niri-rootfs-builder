@@ -89,8 +89,12 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     rm -rf /var/cache/dnf
 
 # 强制配置使用 iptables-legacy（兼容 Android 内核的硬性要求）
-RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
-    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+RUN ln -sf /usr/sbin/iptables-legacy /usr/sbin/iptables && \
+    ln -sf /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables && \
+    ln -sf /usr/sbin/iptables-legacy-save /usr/sbin/iptables-save && \
+    ln -sf /usr/sbin/iptables-legacy-restore /usr/sbin/iptables-restore && \
+    ln -sf /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save && \
+    ln -sf /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore
 
 RUN if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
