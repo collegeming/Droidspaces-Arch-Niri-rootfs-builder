@@ -69,7 +69,7 @@
 
 ```
 
-**方法三：刷入宽容内核 (Permissive Kernel)**
+**方法三：宽容内核 (Permissive Kernel)**
 直接将设备的 SELinux 状态切换为 Permissive（宽容模式）。
 
 **方法四：修改 Droidspaces 模块配置文件**
