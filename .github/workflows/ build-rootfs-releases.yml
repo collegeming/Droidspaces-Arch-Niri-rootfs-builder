@@ -77,6 +77,7 @@ on:
         required: true
         type: boolean
         default: false    
+
 jobs:
   # --------------------------------------------------------
   # 阶段 1: setup (环境准备与变量生成)
@@ -87,7 +88,6 @@ jobs:
       templates: ${{ steps.find-templates.outputs.templates }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
-      run_nixos: ${{ steps.find-templates.outputs.run_nixos }}
     steps:
       - name: 检出代码库
         uses: actions/checkout@v4
@@ -96,22 +96,15 @@ jobs:
         id: find-templates
         run: |
           TARGET="${{ github.event.inputs.build_target }}"
-          RUN_NIXOS="false"
           
           if [ "$TARGET" = "all" ]; then
             TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
-            RUN_NIXOS="true"
-          elif [ "$TARGET" = "NixOS-All" ]; then
-            TEMPLATES="[]"
-            RUN_NIXOS="true"
           else
             TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
           fi
           
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
-          echo "run_nixos=$RUN_NIXOS" >> $GITHUB_OUTPUT
           echo "最终决定的构建矩阵: $TEMPLATES"
-          echo "是否构建 NixOS: $RUN_NIXOS"
 
       - name: 准备构建元数据
         id: prep
@@ -163,50 +156,11 @@ jobs:
           retention-days: 1
 
   # --------------------------------------------------------
-  # 阶段 3: build-nixos (NixOS 系统的专属构建)
-  # --------------------------------------------------------
-  build-nixos:
-    needs: setup 
-    if: ${{ needs.setup.outputs.run_nixos == 'true' }}
-    runs-on: ubuntu-24.04-arm
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: NixOS-Minimal-Systemd-latest-Kernel-5.10-and-up
-            attr: nixosDroidspacesTarballs.aarch64-linux.minimal
-          - name: NixOS-Minimal-Systemd-v257.9
-            attr: nixosDroidspacesTarballs.aarch64-linux.minimal-with-systemd-v257
-          - name: NixOS-Minimal-Finix-Experimental
-            attr: finixDroidspacesTarballs.aarch64-linux.experimental
-    steps:
-      - name: 安装 Nix
-        uses: DeterminateSystems/nix-installer-action@v16
-
-      - name: 编译 ${{ matrix.name }} RootFS
-        run: |
-          nix build github:ravindu644/Droidspaces-OSS#${{ matrix.attr }}
-
-      - name: 打包产物
-        run: |
-          DATE=$(date +%Y%m%d)
-          TARBALL=$(find result/tarball -name "*.tar.xz" | head -1)
-          FINAL="${{ matrix.name }}-Droidspaces-rootfs-aarch64-${DATE}-${{ needs.setup.outputs.build_id }}.tar.xz"
-          cp "$TARBALL" "$FINAL"
-
-      - name: 上传构建产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}-rootfs
-          path: "*.tar.xz"
-          retention-days: 1
-
-  # --------------------------------------------------------
-  # 阶段 4: release (汇总发布)
+  # 阶段 3: release (汇总发布)
   # --------------------------------------------------------
   release:
-    needs: [setup, build, build-nixos]
-    if: ${{ always() && needs.setup.result == 'success' && needs.build.result != 'failure' && needs.build-nixos.result != 'failure' }}
+    needs: [setup, build]
+    if: ${{ always() && needs.setup.result == 'success' && needs.build.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
