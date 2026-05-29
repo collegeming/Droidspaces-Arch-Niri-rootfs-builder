@@ -101,26 +101,24 @@ RUN if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
     (userdel -r debian 2>/dev/null || true) && \
     useradd -m -s /bin/bash Gold && echo "Gold:1234" | chpasswd 
 
-# 添加环境变量 (注意每个变量前都加了 export)
-RUN cat <<'EOF' > /etc/profile.d/custom_env.sh
-export MESA_LOADER_DRIVER_OVERRIDE=kgsl
-export TU_DEBUG=noconform
-export XCURSOR_SIZE=48
-export XMODIFIERS=@im=fcitx5
-export GTK_IM_MODULE=fcitx5
-export QT_IM_MODULE=fcitx5
-export SDL_IM_MODULE=fcitx5
-export GLFW_IM_MODULE=fcitx
-export DISPLAY=:1
+# 添加环境变量
+RUN cat <<'EOF' > /etc/environment
+MESA_LOADER_DRIVER_OVERRIDE=kgsl
+TU_DEBUG=noconform
+XCURSOR_SIZE=48
+XMODIFIERS=@im=fcitx5
+GTK_IM_MODULE=fcitx5
+QT_IM_MODULE=fcitx5
+SDL_IM_MODULE=fcitx5
+GLFW_IM_MODULE=fcitx
+DISPLAY=:1
 EOF
-
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
-        echo 'export PULSE_SERVER="unix:/tmp/.pulse-socket"' >> /etc/profile.d/custom_env.sh; \
+        echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
     elif [ "$PulseAudio" = "tcp" ]; then \
-        echo 'export PULSE_SERVER="tcp:127.0.0.1:4713"' >> /etc/profile.d/custom_env.sh; \
+        echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
     fi
-RUN chmod +x /etc/profile.d/custom_env.sh
 
 # 输入法开机自启动
 RUN <<'EOF_RUN'
