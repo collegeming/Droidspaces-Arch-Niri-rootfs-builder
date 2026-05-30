@@ -1,4 +1,6 @@
+中文 | [English](README_english.md)
 
+---
 # 🚀 Droidspaces RootFS 自动构建
 
 本项目旨在通过 GitHub Actions 实现全自动化的云端构建，为 Droidspaces 提供开箱即用、高度定制的 RootFS。
