@@ -189,7 +189,7 @@ jobs:
         with:
           tag_name: ${{ needs.setup.outputs.build_id }}
           name: "Droidspaces RootFS ${{ needs.setup.outputs.build_id }}"
-          files: "*.tar.xz"
+          files: "release_assets/*"
           body: |
             Droidspaces RootFS 自动构建
             构建时间 : ${{ needs.setup.outputs.build_date }}
