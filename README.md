@@ -45,8 +45,8 @@
 
  - **通用要求**：所有使用本项目 RootFS 并开启 KDE 桌面环境的用户，**必须**在 Droidspaces 中开启「GPU 访问」权限，并配置好 Termux:X11。
  - **Ubuntu / Debian 系**：在开启 KDE 桌面环境前，强烈建议在 Droidspaces 的特权模式配置中开启 **`noseccomp`**。否则可能会导致容器内部分操作出现长达 10 秒的卡顿。
- - **Fedora 系**：**必须**在 Droidspaces 中开启「硬件访问」权限！否则会导致桌面闪屏并最终崩溃（目前需手动卸载冲突包，暂无完美替代方案）。
-- **Arch**: 内核版本必须在5.10以上。
+ - **Fedora 系**：有些设备**必须**在 Droidspaces 中开启「硬件访问」权限！否则会导致桌面闪屏并最终崩溃（目前需手动卸载冲突包，暂无完美替代方案，需要自行测试）。
+ - **Arch**: 内核版本必须在5.10以上。
 
 ### 🛠️ DRI3 报错解决方案
 
@@ -88,5 +88,10 @@
 # 取消最后一行的注释，修改为：
 allow untrusted_app_27 droidspacesd fd use
 
-修改保存后，**重启设备**即可生效。
+修改保存后，重启设备 即可生效。
 ```
+## 致谢
+
+*   **[Droidspaces-OOS](https://github.com/ravindu644/Droidspaces-OSS/)** - 本项目实现的前提。
+*   **[mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)** - 构建Rootfs的高通骁龙GPU驱动支持
+*   **[TMOE](https://github.com/2moe/tmoe)** - 容器里特别方便的管理工具
