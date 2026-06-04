@@ -28,7 +28,7 @@ on:
         description: 'PulseAudio 音频转发'
         required: true
         type: choice
-        default: 'tcp'
+        default: 'socket'
         options: 
           - 'socket'
           - 'tcp'

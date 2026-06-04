@@ -121,9 +121,9 @@ EOF
 
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
-        echo 'export PULSE_SERVER="unix:/tmp/.pulse-socket"' >> /etc/profile.d/custom_env.sh; \
+        echo "export PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/profile.d/custom_env.sh; \
     elif [ "$PulseAudio" = "tcp" ]; then \
-        echo 'export PULSE_SERVER="tcp:127.0.0.1:4713"' >> /etc/profile.d/custom_env.sh; \
+        echo "export PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/profile.d/custom_env.sh; \
     fi
 RUN chmod +x /etc/profile.d/custom_env.sh
 
