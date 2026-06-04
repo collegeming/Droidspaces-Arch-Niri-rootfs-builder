@@ -111,7 +111,7 @@ GTK_IM_MODULE=fcitx5
 QT_IM_MODULE=fcitx5
 SDL_IM_MODULE=fcitx5
 GLFW_IM_MODULE=fcitx
-DISPLAY=:1
+DISPLAY=:5
 EOF
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \

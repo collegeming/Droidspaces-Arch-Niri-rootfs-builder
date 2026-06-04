@@ -2,7 +2,7 @@
 
 CONTAINER_NAME="Aech" #这个写你的容器名称
 USERNAME="Gold"        #容器用户名
-DISPLAY_NUMBER=":1"   
+DISPLAY_NUMBER=":5"   
 DPI=315
 
 if ! su -c "id -u" 2>/dev/null | grep -q "^0$"; then

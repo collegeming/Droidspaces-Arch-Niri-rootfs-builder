@@ -2,7 +2,7 @@
 
 CONTAINER_NAME="Arch"  #容器名称
 USERNAME="Gold"      #rootfs用户名
-DISPLAY_NUMBER=":1"  #开启桌面编号 :0 :1 :2
+DISPLAY_NUMBER=":5"  #开启桌面编号 :0 :1 :2
 DPI=315                #termux-x11 DPI
 
 if ! su -c "id -u" 2>/dev/null | grep -q "^0$"; then

@@ -116,7 +116,7 @@ export GTK_IM_MODULE=fcitx5
 export QT_IM_MODULE=fcitx5
 export SDL_IM_MODULE=fcitx5
 export GLFW_IM_MODULE=fcitx
-export DISPLAY=:1
+export DISPLAY=:5
 EOF
 
 # 音频选择
