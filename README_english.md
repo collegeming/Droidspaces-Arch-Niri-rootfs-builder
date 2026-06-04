@@ -10,7 +10,7 @@ When triggering the workflow, you can freely configure the target system version
 
 ## ✨ Features
 
-- **Multi-distro support**: Quickly build RootFS for `Debian-13`, `Ubuntu-24`, `Ubuntu-25`, and `Arch Linux`.
+- **Multi-distro support**: Quickly build RootFS for `Debian-13`, `Ubuntu-24`, `Ubuntu-25`，`Fedora-43`, and `Arch Linux`.
 - **On-demand KDE desktop customization**: Multiple KDE desktop scales are available, and you can launch the graphical environment quickly with the `on` script:
   - `conc`: compact edition
   - `min`: minimal build
@@ -31,7 +31,7 @@ When triggering the workflow, you can freely configure the target system version
     Note: Arch Linux does not support this QEMU-based approach.
   - **Container enhancements**: Deep optimization for container recognition of underlying hardware and network environments.
   - **Productivity tools**: Optional integration of development toolchains, compression utilities, and the Docker engine.
-
+- **Account Credentials**: For all built `Rootfs`, the username is: `Gold`, and the password is: `1234`
 ## 🔥 Quick Start
 
 1. **Fork** this project to your GitHub repository.
