@@ -24,6 +24,11 @@ on:
           - 'conc'
           - 'min'
           - 'none'
+      build_KDE_plus:
+        description: 'KDE 桌面开机自启动 (需要 KDE 桌面选择为 conc 或 min)'
+        required: true
+        type: boolean
+        default: false
       PulseAudio:
         description: 'PulseAudio 音频转发'
         required: true
@@ -131,6 +136,14 @@ jobs:
       - name: 检出代码库
         uses: actions/checkout@v4
 
+      - name: 验证构建选项
+        run: |
+          if [ "${{ inputs.build_KDE }}" = "none" ] && [ "${{ inputs.build_KDE_plus }}" = "true" ]; then
+            echo "❌ 错误: 当 KDE 桌面选择为 'none' 时，无法启用 KDE 开机自启动"
+            echo "请重新运行工作流，取消勾选 'KDE 桌面开机自启动' 或选择 KDE 桌面"
+            exit 1
+          fi
+
       - name: 编译 RootFS (${{ matrix.template }})
         run: |
           chmod +x build_rootfs-native.sh
@@ -138,6 +151,7 @@ jobs:
             -i "${{ matrix.template }}.Dockerfile" \
             -v "${{ needs.setup.outputs.build_id }}" \
             -K "${{ inputs.build_KDE }}" \
+            -L "${{ inputs.build_KDE_plus }}" \
             -P "${{ inputs.PulseAudio }}" \
             -g "${{ inputs.enable_zh_tz }}" \
             -a "${{ inputs.enable_binfmt }}" \
@@ -198,6 +212,7 @@ jobs:
 
             构建选项:
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
+            - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}
             - PulseAudio 音频转发: ${{ github.event.inputs.PulseAudio }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}

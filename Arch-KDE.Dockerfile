@@ -3,6 +3,7 @@ FROM ogarcia/archlinux AS customizer
 
 #######################################################
 ARG BUILD_KDE
+ARG BUILD_KDE_plus
 ARG PulseAudio
 ARG ENABLE_zh_tz_ARG
 ARG ENABLE_binfmt_ARG
@@ -160,6 +161,26 @@ EOF
 exec dbus-run-session /usr/bin/startplasma-x11 "$@"
 EOF
     chmod +x /usr/local/bin/startplasma-x11
+    fi
+    if [ "$BUILD_KDE_plus" = "true" ] ; then
+    cat <<'EOF' > /etc/systemd/system/plasma-x11.service
+[Unit]
+Description=Start Plasma X11
+After=network.target display-manager.service
+
+[Service]
+Type=simple
+User=Gold
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc 'DISPLAY=:5 startplasma-x11'
+Restart=no
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
     fi
 EOF_RUN
 

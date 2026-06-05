@@ -3,6 +3,7 @@ FROM fedora:43 AS customizer
 
 #######################################################
 ARG BUILD_KDE
+ARG BUILD_KDE_plus
 ARG PulseAudio
 ARG ENABLE_zh_tz_ARG
 ARG ENABLE_binfmt_ARG
@@ -147,9 +148,28 @@ Enabled=false
 EOF
     fi
     chown -R Gold:Gold /home/Gold
+    if [ "$BUILD_KDE_plus" = "true" ] ; then
+    cat <<'EOF' > /etc/systemd/system/plasma-x11.service
+[Unit]
+Description=Start Plasma X11
+After=network.target display-manager.service
+
+[Service]
+Type=simple
+User=Gold
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc 'DISPLAY=:5 startplasma-x11'
+Restart=no
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
+    fi
 EOF_RUN
 
-# 注意：这里将 debian_trixie 改为了 fedora_43。如果上游仓库没有提供 Fedora 版本的构建，这里会失败报错。
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
         URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
