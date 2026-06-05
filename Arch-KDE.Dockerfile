@@ -354,7 +354,7 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
         chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
         mkdir -p /etc/systemd/system/multi-user.target.wants && \
         ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service && \
-        pacman -S --noconfirm --needed qemu-user-static && \
+        pacman -S --noconfirm --needed qemu-user qemu-user-binfmt && \
         rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/* ; \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
