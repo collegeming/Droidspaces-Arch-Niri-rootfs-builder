@@ -12,7 +12,7 @@ on:
           - 'Debian-13-KDE'
           - 'Ubuntu-24-KDE'
           - 'Ubuntu-25-KDE'
-          - 'Fedroa-43-KDE'
+          - 'Fedora-43-KDE'
           - 'Arch-KDE'
           - 'all'
       custom_username:
