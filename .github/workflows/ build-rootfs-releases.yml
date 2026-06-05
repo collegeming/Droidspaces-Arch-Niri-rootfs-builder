@@ -64,10 +64,10 @@ on:
         type: boolean
         default: false
       enable_yj:
-        description: '开启 容器识别部分硬件和网络 支持'
+        description: '开启 Nat和硬件识别 支持'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_kfgj:
         description: '开发工具 集成'
         required: true
