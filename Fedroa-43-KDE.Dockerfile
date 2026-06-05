@@ -14,6 +14,7 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
+ARG USERNAME
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -100,7 +101,7 @@ RUN if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     # 删除默认可能存在的用户并创建新用户
     (userdel -r debian 2>/dev/null || true) && \
-    useradd -m -s /bin/bash Gold && echo "Gold:1234" | chpasswd 
+    useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd 
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
@@ -117,8 +118,8 @@ RUN if [ "$PulseAudio" = "socket" ]; then \
 # 输入法开机自启动
 RUN <<'EOF_RUN'
     if [ "$ENABLE_srf_ARG" = "true" ]; then
-    mkdir -p /home/Gold/.config/autostart
-    cat <<'EOF' > /home/Gold/.config/autostart/fcitx5.desktop
+    mkdir -p /home/${USERNAME}/.config/autostart
+    cat <<'EOF' > /home/${USERNAME}/.config/autostart/fcitx5.desktop
 [Desktop Entry]
 Name=Fcitx5
 GenericName=Input Method
@@ -141,31 +142,30 @@ EOF
     fi
 
     if [ "$ENABLE_mesa_ARG" = "true" ] ; then
-    cat <<'EOF' >> /etc/environment
+        cat <<'EOF' >> /etc/environment
 MESA_LOADER_DRIVER_OVERRIDE=kgsl
 TU_DEBUG=noconform
 EOF
     fi
 
-    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
+    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
-    mkdir -p /home/Gold/.config 
-    cat <<'EOF' > /home/Gold/.config/kwinrc
+    mkdir -p /home/${USERNAME}/.config
+    cat <<'EOF' > /home/${USERNAME}/.config/kwinrc
 [Compositing]
 Enabled=false
 EOF
     fi
-
-    chown -R Gold:Gold /home/Gold
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
     if [ "$BUILD_KDE_plus" = "true" ] ; then
-    cat <<'EOF' > /etc/systemd/system/plasma-x11.service
+    cat <<EOF > /etc/systemd/system/plasma-x11.service
 [Unit]
 Description=Start Plasma X11
 After=network.target display-manager.service
 
 [Service]
 Type=simple
-User=Gold
+User=${USERNAME}
 EnvironmentFile=-/etc/environment
 ExecStart=/bin/bash -lc 'DISPLAY=:5 startplasma-x11'
 Restart=no
@@ -219,7 +219,7 @@ grep -q '^aid_net_admin:' /etc/group || echo 'aid_net_admin:x:3005:' >> /etc/gro
 getent group droidspaces-gpu >/dev/null || groupadd -g 786 -r droidspaces-gpu
 
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
-usermod -a -G aid_inet,aid_net_raw,input,video,tty,wheel,droidspaces-gpu Gold || true
+usermod -a -G aid_inet,aid_net_raw,input,video,tty,wheel,droidspaces-gpu ${USERNAME} || true
 
 # 确保未来通过 useradd 创建的新用户也会进入附加组 (Fedora 通过 /etc/default/useradd 处理)
 if [ -f /etc/default/useradd ]; then

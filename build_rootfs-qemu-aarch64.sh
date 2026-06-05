@@ -7,13 +7,16 @@
 DATE=$(date +%Y%m%d)
 
 # Parse arguments
-while getopts "i:v:" opt; do
+while getopts "i:v:u:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;;
     v) VERSION="$OPTARG" ;;
+    u) USERNAME="$OPTARG" ;;
     *) echo "Usage: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
   esac
 done
+
+: "${USERNAME:=Gold}"
 
 if [ -z "$DOCKERFILE" ]; then
     echo "Error: Template file (-i) is required."
@@ -61,6 +64,7 @@ docker buildx build \
   --platform linux/arm64 \
   --target export \
   --output type=tar,dest="$TEMP_TAR" \
+  --build-arg USERNAME="$USERNAME" \
   -f "$DOCKERFILE" \
   .
 

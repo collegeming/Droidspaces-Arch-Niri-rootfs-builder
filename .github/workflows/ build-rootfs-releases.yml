@@ -8,13 +8,18 @@ on:
         required: true
         type: choice
         default: 'Debian-13-KDE'
-        options:                           
-          - 'Debian-13-KDE'  
+        options:
+          - 'Debian-13-KDE'
           - 'Ubuntu-24-KDE'
           - 'Ubuntu-25-KDE'
           - 'Fedroa-43-KDE'
           - 'Arch-KDE'
           - 'all'
+      custom_username:
+        description: '自定义用户名（默认 Gold）'
+        required: false
+        type: string
+        default: 'Gold'
       build_KDE:
         description: 'KDE桌面选择(conc-精简 min-最小构造 none-不用KDE)'
         required: true
@@ -161,7 +166,8 @@ jobs:
             -e "${{ inputs.enable_zip }}" \
             -f "${{ inputs.enable_docker }}" \
             -h "${{ inputs.enable_srf }}" \
-            -j "${{ inputs.enable_tmoe }}"
+            -j "${{ inputs.enable_tmoe }}" \
+            -u "${{ inputs.custom_username }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -194,8 +200,10 @@ jobs:
           mkdir -p release_assets
           mv *.tar.xz release_assets/
           PA_CHOICE="${{ github.event.inputs.PulseAudio }}"
+          CUSTOM_USERNAME="${{ github.event.inputs.custom_username }}"
           if [ "$PA_CHOICE" != "none" ]; then
-            cp "scripts/on_aaudio_${PA_CHOICE}.sh" release_assets/
+            cp "scripts/on_aaudio_${PA_CHOICE}.sh" "release_assets/on_aaudio_${PA_CHOICE}.sh"
+            sed -i "s/USERNAME=\"Gold\"/USERNAME=\"${CUSTOM_USERNAME}\"/g" "release_assets/on_aaudio_${PA_CHOICE}.sh"
           fi
           
       - name: 创建统一 Release
@@ -211,6 +219,7 @@ jobs:
             构建 ID: ${{ needs.setup.outputs.build_id }}
 
             构建选项:
+            - **自定义用户名**: ${{ github.event.inputs.custom_username }}
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
             - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}
             - PulseAudio 音频转发: ${{ github.event.inputs.PulseAudio }}

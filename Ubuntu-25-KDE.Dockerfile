@@ -14,6 +14,7 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
+ARG USERNAME
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -120,8 +121,8 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     # Ubuntu 默认用户是 ubuntu，删除它避免冲突
     deluser --remove-home ubuntu || true && \
-    # 创建 Gold 用户并直接加入 shadow 组，确保锁屏验证权限
-    useradd -m -s /bin/bash -G shadow Gold && echo "Gold:1234" | chpasswd && \
+    # 创建自定义用户并直接加入 shadow 组，确保锁屏验证权限
+    useradd -m -s /bin/bash -G shadow ${USERNAME} && echo "${USERNAME}:1234" | chpasswd && \
     systemctl enable ssh
 
 
@@ -140,8 +141,8 @@ RUN if [ "$PulseAudio" = "socket" ]; then \
 # 输入法开机自启动及 KDE 配置
 RUN <<'EOF_RUN'
     if [ "$ENABLE_srf_ARG" = "true" ]; then
-    mkdir -p /home/Gold/.config/autostart
-    cat <<'EOF' > /home/Gold/.config/autostart/fcitx5.desktop
+    mkdir -p /home/${USERNAME}/.config/autostart
+    cat <<'EOF' > /home/${USERNAME}/.config/autostart/fcitx5.desktop
 [Desktop Entry]
 Name=Fcitx5
 GenericName=Input Method
@@ -163,31 +164,30 @@ GLFW_IM_MODULE=fcitx
 EOF
 fi
     if [ "$ENABLE_mesa_ARG" = "true" ] ; then
-    cat <<'EOF' >> /etc/environment
+        cat <<'EOF' >> /etc/environment
 MESA_LOADER_DRIVER_OVERRIDE=kgsl
 TU_DEBUG=noconform
 EOF
     fi
 
-    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
+    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
-    mkdir -p /home/Gold/.config 
-    cat <<'EOF' > /home/Gold/.config/kwinrc
+    mkdir -p /home/${USERNAME}/.config
+    cat <<'EOF' > /home/${USERNAME}/.config/kwinrc
 [Compositing]
 Enabled=false
 EOF
     fi
-
-    chown -R Gold:Gold /home/Gold
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
     if [ "$BUILD_KDE_plus" = "true" ] ; then
-    cat <<'EOF' > /etc/systemd/system/plasma-x11.service
+    cat <<EOF > /etc/systemd/system/plasma-x11.service
 [Unit]
 Description=Start Plasma X11
 After=network.target display-manager.service
 
 [Service]
 Type=simple
-User=Gold
+User=${USERNAME}
 EnvironmentFile=-/etc/environment
 ExecStart=/bin/bash -lc 'DISPLAY=:5 startplasma-x11'
 Restart=no
@@ -239,7 +239,7 @@ grep -q '^aid_net_admin:' /etc/group || echo 'aid_net_admin:x:3005:' >> /etc/gro
 
 getent group droidspaces-gpu >/dev/null || groupadd -g 786 -r droidspaces-gpu
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
-usermod -a -G aid_inet,aid_net_raw,input,video,tty,sudo,droidspaces-gpu Gold || true
+usermod -a -G aid_inet,aid_net_raw,input,video,tty,sudo,droidspaces-gpu ${USERNAME} || true
 
 grep -q '^_apt:' /etc/passwd && usermod -g aid_inet _apt || true
 

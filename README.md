@@ -1,6 +1,7 @@
 中文 | [English](README_english.md)
 
----
+***
+
 # 🚀 Droidspaces RootFS 自动构建
 
 本项目旨在通过 GitHub Actions 实现全自动化的云端构建，为 Droidspaces 提供开箱即用、高度定制的 RootFS。
@@ -9,28 +10,23 @@
 
 ## ✨ 核心特性
 
- - **多发行版支持**：支持快速构建 `Debian-13`、`Ubuntu-24`、`Ubuntu-25`、`Fedora 43` 以及 `Arch Linux` 的 RootFS。
- - **按需定制的 KDE 桌面**：提供多种 KDE 桌面规模选择，配合 `on` 脚本即可快速启动图形界面：
-     - `conc`：精简版
-     - `min`：最小化构造版
-     - `none`：仅命令行（不安装桌面环境）
-
-
- - **灵活的音频转发 (PulseAudio)**：
-     - 支持 `tcp`（网卡转发）与 `socket`（套接字）模式。
-     - *强烈推荐使用 `socket` 模式*：依赖本地文件传输，效率更高、延迟更低。
-
-
- - **原生中文化**：一键开启中文语言环境并自动校准时区，彻底解决容器内中文显示与配置繁琐的问题。
- - **骁龙 GPU 硬件加速**：内置针对高通骁龙 GPU 的 Mesa 驱动增强，为桌面环境提供丝滑的硬件加速体验。（驱动上游：[lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)）
- - **模块化组件一键集成**：支持通过参数灵活开启以下功能：
-     - **输入法**：原生集成 Fcitx5 支持。
-     - **TMOE 部署**：集成 TMOE 环境。在终端输入 `tmoe` 即可自动安装依赖并运行。（项目上游：[TMOE](https://github.com/2moe/tmoe)）
-     -  **跨架构支持**：启用 `binfmt` 实现跨架构程序运行（注：Arch Linux 暂不支持此 QEMU 方案）。
-     -  **容器增强**：深度优化容器对底层硬件与网络环境的识别。
-     -  **生产力工具**：可选集成开发工具链、压缩工具包及 Docker 容器引擎。
- - **账户密码**：所有构建的 `Rootfs` 账户均为: `Gold`,密码均为: `1234`
-
+- **多发行版支持**：支持快速构建 `Debian-13`、`Ubuntu-24`、`Ubuntu-25`、`Fedora 43` 以及 `Arch Linux` 的 RootFS。
+- **按需定制的 KDE 桌面**：提供多种 KDE 桌面规模选择，配合 `on` 脚本即可快速启动图形界面：
+  - `conc`：精简版
+  - `min`：最小化构造版
+  - `none`：仅命令行（不安装桌面环境）
+- **灵活的音频转发 (PulseAudio)**：
+  - 支持 `tcp`（网卡转发）与 `socket`（套接字）模式。
+  - *强烈推荐使用* *`socket`* *模式*：依赖本地文件传输，效率更高、延迟更低。
+- **原生中文化**：一键开启中文语言环境并自动校准时区，彻底解决容器内中文显示与配置繁琐的问题。
+- **骁龙 GPU 硬件加速**：内置针对高通骁龙 GPU 的 Mesa 驱动增强，为桌面环境提供丝滑的硬件加速体验。（驱动上游：[lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)）
+- **模块化组件一键集成**：支持通过参数灵活开启以下功能：
+  - **输入法**：原生集成 Fcitx5 支持。
+  - **TMOE 部署**：集成 TMOE 环境。在终端输入 `tmoe` 即可自动安装依赖并运行。（项目上游：[TMOE](https://github.com/2moe/tmoe)）
+  - **跨架构支持**：启用 `binfmt` 实现跨架构程序运行（注：Arch Linux 暂不支持此 QEMU 方案）。
+  - **容器增强**：深度优化容器对底层硬件与网络环境的识别。
+  - **生产力工具**：可选集成开发工具链、压缩工具包及 Docker 容器引擎。
+- **账户密码**：所有构建的 `Rootfs` 账户默认为: `Gold`，可自行修改；密码均为: `1234`
 
 ## 🔥 快速上手
 
@@ -43,10 +39,10 @@
 
 ### 🖥️ 系统与桌面环境配置
 
- - **通用要求**：所有使用本项目 RootFS 并开启 KDE 桌面环境的用户，**必须**在 Droidspaces 中开启「GPU 访问」权限，并配置好 Termux:X11。
- - **Ubuntu / Debian 系**：在开启 KDE 桌面环境前，强烈建议在 Droidspaces 的特权模式配置中开启 **`noseccomp`**。否则可能会导致容器内部分操作出现长达 10 秒的卡顿。
- - **Fedora 系**：有些设备**必须**在 Droidspaces 中开启「硬件访问」权限！否则会导致桌面闪屏并最终崩溃（目前需手动卸载冲突包，暂无完美替代方案，需要自行测试）。
- - **Arch**: 内核版本必须在5.10以上。
+- **通用要求**：所有使用本项目 RootFS 并开启 KDE 桌面环境的用户，**必须**在 Droidspaces 中开启「GPU 访问」权限，并配置好 Termux:X11。
+- **Ubuntu / Debian 系**：在开启 KDE 桌面环境前，强烈建议在 Droidspaces 的特权模式配置中开启 **`noseccomp`**。否则可能会导致容器内部分操作出现长达 10 秒的卡顿。
+- **Fedora 系**：有些设备**必须**在 Droidspaces 中开启「硬件访问」权限！否则会导致桌面闪屏并最终崩溃（目前需手动卸载冲突包，暂无完美替代方案，需要自行测试）。
+- **Arch**: 内核版本必须在5.10以上。
 
 ### 🛠️ DRI3 报错解决方案
 
@@ -60,7 +56,7 @@
 
 ```
 
-**方法二：放行整个 untrusted_app_27 域（较为激进）**
+**方法二：放行整个 untrusted\_app\_27 域（较为激进）**
 在宿主机 Root 终端执行以下命令直接放行。*注意：此方法会降低安全性，建议先运行第二行命令排查哪些 App 属于该域，确认无风险后再执行策略修补。*
 
 ```bash
@@ -72,7 +68,7 @@
 
 ```
 
-**方法三：宽容内核 (Permissive Kernel)** 
+**方法三：宽容内核 (Permissive Kernel)**
 
 直接将设备的 SELinux 状态切换为 Permissive（宽容模式）。
 
@@ -90,8 +86,10 @@ allow untrusted_app_27 droidspacesd fd use
 
 修改保存后，重启设备 即可生效。
 ```
+
 ## 致谢
 
-*   **[Droidspaces-OOS](https://github.com/ravindu644/Droidspaces-OSS/)** - 本项目实现的前提。
-*   **[mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)** - 构建Rootfs的高通骁龙GPU驱动支持
-*   **[TMOE](https://github.com/2moe/tmoe)** - 容器里特别方便的管理工具
+- **[Droidspaces-OOS](https://github.com/ravindu644/Droidspaces-OSS/)** - 本项目实现的前提。
+- **[mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)** - 构建Rootfs的高通骁龙GPU驱动支持
+- **[TMOE](https://github.com/2moe/tmoe)** - 容器里特别方便的管理工具
+

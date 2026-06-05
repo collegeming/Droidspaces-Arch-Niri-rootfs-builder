@@ -14,6 +14,7 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
+ARG USERNAME
 ######################################################
 
 
@@ -103,7 +104,7 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     # 如果容器内存在默认的 alarm 或 arch 用户，则清理
     userdel -r alarm 2>/dev/null || true && \
-    useradd -m -s /bin/bash Gold && echo "Gold:1234" | chpasswd && \
+    useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd && \
     systemctl enable sshd
 
 
@@ -124,8 +125,8 @@ RUN chmod +x /etc/profile.d/custom_env.sh
 # 输入法与 KDE 开机自启动配置
 RUN <<'EOF_RUN'
     if [ "$ENABLE_srf_ARG" = "true" ]; then
-    mkdir -p /home/Gold/.config/autostart
-    cat <<'EOF' > /home/Gold/.config/autostart/fcitx5.desktop
+    mkdir -p /home/${USERNAME}/.config/autostart
+    cat <<'EOF' > /home/${USERNAME}/.config/autostart/fcitx5.desktop
 [Desktop Entry]
 Name=Fcitx5
 GenericName=Input Method
@@ -147,20 +148,20 @@ export GLFW_IM_MODULE=fcitx
 EOF
 fi
     if [ "$ENABLE_mesa_ARG" = "true" ] ; then
-    cat <<'EOF' >> /etc/profile.d/custom_env.sh
+        cat <<'EOF' >> /etc/profile.d/custom_env.sh
 export MESA_LOADER_DRIVER_OVERRIDE=kgsl
 export TU_DEBUG=noconform
 EOF
     fi
-    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
+    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
-    mkdir -p /home/Gold/.config 
-    cat <<'EOF' > /home/Gold/.config/kwinrc
+    mkdir -p /home/${USERNAME}/.config
+    cat <<'EOF' > /home/${USERNAME}/.config/kwinrc
 [Compositing]
 Enabled=false
 EOF
     fi
-    chown -R Gold:Gold /home/Gold
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
     if [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "min" ] ; then
     cat <<'EOF' > /usr/local/bin/startplasma-x11
 #!/bin/bash
@@ -169,14 +170,14 @@ EOF
     chmod +x /usr/local/bin/startplasma-x11
     fi
     if [ "$BUILD_KDE_plus" = "true" ] ; then
-    cat <<'EOF' > /etc/systemd/system/plasma-x11.service
+    cat <<EOF > /etc/systemd/system/plasma-x11.service
 [Unit]
 Description=Start Plasma X11
 After=network.target display-manager.service
 
 [Service]
 Type=simple
-User=Gold
+User=${USERNAME}
 EnvironmentFile=-/etc/environment
 ExecStart=/bin/bash -lc 'DISPLAY=:5 startplasma-x11'
 Restart=no
@@ -234,7 +235,7 @@ grep -q '^aid_net_admin:' /etc/group || echo 'aid_net_admin:x:3005:' >> /etc/gro
 getent group droidspaces-gpu >/dev/null || groupadd -g 786 -r droidspaces-gpu
 # 为 root 用户赋予访问 Android 硬件及网络的权限组
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
-usermod -a -G aid_inet,aid_net_raw,input,video,tty,wheel,droidspaces-gpu Gold || true
+usermod -a -G aid_inet,aid_net_raw,input,video,tty,wheel,droidspaces-gpu ${USERNAME} || true
 
 # 确保 Arch 赋予 sudo 权限给 wheel 组
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
