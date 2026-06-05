@@ -104,14 +104,7 @@ RUN if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
-MESA_LOADER_DRIVER_OVERRIDE=kgsl
-TU_DEBUG=noconform
 XCURSOR_SIZE=48
-XMODIFIERS=@im=fcitx5
-GTK_IM_MODULE=fcitx5
-QT_IM_MODULE=fcitx5
-SDL_IM_MODULE=fcitx5
-GLFW_IM_MODULE=fcitx
 DISPLAY=:5
 EOF
 # 音频选择
@@ -138,7 +131,22 @@ Categories=System;Utility;
 StartupNotify=false
 NoDisplay=true
 EOF
-fi
+    cat <<'EOF' >> /etc/environment
+XMODIFIERS=@im=fcitx5
+GTK_IM_MODULE=fcitx5
+QT_IM_MODULE=fcitx5
+SDL_IM_MODULE=fcitx5
+GLFW_IM_MODULE=fcitx
+EOF
+    fi
+
+    if [ "$ENABLE_mesa_ARG" = "true" ] ; then
+    cat <<'EOF' >> /etc/environment
+MESA_LOADER_DRIVER_OVERRIDE=kgsl
+TU_DEBUG=noconform
+EOF
+    fi
+
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
     mkdir -p /home/Gold/.config 
@@ -147,6 +155,7 @@ fi
 Enabled=false
 EOF
     fi
+
     chown -R Gold:Gold /home/Gold
     if [ "$BUILD_KDE_plus" = "true" ] ; then
     cat <<'EOF' > /etc/systemd/system/plasma-x11.service

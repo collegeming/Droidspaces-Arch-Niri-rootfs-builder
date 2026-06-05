@@ -109,14 +109,7 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
 
 # 添加环境变量 (注意每个变量前都加了 export)
 RUN cat <<'EOF' > /etc/profile.d/custom_env.sh
-export MESA_LOADER_DRIVER_OVERRIDE=kgsl
-export TU_DEBUG=noconform
 export XCURSOR_SIZE=48
-export XMODIFIERS=@im=fcitx5
-export GTK_IM_MODULE=fcitx5
-export QT_IM_MODULE=fcitx5
-export SDL_IM_MODULE=fcitx5
-export GLFW_IM_MODULE=fcitx
 export DISPLAY=:5
 EOF
 
@@ -145,7 +138,20 @@ Categories=System;Utility;
 StartupNotify=false
 NoDisplay=true
 EOF
+    cat <<'EOF' >> /etc/profile.d/custom_env.sh
+export XMODIFIERS=@im=fcitx5
+export GTK_IM_MODULE=fcitx5
+export QT_IM_MODULE=fcitx5
+export SDL_IM_MODULE=fcitx5
+export GLFW_IM_MODULE=fcitx
+EOF
 fi
+    if [ "$ENABLE_mesa_ARG" = "true" ] ; then
+    cat <<'EOF' >> /etc/profile.d/custom_env.sh
+export MESA_LOADER_DRIVER_OVERRIDE=kgsl
+export TU_DEBUG=noconform
+EOF
+    fi
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/Gold/.bashrc
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
     mkdir -p /home/Gold/.config 
