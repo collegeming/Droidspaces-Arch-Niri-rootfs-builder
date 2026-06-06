@@ -18,9 +18,10 @@ ARG USERNAME
 ######################################################
 
 # Manjaro/Arch 初始化 pacman 密钥链并更新基础系统
-RUN pacman-key --init && \
+RUN echo 'Server = https://mirrors.manjaro.org/repo/arm-stable/$repo/$arch' > /etc/pacman.d/mirrorlist && \
+    pacman-key --init && \
     pacman-key --populate archlinux manjaro && \
-    pacman -Syu --noconfirm
+    pacman -Syyu
 
 RUN pacman -S --noconfirm --needed \
     # 核心工具组件
@@ -80,6 +81,9 @@ RUN pacman -S --noconfirm --needed \
     fi && \
     # 清理 pacman 缓存缩减体积
     pacman -Scc --noconfirm
+
+# 修复fastfetch在容器内的显示问题
+RUN sed -i 's/^ID="manjaro-arm"$/ID="manjaro"/' /etc/os-release
 
 RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
@@ -226,7 +230,8 @@ grep -q '^aid_net_admin:' /etc/group || echo 'aid_net_admin:x:3005:' >> /etc/gro
 getent group droidspaces-gpu >/dev/null || groupadd -g 786 -r droidspaces-gpu
 # 为 root 用户赋予访问 Android 硬件及网络的权限组
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
-usermod -a -G aid_inet,aid_net_raw,input,video,tty,sudo,droidspaces-gpu ${USERNAME} || true
+usermod -a -G aid_inet,aid_net_raw,input,video,tty,wheel,droidspaces-gpu ${USERNAME} || true
+sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
 
 # 配置默认的用户添加规则，以适应 Android 环境 (Arch下通过 /etc/default/useradd 处理)
 if [ -f /etc/default/useradd ]; then
