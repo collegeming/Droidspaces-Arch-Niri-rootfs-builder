@@ -1,5 +1,5 @@
 ARG TARGETPLATFORM
-FROM manjaro:latest AS customizer
+FROM manjarolinux/base:latest AS customizer
 
 #######################################################
 ARG BUILD_KDE
