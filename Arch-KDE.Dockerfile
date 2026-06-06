@@ -191,7 +191,7 @@ EOF
     fi
 EOF_RUN
 
-# 下载并安装 Mesa (已集成 SigLevel 绕过修复)
+# 下载并安装 Mesa
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
         URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
