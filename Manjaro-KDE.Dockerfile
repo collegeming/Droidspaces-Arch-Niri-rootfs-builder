@@ -81,8 +81,9 @@ RUN if [ "$ENABLE_srf_ARG" = "true" ]; then \
 RUN echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc || true
 
 # 简单的 systemd 服务占位（如需要可在宿主或 Docker 运行时 enable）
-RUN if [ "$BUILD_KDE_plus" = "true" ]; then \
-        cat > /etc/systemd/system/plasma-x11.service <<EOF
+RUN <<'EOF_RUN'
+if [ "$BUILD_KDE_plus" = "true" ]; then
+    cat > /etc/systemd/system/plasma-x11.service <<'EOF'
 [Unit]
 Description=Start Plasma X11
 After=network.target display-manager.service
@@ -98,9 +99,10 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-        mkdir -p /etc/systemd/system/multi-user.target.wants && \
-        ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service; \
-    fi || true
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
+fi
+EOF_RUN
 
 # 清理 pacman 缓存
 RUN pacman -Scc --noconfirm || true
