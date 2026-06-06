@@ -95,10 +95,13 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     fi && \
     # 配置 SSH 服务（禁用 root 密码登录，但允许常规密码认证）
     mkdir -p /var/run/sshd && \
+    ssh-keygen -A && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    # 创建用户
-    useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd
+    # 如果容器内存在默认的用户，则清理
+    userdel -r builder 2>/dev/null || true && \
+    useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd && \
+    systemctl enable sshd
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
@@ -223,7 +226,7 @@ grep -q '^aid_net_admin:' /etc/group || echo 'aid_net_admin:x:3005:' >> /etc/gro
 getent group droidspaces-gpu >/dev/null || groupadd -g 786 -r droidspaces-gpu
 # 为 root 用户赋予访问 Android 硬件及网络的权限组
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
-usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu ${USERNAME} || true
+usermod -a -G aid_inet,aid_net_raw,input,video,tty,sudo,droidspaces-gpu ${USERNAME} || true
 
 # 配置默认的用户添加规则，以适应 Android 环境 (Arch下通过 /etc/default/useradd 处理)
 if [ -f /etc/default/useradd ]; then
