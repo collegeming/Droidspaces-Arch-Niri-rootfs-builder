@@ -31,7 +31,7 @@ When triggering the workflow, you can freely configure the target system version
     Note: Arch Linux does not support this QEMU-based approach.
   - **Container enhancements**: Deep optimization for container recognition of underlying hardware and network environments.
   - **Productivity tools**: Optional integration of development toolchains, compression utilities, and the Docker engine.
-- **Account Credentials**: For all built `Rootfs`, the username is: `Gold`, and the password is: `1234`
+- **Account Credentials**: For all built `Rootfs`, the username defaults to: `Gold` (can be customized in the workflow); the password is: `1234`
 ## 🔥 Quick Start
 
 1. **Fork** this project to your GitHub repository.
