@@ -18,7 +18,7 @@ ARG USERNAME
 ######################################################
 
 # Manjaro/Arch 初始化 pacman 密钥链并更新基础系统
-RUN echo 'Server = https://mirrors.manjaro.org/repo/arm-stable/$repo/$arch' > /etc/pacman.d/mirrorlist && \
+RUN echo 'Server = https://mirrors.manjaro.org/repo/arm-testing/$repo/$arch' > /etc/pacman.d/mirrorlist && \
     pacman-key --init && \
     pacman-key --populate archlinux manjaro && \
     pacman -Syyu
@@ -79,7 +79,6 @@ RUN pacman -S --noconfirm --needed \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
-    pacman -Sy && \
     # 清理 pacman 缓存缩减体积
     pacman -Scc --noconfirm
 
