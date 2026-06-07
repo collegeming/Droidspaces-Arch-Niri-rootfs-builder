@@ -262,7 +262,6 @@ MaxLevelStore=info
 EOT
 
 mkdir -p /etc/systemd/system/multi-user.target.wants
-# Arch Linux 的 systemd 库路径是 /usr/lib 而不是 /lib
 GUEST_SYSTEMD_PATH="/usr/lib/systemd/system"
 
 if [ -f "$GUEST_SYSTEMD_PATH/dbus.service" ]; then

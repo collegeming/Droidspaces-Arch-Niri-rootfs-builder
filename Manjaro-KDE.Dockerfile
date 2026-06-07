@@ -39,16 +39,16 @@ RUN pacman -S --noconfirm --needed \
     # 最小化KDE
     if [ "$BUILD_KDE" = "min" ]; then \
         pacman -S --noconfirm --needed \
-        xorg-server xorg-xwayland noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
+        xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop manjaro-pipewire powerdevil kscreen plasma-pa ark kwin kwin-x11 upower konsole \
         dolphin kate kinfocenter mesa-utils libpulse vulkan-tools; \
     fi && \
     # 精简KDE
     if [ "$BUILD_KDE" = "conc" ]; then \
         pacman -S --noconfirm --needed \
-        xorg-server xorg-xwayland noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
-        dolphin kate kinfocenter mesa-utils libpulse vulkan-tools aha clinfo dmidecode pciutils wayland-utils \
-        kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
-        kimageformats plasma-browser-integration libcanberra gst-plugins-base gst-plugins-good sound-theme-freedesktop chromium; \
+        xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop manjaro-pipewire powerdevil kscreen plasma-pa ark kwin kwin-x11 upower konsole \
+        dolphin kate kinfocenter mesa-utils libpulse vulkan-tools aha clinfo dmidecode pciutils wayland-utils xorg-server \
+        kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
+        kimageformats plasma-browser-integration libcanberra gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop chromium; \
     fi && \
     ######################################################################################################
     # 输入法 fcitx5 (可选)
@@ -61,7 +61,7 @@ RUN pacman -S --noconfirm --needed \
     ## 开发工具集成 (可选)
     if [ "$ENABLE_kfgj_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed \
-        base-devel gcc make cmake autoconf automake libtool pkgconf clang llvm python python-pip; \
+        base-devel cmake clang llvm python python-pip; \
     fi && \
     ## 压缩工具扩展 (可选)
     if [ "$ENABLE_zip_ARG" = "true" ]; then \
@@ -233,12 +233,6 @@ usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,wheel,droidspaces-gpu ${USERNAME} || true
 sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
 
-# 配置默认的用户添加规则，以适应 Android 环境 (Arch下通过 /etc/default/useradd 处理)
-if [ -f /etc/default/useradd ]; then
-    sed -i '/^GROUP=/d' /etc/default/useradd
-    echo 'GROUP=aid_inet,aid_net_raw,input,video,tty' >> /etc/default/useradd
-fi
-
 # --- 2. 针对 Systemd 的特定修复 ---
 ln -sf /dev/null /etc/systemd/system/systemd-networkd-wait-online.service
 ln -sf /dev/null /etc/systemd/system/systemd-journald-audit.socket
@@ -349,14 +343,14 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
         chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
         mkdir -p /etc/systemd/system/multi-user.target.wants && \
         ln -sf /etc/systemd/system/qemu-binfmt-register.service /etc/systemd/system/multi-user.target.wants/qemu-binfmt-register.service && \
-        pacman -S --noconfirm qemu-user-static; \
+        pacman -S --noconfirm --needed qemu-user qemu-user-binfmt && \
+        rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/* ; \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
 
-# 最终清理，缩减体积
-RUN pacman -Scc --noconfirm && \
-    rm -rf /var/cache/pacman/pkg/*
+# 彻底清理 pacman 缓存
+RUN rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
 
 # 阶段 2：将完整的根文件系统导出到 scratch
 FROM scratch AS export
