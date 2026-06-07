@@ -26,7 +26,7 @@ RUN echo 'Server = https://mirrors.manjaro.org/repo/arm-stable/$repo/$arch' > /e
 RUN pacman -S --noconfirm --needed \
     # 核心工具组件
     bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates \
-    bash-completion udev dbus systemd systemd-sysvcompat fastfetch \
+    bash-completion udev dbus systemd systemd-sysvcompat fastfetch gcc-libs \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具
