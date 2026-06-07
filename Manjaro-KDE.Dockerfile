@@ -18,7 +18,7 @@ ARG USERNAME
 ######################################################
 
 # Manjaro/Arch 初始化 pacman 密钥链并更新基础系统
-RUN echo 'Server = https://mirrors.manjaro.org/repo/arm-testing/$repo/$arch' > /etc/pacman.d/mirrorlist && \
+RUN echo 'Server = https://mirrors.manjaro.org/repo/arm-unstable/$repo/$arch' > /etc/pacman.d/mirrorlist && \
     pacman-key --init && \
     pacman-key --populate archlinux manjaro && \
     pacman -Syyu --noconfirm
