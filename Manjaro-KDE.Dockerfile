@@ -79,6 +79,7 @@ RUN pacman -S --noconfirm --needed \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
+    pacman -Sy && \
     # 清理 pacman 缓存缩减体积
     pacman -Scc --noconfirm
 
