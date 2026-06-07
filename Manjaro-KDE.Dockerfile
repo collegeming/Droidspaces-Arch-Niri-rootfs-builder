@@ -21,7 +21,7 @@ ARG USERNAME
 RUN echo 'Server = https://mirrors.manjaro.org/repo/arm-testing/$repo/$arch' > /etc/pacman.d/mirrorlist && \
     pacman-key --init && \
     pacman-key --populate archlinux manjaro && \
-    pacman -Syyu
+    pacman -Syyu --noconfirm
 
 RUN pacman -S --noconfirm --needed \
     # 核心工具组件
