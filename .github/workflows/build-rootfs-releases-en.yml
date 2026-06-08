@@ -47,7 +47,7 @@ on:
         description: 'Use Chinese language and change timezone'
         required: true
         type: boolean
-        default: true
+        default: false
       enable_mesa:
         description: 'Enable Qualcomm Snapdragon GPU support'
         required: true
