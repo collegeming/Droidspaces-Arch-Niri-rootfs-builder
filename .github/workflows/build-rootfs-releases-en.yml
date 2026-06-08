@@ -181,7 +181,7 @@ jobs:
   # --------------------------------------------------------
   release:
     needs: [setup, build]
-    if: ${{ always() && needs.setup.result == 'success' && needs.build.result != 'failure' }}
+    if: ${{ !cancelled() && needs.setup.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
