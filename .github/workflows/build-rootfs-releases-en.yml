@@ -1,0 +1,239 @@
+name: Build and Release Droidspaces RootFS
+
+on:
+  workflow_dispatch: 
+    inputs:
+      build_target:
+        description: 'Select the distribution to build'
+        required: true
+        type: choice
+        default: 'Debian-13-KDE'
+        options:
+          - 'Debian-13-KDE'
+          - 'Ubuntu-24-KDE'
+          - 'Ubuntu-25-KDE'
+          - 'Fedora-43-KDE'
+          - 'Arch-KDE'
+          - 'all'
+      custom_username:
+        description: 'Custom username (default: Gold)'
+        required: false
+        type: string
+        default: 'Gold'
+      build_KDE:
+        description: 'KDE desktop choice (conc-compact, min-minimal, none-no KDE)'
+        required: true
+        type: choice
+        default: 'min'
+        options: 
+          - 'conc'
+          - 'min'
+          - 'none'
+      build_KDE_plus:
+        description: 'KDE desktop auto-start on boot (Requires KDE desktop choice to be conc or min)'
+        required: true
+        type: boolean
+        default: false
+      PulseAudio:
+        description: 'PulseAudio audio forwarding'
+        required: true
+        type: choice
+        default: 'socket'
+        options: 
+          - 'socket'
+          - 'tcp'
+          - 'none'
+      enable_zh_tz:
+        description: 'Use Chinese language and change timezone'
+        required: true
+        type: boolean
+        default: true
+      enable_mesa:
+        description: 'Enable Qualcomm Snapdragon GPU support'
+        required: true
+        type: boolean
+        default: true
+      enable_tmoe:
+        description: 'Integrate TMOE'
+        required: true
+        type: boolean
+        default: true
+      enable_srf:
+        description: 'Enable input method fcitx5 support'
+        required: true
+        type: boolean
+        default: false
+      enable_binfmt:
+        description: 'Enable cross-architecture support'
+        required: true
+        type: boolean
+        default: false
+      enable_yj:
+        description: 'Enable NAT and hardware recognition support'
+        required: true
+        type: boolean
+        default: true
+      enable_kfgj:
+        description: 'Development tools integration'
+        required: true
+        type: boolean
+        default: false
+      enable_zip:
+        description: 'Compression tools integration'
+        required: true
+        type: boolean
+        default: true
+      enable_docker:
+        description: 'Docker integration'
+        required: true
+        type: boolean
+        default: false    
+
+jobs:
+  # --------------------------------------------------------
+  # Phase 1: setup (Environment preparation and variable generation)
+  # --------------------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      templates: ${{ steps.find-templates.outputs.templates }}
+      build_id: ${{ steps.prep.outputs.build_id }}
+      build_date: ${{ steps.prep.outputs.build_date }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse user build choices
+        id: find-templates
+        run: |
+          TARGET="${{ github.event.inputs.build_target }}"
+          
+          if [ "$TARGET" = "all" ]; then
+            TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
+          else
+            TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+          fi
+          
+          echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
+          echo "Final decided build matrix: $TEMPLATES"
+
+      - name: Prepare build metadata
+        id: prep
+        run: |
+          BUILD_DATE=$(date +'%Y-%m-%d %H:%M:%S')
+          BUILD_ID="v$(date +'%Y%m%d-%H%M%S')"
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_OUTPUT
+          echo "Build ID: $BUILD_ID"
+
+  # --------------------------------------------------------
+  # Phase 2: build (Build of regular Linux distribution RootFS)
+  # --------------------------------------------------------
+  build:
+    needs: setup
+    if: ${{ needs.setup.outputs.templates != '[]' }}
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        template: ${{ fromJson(needs.setup.outputs.templates) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify build options
+        run: |
+          if [ "${{ inputs.build_KDE }}" = "none" ] && [ "${{ inputs.build_KDE_plus }}" = "true" ]; then
+            echo "❌ Error: Cannot enable KDE auto-start when KDE desktop choice is 'none'"
+            echo "Please re-run the workflow, uncheck 'KDE desktop auto-start on boot' or select a KDE desktop"
+            exit 1
+          fi
+
+      - name: Build RootFS (${{ matrix.template }})
+        run: |
+          chmod +x build_rootfs-native.sh
+          ./build_rootfs-native.sh \
+            -i "${{ matrix.template }}.Dockerfile" \
+            -v "${{ needs.setup.outputs.build_id }}" \
+            -K "${{ inputs.build_KDE }}" \
+            -L "${{ inputs.build_KDE_plus }}" \
+            -P "${{ inputs.PulseAudio }}" \
+            -g "${{ inputs.enable_zh_tz }}" \
+            -a "${{ inputs.enable_binfmt }}" \
+            -b "${{ inputs.enable_yj }}" \
+            -c "${{ inputs.enable_mesa }}" \
+            -d "${{ inputs.enable_kfgj }}" \
+            -e "${{ inputs.enable_zip }}" \
+            -f "${{ inputs.enable_docker }}" \
+            -h "${{ inputs.enable_srf }}" \
+            -j "${{ inputs.enable_tmoe }}" \
+            -u "${{ inputs.custom_username }}"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.template }}-rootfs
+          path: "*.tar.xz"
+          retention-days: 1
+
+  # --------------------------------------------------------
+  # Phase 3: release (Summary and release)
+  # --------------------------------------------------------
+  release:
+    needs: [setup, build]
+    if: ${{ always() && needs.setup.result == 'success' && needs.build.result != 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-rootfs"
+          merge-multiple: true
+          
+      - name: Organize resources
+        run: |
+          mkdir -p release_assets
+          mv *.tar.xz release_assets/
+          PA_CHOICE="${{ github.event.inputs.PulseAudio }}"
+          CUSTOM_USERNAME="${{ github.event.inputs.custom_username }}"
+          if [ "$PA_CHOICE" != "none" ]; then
+            cp "scripts/on_aaudio_${PA_CHOICE}.sh" "release_assets/on_aaudio_${PA_CHOICE}.sh"
+            sed -i "s/USERNAME=\"Gold\"/USERNAME=\"${CUSTOM_USERNAME}\"/g" "release_assets/on_aaudio_${PA_CHOICE}.sh"
+          fi
+          
+      - name: Create unified Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.setup.outputs.build_id }}
+          name: "Droidspaces RootFS ${{ needs.setup.outputs.build_id }}"
+          files: "release_assets/*"
+          body: |
+            Droidspaces RootFS Automated Build
+            Build Time: ${{ needs.setup.outputs.build_date }}
+            Build Target (User Specified): ${{ github.event.inputs.build_target }}
+            Build ID: ${{ needs.setup.outputs.build_id }}
+
+            Build Options:
+            - **Custom Username**: ${{ github.event.inputs.custom_username }}
+            - **KDE Desktop**: ${{ github.event.inputs.build_KDE }}
+            - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }}
+            - PulseAudio Audio Forwarding: ${{ github.event.inputs.PulseAudio }}
+            - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
+            - Qualcomm Snapdragon GPU Support: ${{ github.event.inputs.enable_mesa }}
+            - Integrate TMOE: ${{ github.event.inputs.enable_tmoe }}
+            - Input Method fcitx5 Support: ${{ github.event.inputs.enable_srf }}
+            - Cross-architecture Support: ${{ github.event.inputs.enable_binfmt }}
+            - Container Hardware and Network Recognition Support: ${{ github.event.inputs.enable_yj }}
+            - Development Tools Integration: ${{ github.event.inputs.enable_kfgj }}
+            - Compression Tools Integration: ${{ github.event.inputs.enable_zip }}
+            - Docker Integration: ${{ github.event.inputs.enable_docker }}
+            
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
