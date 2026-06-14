@@ -359,7 +359,7 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
         apt-get autoclean && \
         rm -rf /var/lib/binfmts/* /etc/binfmt.d/* /usr/lib/binfmt.d/qemu-* && \
         dpkg --add-architecture amd64 && \
-        sed -i '/^Types: deb$/a Architectures: arm64 armhf' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i '/^Types: deb$/a Architectures: arm64' /etc/apt/sources.list.d/ubuntu.sources && \
         printf "Types: deb\nURIs: http://archive.ubuntu.com/ubuntu/\nSuites: resolute resolute-updates resolute-security\nComponents: main universe restricted multiverse\nArchitectures: amd64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n" > /etc/apt/sources.list.d/ubuntu-amd64.sources && \
         apt-get update && \
         (apt-get install -y --no-install-recommends qemu-user-static libc6:amd64 libc6:arm64 libc-bin || \
