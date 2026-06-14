@@ -1,80 +1,110 @@
 #!/bin/bash
-# Refactored Droidspaces RootFS Build Engine (Single Template Mode)
-# This script is designed to be called by a parent loop or CI matrix.
-
-# Configuration
 : "${VERSION:=dev}"
-DATE=$(date +%Y%m%d)
+DATE=$(date +%Y%m%d)      # 获取当前日期
+TARGET_ARCH="arm64"       # 目标编译架构固定为 arm64
+PLATFORM="linux/arm64"    # Docker buildx 的平台参数
 
-# Parse arguments
-while getopts "i:v:u:" opt; do
+ENABLE_binfmt="false"
+BUILD_KDE_plus="false"
+# 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
+while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:u:" opt; do
   case $opt in
-    i) DOCKERFILE="$OPTARG" ;;
-    v) VERSION="$OPTARG" ;;
-    u) USERNAME="$OPTARG" ;;
-    *) echo "Usage: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
+    i) DOCKERFILE="$OPTARG" ;; 
+    v) VERSION="$OPTARG" ;;    
+    K) BUILD_KDE="$OPTARG"  ;;
+    L) BUILD_KDE_plus="$OPTARG"  ;;
+    P) PulseAudio="$OPTARG"  ;;
+    g) ENABLE_zh_tz="$OPTARG"  ;; 
+    a) ENABLE_binfmt="$OPTARG" ;; 
+    b) ENABLE_yj="$OPTARG" ;;
+    c) ENABLE_mesa="$OPTARG" ;;
+    d) ENABLE_kfgj="$OPTARG" ;;
+    e) ENABLE_zip="$OPTARG" ;;
+    f) ENABLE_docker="$OPTARG" ;;
+    h) ENABLE_srf="$OPTARG" ;; 
+    j) ENABLE_tmoe="$OPTARG" ;; 
+    u) USERNAME="$OPTARG" ;; 
+    *) echo "用法: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
   esac
 done
 
 : "${USERNAME:=Gold}"
 
+# 校验：检查是否传递了 Dockerfile 模板文件
 if [ -z "$DOCKERFILE" ]; then
-    echo "Error: Template file (-i) is required."
+    echo "错误：必须使用 -i 参数指定模板文件。"
     exit 1
 fi
 
+# 校验：检查指定的 Dockerfile 文件在本地是否存在
 if [ ! -f "$DOCKERFILE" ]; then
-    echo "Error: Template file '$DOCKERFILE' not found."
+    echo "错误：找不到模板文件 '$DOCKERFILE'。"
     exit 1
 fi
 
-# Extract prefix (e.g., Ubuntu-24.04 from Ubuntu-24.04.Dockerfile)
+# 提取前缀名称
 PREFIX=$(echo "$DOCKERFILE" | sed 's/\.Dockerfile//')
 
 echo "========================================================="
-echo " Starting Build: $PREFIX"
-echo " Using Template: $DOCKERFILE"
-echo " Build Version : $VERSION"
+echo " 开始构建项目 : $PREFIX"
+echo " 使用模板文件 : $DOCKERFILE"
+echo " 当前构建版本 : $VERSION"
+echo " 目标构建平台 : $PLATFORM"
+echo " 跨架构 : $ENABLE_binfmt"
+echo " 容器识别部分硬件和网络：$ENABLE_yj"
 echo "========================================================="
 
-# 1. Environment Initialization
-echo "Initializing QEMU/binfmt..."
+# 1. 环境初始化（跨架构 QEMU 模式）
+echo "正在初始化 QEMU/binfmt 跨架构支持..."
 docker run --privileged --rm tonistiigi/binfmt --install all > /dev/null 2>&1
 
-# 2. Builder Setup
+# 2. 跨平台编译器（Buildx Builder）设置
 if ! docker buildx inspect droidspaces-builder >/dev/null 2>&1; then
-    echo "Creating new buildx builder: droidspaces-builder"
+    echo "正在创建新的 buildx 构建器: droidspaces-builder"
     docker buildx create --name droidspaces-builder --driver docker-container --use
 else
-    echo "Using existing buildx builder: droidspaces-builder"
+    echo "使用已存在的 buildx 构建器: droidspaces-builder"
     docker buildx use droidspaces-builder
 fi
 
-# Bootstrap to ensure it's ready
-docker buildx inspect --bootstrap || echo "Warning: Bootstrap failed, attempting to continue..."
+# 引导启动构建器，确保其处于就绪状态
+docker buildx inspect --bootstrap || echo "警告: 引导失败，尝试继续执行..."
 
+# 开启严格模式
 set -e
 
-# 3. Core Build Process
+# 3. 核心构建流程
 TEMP_TAR="custom-${PREFIX}-rootfs.tar"
-FINAL_NAME="${PREFIX}-Droidspaces-rootfs-${DATE}-${VERSION}.tar.xz"
+FINAL_NAME="${PREFIX}-Droidspaces-rootfs-${TARGET_ARCH}-${DATE}-${VERSION}.tar.xz"
 
-echo "Running Docker Buildx (linux/arm64)..."
+echo "正在运行 Docker Buildx ($PLATFORM 跨架构模式)..."
+
 docker buildx build \
-  --platform linux/arm64 \
+  --platform "$PLATFORM" \
   --target export \
   --output type=tar,dest="$TEMP_TAR" \
+  --build-arg BUILD_KDE="$BUILD_KDE" \
+  --build-arg BUILD_KDE_plus="$BUILD_KDE_plus" \
+  --build-arg PulseAudio="$PulseAudio" \
+  --build-arg ENABLE_zh_tz_ARG="$ENABLE_zh_tz" \
+  --build-arg ENABLE_binfmt_ARG="$ENABLE_binfmt" \
+  --build-arg ENABLE_yj_ARG="$ENABLE_yj" \
+  --build-arg ENABLE_mesa_ARG="$ENABLE_mesa" \
+  --build-arg ENABLE_kfgj_ARG="$ENABLE_kfgj" \
+  --build-arg ENABLE_zip_ARG="$ENABLE_zip" \
+  --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
+  --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
+  --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
   --build-arg USERNAME="$USERNAME" \
   -f "$DOCKERFILE" \
   .
 
-# 4. Packaging
-echo "Compressing build output (xz ultra - Multi-threaded)..."
+echo "正在压缩构建产物 (使用 xz 最高压缩率 - 开启多线程加速)..."
 xz -T0 -9 -f "$TEMP_TAR"
 
-echo "Finalizing: $FINAL_NAME"
+echo "正在重命名最终文件: $FINAL_NAME"
 mv "${TEMP_TAR}.xz" "$FINAL_NAME"
 
 echo "========================================================="
-echo " Successfully completed: $FINAL_NAME"
+echo " 恭喜！构建成功完成: $FINAL_NAME"
 echo "========================================================="
