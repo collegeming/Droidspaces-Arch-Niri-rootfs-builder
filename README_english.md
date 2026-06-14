@@ -10,7 +10,7 @@ When triggering the workflow, you can freely configure the target system version
 
 ## ✨ Features
 
-- **Multi-distro support**: Quickly build RootFS for `Debian-13`, `Ubuntu-24`, `Ubuntu-25`，`Fedora-43`, and `Arch Linux`.
+- **Multi-distro support**: Quickly build RootFS for `Debian-13`, `Ubuntu-24`, `Ubuntu-25`、`Ubuntu-26`、`Fedora-43`, and `Arch Linux`.
 - **On-demand KDE desktop customization**: Multiple KDE desktop scales are available, and you can launch the graphical environment quickly with the `on` script:
   - `conc`: compact edition
   - `min`: minimal build

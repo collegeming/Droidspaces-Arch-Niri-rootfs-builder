@@ -10,7 +10,7 @@
 
 ## ✨ 核心特性
 
-- **多发行版支持**：支持快速构建 `Debian-13`、`Ubuntu-24`、`Ubuntu-25`、`Fedora 43` 以及 `Arch Linux` 的 RootFS。
+- **多发行版支持**：支持快速构建 `Debian-13`、`Ubuntu-24`、`Ubuntu-25`、`Ubuntu-26`、`Fedora 43` 以及 `Arch Linux` 的 RootFS。
 - **按需定制的 KDE 桌面**：提供多种 KDE 桌面规模选择，配合 `on` 脚本即可快速启动图形界面：
   - `conc`：精简版
   - `min`：最小化构造版
