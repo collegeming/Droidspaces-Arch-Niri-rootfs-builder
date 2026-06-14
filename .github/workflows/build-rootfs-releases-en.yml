@@ -202,7 +202,7 @@ jobs:
           mv *.tar.xz release_assets/
           PA_CHOICE="${{ github.event.inputs.PulseAudio }}"
           CUSTOM_USERNAME="${{ github.event.inputs.custom_username }}"
-          if [ "$PA_CHOICE" != "none" ]; then
+          if [ "$PA_CHOICE" != "none" ] && [ "$build_KDE_plus" = "false" ]; then
             cp "scripts/on_aaudio_${PA_CHOICE}.sh" "release_assets/on_aaudio_${PA_CHOICE}.sh"
             sed -i "s/USERNAME=\"Gold\"/USERNAME=\"${CUSTOM_USERNAME}\"/g" "release_assets/on_aaudio_${PA_CHOICE}.sh"
           fi
