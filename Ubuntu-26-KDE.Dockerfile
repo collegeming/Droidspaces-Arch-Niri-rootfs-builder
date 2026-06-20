@@ -200,27 +200,8 @@ Enabled=false
 EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
-    if [ "$BUILD_KDE_plus" = "true" ] ; then
-    if [ "$ENABLE_anland_kde_ARG" = "true" ]; then
-    mkdir -p /home/${USERNAME}/.config/systemd/user
-    cat <<EOF > /home/${USERNAME}/.config/systemd/user/anland-kde.service
-[Unit]
-Description=Start Plasma anland
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/startanland-kde.sh
-Restart=no
-
-[Install]
-WantedBy=default.target
-EOF
-    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
-    mkdir -p /home/${USERNAME}/.config/systemd/user/default.target.wants
-    ln -sf /home/${USERNAME}/.config/systemd/user/anland-kde.service /home/${USERNAME}/.config/systemd/user/default.target.wants/anland-kde.service
-    mkdir -p /var/lib/systemd/linger
-    touch /var/lib/systemd/linger/${USERNAME}
-    else
+    # KDE X11 自启动
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "false" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-x11.service
 [Unit]
 Description=Start Plasma X11
@@ -239,7 +220,30 @@ EOF
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
     fi
+    # KDE wayland 自启动
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
+    cat <<EOF > /etc/systemd/system/plasma-wayland.service
+[Unit]
+Description=Start Plasma Wayland
+After=network.target display-manager.service
+
+[Service]
+Type=simple
+User=${USERNAME}
+Group=${USERNAME}
+PAMName=login
+
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc '/usr/local/bin/startanland-kde.sh'
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-wayland.service /etc/systemd/system/multi-user.target.wants/plasma-wayland.service
     fi
+
 EOF_RUN
 
 # Mesa 驱动适配
