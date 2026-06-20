@@ -31,6 +31,8 @@ When triggering the workflow, you can freely configure the target system version
     Note: Arch Linux does not support this QEMU-based approach.
   - **Container enhancements**: Deep optimization for container recognition of underlying hardware and network environments.
   - **Productivity tools**: Optional integration of development toolchains, compression utilities, and the Docker engine.
+- **anland_kde support** (Ubuntu 26 only): Special support for Wayland, enabling direct communication with the anland display backend through patched KWin and Xwayland. Requires KDE desktop to be enabled. For detailed configuration, refer to the "📱 anland_kde Configuration" section below.  
+  Upstream project: [anland](https://github.com/superturtlee/anland)
 - **Account Credentials**: For all built `Rootfs`, the username defaults to: `Gold` (can be customized in the workflow); the password is: `1234`
 ## 🔥 Quick Start
 
@@ -48,6 +50,14 @@ When triggering the workflow, you can freely configure the target system version
 - **Fedora series**: Some devices **must** enable **hardware access** in Droidspaces! Otherwise, the desktop may flicker and eventually crash.  
   At present, conflicting packages still need to be removed manually; there is no perfect replacement solution yet, so you will need to test on your own device.
 - **Arch**: The kernel version must be 5.10 or higher.
+
+### 📱 anland_kde Configuration
+
+- When building, select **Ubuntu26**, then enable both **KDE desktop auto-start** and **anland_kde support**.
+- Download [virtual-drm-daemon.zip](https://github.com/superturtlee/anland/releases/download/1.9/virtual-drm-daemon.zip) from [Releases · superturtlee/anland](https://github.com/superturtlee/anland/releases), flash it and reboot. Download [app-debug.apk](https://github.com/superturtlee/anland/releases/download/1.9/app-debug.apk) and install it.
+- When importing the container, enable **hardware access**, **SELinux permissive mode**, and in privileged mode enable **nocaps** and **noseccomp**.
+- In advanced options, add a bind mount to mount `/data/local/tmp/display_daemon.sock` to `/run/display.sock`.
+- After configuration, select your user in the terminal and run `startanland-kde.sh` to use KDE in VirtualDRM (the APK you just installed).
 
 ### 🛠️ DRI3 Error Fix
 
