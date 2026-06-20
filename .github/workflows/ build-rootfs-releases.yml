@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'anland_kde 支持（目前仅支持 Ubuntu-26，需要 KDE 桌面选择为 conc 或 min）'
+        description: 'Wayland 支持（目前仅支持 Ubuntu-26，需要 KDE 桌面选择为 conc 或 min）'
         required: true
         type: boolean
         default: false
@@ -230,7 +230,7 @@ jobs:
             - **自定义用户名**: ${{ github.event.inputs.custom_username }}
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
             - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}
-            - **anland_kde 支持**: ${{ github.event.inputs.enable_anland_kde }}
+            - **Wayland 支持**: ${{ github.event.inputs.enable_anland_kde }}
             - PulseAudio 音频转发: ${{ github.event.inputs.PulseAudio }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}

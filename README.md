@@ -101,4 +101,4 @@ allow untrusted_app_27 droidspacesd fd use
 - **[Droidspaces-OOS](https://github.com/ravindu644/Droidspaces-OSS/)** - 本项目实现的前提。
 - **[mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)** - 构建Rootfs的高通骁龙GPU驱动支持
 - **[TMOE](https://github.com/2moe/tmoe)** - 容器里特别方便的管理工具
-
+- **[anland](https://github.com/superturtlee/anland)** - 用于显示 Wayland 协议的APP
