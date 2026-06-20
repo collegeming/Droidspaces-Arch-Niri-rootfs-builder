@@ -7,7 +7,7 @@ PLATFORM="linux/arm64"    # Docker buildx 的平台参数
 ENABLE_binfmt="false"
 BUILD_KDE_plus="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:u:" opt; do
+while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:u:A:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; 
     v) VERSION="$OPTARG" ;;    
@@ -24,6 +24,7 @@ while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:u:" opt; do
     h) ENABLE_srf="$OPTARG" ;; 
     j) ENABLE_tmoe="$OPTARG" ;; 
     u) USERNAME="$OPTARG" ;; 
+    A) ENABLE_anland_kde="$OPTARG" ;; # anland_kde 支持
     *) echo "用法: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
   esac
 done
@@ -95,6 +96,7 @@ docker buildx build \
   --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
   --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
   --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
+  --build-arg ENABLE_anland_kde_ARG="$ENABLE_anland_kde" \
   --build-arg USERNAME="$USERNAME" \
   -f "$DOCKERFILE" \
   .

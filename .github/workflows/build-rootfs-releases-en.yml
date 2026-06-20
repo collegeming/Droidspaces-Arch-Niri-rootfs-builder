@@ -35,6 +35,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_anland_kde:
+        description: 'anland_kde support (Ubuntu 26 only, requires KDE desktop choice to be conc or min)'
+        required: true
+        type: boolean
+        default: false
       PulseAudio:
         description: 'PulseAudio audio forwarding'
         required: true
@@ -168,6 +173,7 @@ jobs:
             -f "${{ inputs.enable_docker }}" \
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
+            -A "${{ inputs.enable_anland_kde }}" \
             -u "${{ inputs.custom_username }}"
 
       - name: Upload build artifacts
@@ -223,6 +229,7 @@ jobs:
             - **Custom Username**: ${{ github.event.inputs.custom_username }}
             - **KDE Desktop**: ${{ github.event.inputs.build_KDE }}
             - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }}
+            - **anland_kde Support**: ${{ github.event.inputs.enable_anland_kde }}
             - PulseAudio Audio Forwarding: ${{ github.event.inputs.PulseAudio }}
             - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
             - Qualcomm Snapdragon GPU Support: ${{ github.event.inputs.enable_mesa }}
