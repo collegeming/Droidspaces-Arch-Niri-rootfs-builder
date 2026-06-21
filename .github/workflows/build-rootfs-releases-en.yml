@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'anland_kde support (Ubuntu 26 only, requires KDE desktop choice to be conc or min)'
+        description: 'Wayland support (currently only supported on Ubuntu-26; requires KDE desktop to be set to conc or min).'
         required: true
         type: boolean
         default: false
@@ -229,7 +229,7 @@ jobs:
             - **Custom Username**: ${{ github.event.inputs.custom_username }}
             - **KDE Desktop**: ${{ github.event.inputs.build_KDE }}
             - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }}
-            - **anland_kde Support**: ${{ github.event.inputs.enable_anland_kde }}
+            - **Wayland support**: ${{ github.event.inputs.enable_anland_kde }}
             - PulseAudio Audio Forwarding: ${{ github.event.inputs.PulseAudio }}
             - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
             - Qualcomm Snapdragon GPU Support: ${{ github.event.inputs.enable_mesa }}

@@ -153,8 +153,15 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
 XCURSOR_SIZE=48
-DISPLAY=:5
 EOF
+# wayland 显示服务器环境变量配置
+Run if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
+        echo "DISPLAY=:5" >> /etc/environment; \
+    else \
+        echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
+        echo "DISPLAY=:0" >> /etc/environment; \
+    fi
+
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
