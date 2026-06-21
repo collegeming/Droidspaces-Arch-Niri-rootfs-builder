@@ -52,7 +52,7 @@ jobs:
           case "$BUILD_TARGET" in
             ubuntu2604)
               echo "image=ubuntu:26.04" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/ubuntu2604/build.sh" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/ubuntu2604_v2/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-debbuild/ubuntu2604" >> "$GITHUB_OUTPUT"
               ;;
             *)
