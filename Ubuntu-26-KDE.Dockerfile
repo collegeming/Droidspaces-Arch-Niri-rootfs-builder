@@ -155,7 +155,7 @@ RUN cat <<'EOF' > /etc/environment
 XCURSOR_SIZE=48
 EOF
 # wayland 显示服务器环境变量配置
-Run if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
+RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
         echo "DISPLAY=:5" >> /etc/environment; \
     else \
         echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
