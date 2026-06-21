@@ -26,7 +26,7 @@
   - **跨架构支持**：启用 `binfmt` 实现跨架构程序运行（注：Arch Linux 暂不支持此 QEMU 方案）。
   - **容器增强**：深度优化容器对底层硬件与网络环境的识别。
   - **生产力工具**：可选集成开发工具链、压缩工具包及 Docker 容器引擎。
-- **anland\_kde 支持**（目前仅 Ubuntu 26）：为 Wayland 提供特殊支持，通过 patched KWin 和 Xwayland 实现与 anland 显示后端的直接通信。需要同时启用 KDE 桌面，详细配置参考下文"📱 anland\_kde配置方法"。项目上游：[anland](https://github.com/superturtlee/anland)
+- **Wayland 支持**（目前仅 Ubuntu 26）：使用 anland-kwin 为 Wayland 提供特殊支持，通过 patched KWin 和 Xwayland 实现与 anland 显示后端的直接通信。需要同时启用 KDE 桌面，详细配置参考下文"Wayland 配置方法"。项目上游：[anland](https://github.com/superturtlee/anland)
 - **账户密码**：所有构建的 `Rootfs` 账户默认为: `Gold`，可自行修改；密码均为: `1234`
 
 ## 🔥 快速上手
@@ -45,12 +45,12 @@
 - **Fedora 系**：有些设备**必须**在 Droidspaces 中开启「硬件访问」权限！否则会导致桌面闪屏并最终崩溃（目前需手动卸载冲突包，暂无完美替代方案，需要自行测试）。
 - **Arch**: 内核版本必须在5.10以上。
 
-### 📱 anland\_kde配置方法
+### 📱 Wayland配置方法
 
-- 在构建时选择 **Ubuntu26**，然后同时勾选 **KDE 桌面开机自启动** 和 **anland\_kde 支持**。
-- 在[Releases · superturtlee/anland](https://github.com/superturtlee/anland/releases)中下载[virtual-drm-daemon.zip](https://github.com/superturtlee/anland/releases/download/1.9/virtual-drm-daemon.zip)刷入并重启，下载[app-debug.apk](https://github.com/superturtlee/anland/releases/download/1.9/app-debug.apk)并安装。
+- 在构建时选择 **Ubuntu26**，然后同时勾选 **KDE 桌面开机自启动** 和 **Wayland 支持**。
+- 在[Releases · superturtlee/anland](https://github.com/superturtlee/anland/releases)中下载[virtual-drm-daemon.zip](https://github.com/superturtlee/anland/releases/download/2.0/virtual-drm-daemon.zip)刷入并重启，下载[app-debug.apk](https://github.com/superturtlee/anland/releases/download/2.0/app-debug.apk)并安装。
 - 导入容器时，配置开启**硬件访问**、**SELinux宽容模式**，**特权模式**开启**nocaps**、**noseccomp**；
-- 在高级选项中添加绑定挂载点，将 `/data/local/tmp/display\_daemon.sock` 挂载到 `/run/display.sock`。
+- 在高级选项中添加绑定挂载点，将 `/data/local/tmp/display_daemon.sock` 挂载到 `/run/display.sock`。
 - 完成配置后在终端选择你的用户，执行 `startanland-kde.sh` 即可在 VirtualDRM（刚安装的apk）中使用KDE。
 
 ### 🛠️ DRI3 报错解决方案
