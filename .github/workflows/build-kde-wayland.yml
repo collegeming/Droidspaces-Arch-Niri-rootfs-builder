@@ -1,0 +1,146 @@
+name: 构建并更新 KDE Wayland 预编译包(anland)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: '选择要更新的预编译包版本'
+        required: true
+        type: choice
+        default: 'ubuntu2604'
+        options:
+          - 'ubuntu2604'
+      anland_ref:
+        description: 'anland 仓库分支、标签或 commit'
+        required: true
+        type: string
+        default: 'main'
+      commit_changes:
+        description: '构建成功后提交更新到本仓库'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-kde-wayland-${{ github.ref }}-${{ github.event.inputs.build_target }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ github.event.inputs.build_target }}
+    runs-on: ubuntu-24.04-arm
+
+    env:
+      ANLAND_REPO: https://github.com/superturtlee/anland.git
+      ANLAND_REF: ${{ github.event.inputs.anland_ref }}
+      BUILD_TARGET: ${{ github.event.inputs.build_target }}
+
+    steps:
+      - name: 检出本仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 解析构建目标
+        id: target
+        run: |
+          set -euo pipefail
+
+          case "$BUILD_TARGET" in
+            ubuntu2604)
+              echo "image=ubuntu:26.04" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/ubuntu2604/build.sh" >> "$GITHUB_OUTPUT"
+              echo "dest=anland-debbuild/ubuntu2604" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "不支持的构建目标: $BUILD_TARGET" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: 在对应发行版中编译 deb 包
+        env:
+          DISTRO_IMAGE: ${{ steps.target.outputs.image }}
+          BUILD_SCRIPT: ${{ steps.target.outputs.script }}
+          OUTPUT_DIR: .anland-build/${{ github.event.inputs.build_target }}
+        run: |
+          set -euo pipefail
+
+          rm -rf "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR"
+
+          docker run --rm \
+            -e ANLAND_REPO \
+            -e ANLAND_REF \
+            -e BUILD_SCRIPT \
+            -v "$PWD/$OUTPUT_DIR:/root/anland-debbuild" \
+            "$DISTRO_IMAGE" \
+            bash -lc '
+              set -euo pipefail
+
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                git ca-certificates sudo \
+                build-essential devscripts dpkg-dev fakeroot patch
+
+              if ! git clone --depth=1 --branch "$ANLAND_REF" "$ANLAND_REPO" /tmp/anland; then
+                git clone --depth=1 "$ANLAND_REPO" /tmp/anland
+                git -C /tmp/anland fetch --depth=1 origin "$ANLAND_REF"
+                git -C /tmp/anland checkout --detach FETCH_HEAD
+              fi
+
+              test -f "/tmp/anland/$BUILD_SCRIPT"
+              chmod +x "/tmp/anland/$BUILD_SCRIPT"
+
+              cd "/tmp/anland/$(dirname "$BUILD_SCRIPT")"
+              WORKDIR=/root/anland-debbuild sudo -E "./$(basename "$BUILD_SCRIPT")"
+            '
+
+      - name: 更新本仓库预编译包目录
+        env:
+          DEST_DIR: ${{ steps.target.outputs.dest }}
+          OUTPUT_DIR: .anland-build/${{ github.event.inputs.build_target }}
+        run: |
+          set -euo pipefail
+
+          rm -rf "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
+          mkdir -p "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
+
+          find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name '*.deb' -exec cp -v {} "$DEST_DIR/kwin/" \;
+          find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name '*.deb' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+
+          deb_count="$(find "$DEST_DIR" -type f -name '*.deb' | wc -l)"
+          if [ "$deb_count" -eq 0 ]; then
+            echo "没有找到生成的 deb 包" >&2
+            exit 1
+          fi
+
+          find "$DEST_DIR" -type f -name '*.deb' -print | sort
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: anland-debbuild-${{ github.event.inputs.build_target }}
+          path: ${{ steps.target.outputs.dest }}/**/*.deb
+          if-no-files-found: error
+
+      - name: 提交更新
+        if: ${{ github.event.inputs.commit_changes == 'true' }}
+        env:
+          DEST_DIR: ${{ steps.target.outputs.dest }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$(git status --porcelain -- "$DEST_DIR")" ]; then
+            echo "预编译包没有变化，无需提交"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A "$DEST_DIR"
+          git commit -m "Update anland KDE Wayland packages ($BUILD_TARGET)"
+          git push
