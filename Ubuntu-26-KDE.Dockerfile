@@ -78,6 +78,12 @@ RUN apt-get update && \
         dpkg -i /tmp/anland-debbuild/ubuntu2604/kwin/*.deb || apt-get install -f -y && \
         echo "--> [开启] 正在安装预编译的 xwayland deb 包..." && \
         dpkg -i /tmp/anland-debbuild/ubuntu2604/xwayland/*.deb || apt-get install -f -y && \
+        echo "--> [开启] 设置预编译 deb 包为 hold 模式，防止被 apt 更新覆盖..." && \
+        for f in /tmp/anland-debbuild/ubuntu2604/kwin/*.deb /tmp/anland-debbuild/ubuntu2604/xwayland/*.deb; do \
+            pkgname=$(dpkg-deb -f "$f" Package) && \
+            apt-mark hold "$pkgname" && \
+            echo "    hold: $pkgname"; \
+        done && \
         echo "--> [开启] 正在安装 anland 启动脚本..." && \
         mkdir -p /opt/anland && \
         git clone --depth=1 https://github.com/superturtlee/anland.git /tmp/anland && \
