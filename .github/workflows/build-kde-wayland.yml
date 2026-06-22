@@ -98,6 +98,15 @@ jobs:
                 git -C /tmp/anland checkout --detach FETCH_HEAD
               fi
 
+              # Debian 13 (Trixie) 使用 DEB822 格式的 .sources 文件，
+              # build.sh 自带的 deb-src 启用逻辑不兼容此格式，需手动修复
+              if [ "$BUILD_TARGET" = "Debian13" ]; then
+                if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+                  sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources
+                fi
+                apt-get update
+              fi 
+
               test -f "/tmp/anland/$BUILD_SCRIPT"
               chmod +x "/tmp/anland/$BUILD_SCRIPT"
 
