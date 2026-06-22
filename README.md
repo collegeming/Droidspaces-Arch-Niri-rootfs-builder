@@ -26,7 +26,7 @@
   - **跨架构支持**：启用 `binfmt` 实现跨架构程序运行（注：Arch Linux 暂不支持此 QEMU 方案）。
   - **容器增强**：深度优化容器对底层硬件与网络环境的识别。
   - **生产力工具**：可选集成开发工具链、压缩工具包及 Docker 容器引擎。
-- **Wayland 支持**（目前仅 Ubuntu 26）：使用 anland-kwin 为 Wayland 提供特殊支持，通过 patched KWin 和 Xwayland 实现与 anland 显示后端的直接通信。需要同时启用 KDE 桌面，详细配置参考下文"Wayland 配置方法"。项目上游：[anland](https://github.com/superturtlee/anland)
+- **Wayland 支持**：使用 anland-kwin 为 Wayland 提供特殊支持，通过 patched KWin 和 Xwayland 实现与 anland 显示后端的直接通信。需要同时启用 KDE 桌面，详细配置参考下文"Wayland 配置方法"。项目上游：[anland](https://github.com/superturtlee/anland)
 - **账户密码**：所有构建的 `Rootfs` 账户默认为: `Gold`，可自行修改；密码均为: `1234`
 
 ## 🔥 快速上手
