@@ -14,6 +14,7 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
+ARG ENABLE_anland_kde_ARG
 ARG USERNAME
 ######################################################
 
@@ -30,9 +31,12 @@ COPY scripts/download-firmware /usr/local/bin/
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
+# 复制本仓库内预编译的 anland_kde deb 包
+COPY anland-debbuild/Debian13/kwin/*.deb /tmp/anland-debbuild/Debian13/kwin/
+COPY anland-debbuild/Debian13/xwayland/*.deb /tmp/anland-debbuild/Debian13/xwayland/
+
 # 赋予相关脚本可执行权限
 RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
-
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -61,6 +65,31 @@ RUN apt-get update && \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kde-config-screenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kimageformat6-plugins webext-plasma-browser-integration libcanberra-pulse gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop chromium chromium-l10n \
         systemsettings kde-config-screenlocker kio-extras xdg-user-dirs; \
+    fi && \
+    ############################################## anland_kde(wayland) 支持 ################################################
+    if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
+        echo "--> [开启] 正在安装 anland_kde..." && \
+        echo "--> [开启] 正在安装预编译的 kwin deb 包..." && \
+        dpkg -i /tmp/anland-debbuild/Debian13/kwin/*.deb || apt-get install -f -y && \
+        echo "--> [开启] 正在安装预编译的 xwayland deb 包..." && \
+        dpkg -i /tmp/anland-debbuild/Debian13/xwayland/*.deb || apt-get install -f -y && \
+        echo "--> [开启] 设置预编译 deb 包为 hold 模式，防止被 apt 更新覆盖..." && \
+        for f in /tmp/anland-debbuild/Debian13/kwin/*.deb /tmp/anland-debbuild/Debian13/xwayland/*.deb; do \
+            pkgname=$(dpkg-deb -f "$f" Package) && \
+            apt-mark hold "$pkgname" && \
+            echo "    hold: $pkgname"; \
+        done && \
+        echo "--> [开启] 正在安装 anland 启动脚本..." && \
+        mkdir -p /opt/anland && \
+        git clone --depth=1 https://github.com/superturtlee/anland.git /tmp/anland && \
+        cp /tmp/anland/producers/kde/Debian13_v2/startup.sh /opt/anland/ && \
+        cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
+        chmod +x /usr/local/bin/startanland-kde.sh && \
+        echo "--> [开启] 清理临时文件..." && \
+        rm -rf /tmp/anland-debbuild /tmp/anland && \
+        echo "--> [开启] anland_kde 支持已安装"; \
+    else \
+        rm -rf /tmp/anland-debbuild; \
     fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)
@@ -123,8 +152,14 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
 XCURSOR_SIZE=48
-DISPLAY=:5
 EOF
+# wayland 显示服务器环境变量配置
+RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
+        echo "DISPLAY=:5" >> /etc/environment; \
+    else \
+        echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
+        echo "DISPLAY=:0" >> /etc/environment; \
+    fi
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
@@ -174,7 +209,8 @@ Enabled=false
 EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
-    if [ "$BUILD_KDE_plus" = "true" ] ; then
+    # KDE X11 自启动
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "false" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-x11.service
 [Unit]
 Description=Start Plasma X11
@@ -194,8 +230,34 @@ EOF
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
     fi
+    # KDE wayland 自启动
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
+    cat <<EOF > /etc/systemd/system/plasma-wayland.service
+[Unit]
+Description=Start Plasma Wayland
+After=network.target display-manager.service
+
+[Service]
+Type=simple
+User=${USERNAME}
+Group=${USERNAME}
+PAMName=login
+
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc '/usr/local/bin/startanland-kde.sh'
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-wayland.service /etc/systemd/system/multi-user.target.wants/plasma-wayland.service
+    fi
+
 EOF_RUN
 
+
+# Mesa 驱动适配
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
         URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \

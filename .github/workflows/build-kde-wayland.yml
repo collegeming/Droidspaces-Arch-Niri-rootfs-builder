@@ -10,6 +10,7 @@ on:
         default: 'ubuntu2604'
         options:
           - 'ubuntu2604'
+          - 'Debian13'
       anland_ref:
         description: 'anland 仓库分支、标签或 commit'
         required: true
@@ -54,6 +55,11 @@ jobs:
               echo "image=ubuntu:26.04" >> "$GITHUB_OUTPUT"
               echo "script=producers/kde/ubuntu2604_v2/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-debbuild/ubuntu2604" >> "$GITHUB_OUTPUT"
+              ;;
+            Debian13)
+              echo "image=debian:trixie" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/Debian13_v2/build.sh" >> "$GITHUB_OUTPUT"
+              echo "dest=anland-debbuild/Debian13" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "不支持的构建目标: $BUILD_TARGET" >&2
