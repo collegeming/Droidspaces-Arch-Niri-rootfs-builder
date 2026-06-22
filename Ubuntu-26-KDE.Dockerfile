@@ -258,24 +258,17 @@ EOF_RUN
 
 # Mesa 驱动适配
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
-        if [ "$ENABLE_anland_kde_ARG" = "true" ]; then \
-            echo "--> [开启] 正在下载 anland 版本 Mesa 驱动..." && \
-            URL=$(curl -s "https://api.github.com/repos/superturtlee/mesa-for-android-container/releases/tags/anland" | \
-            jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_ubuntu_resolute_arm64\\.tar\\.gz")) | .browser_download_url' | head -1) ; \
-        else \
-            echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
-            URL=$(curl -s "https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest" | \
-            jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_ubuntu_resolute_arm64\\.tar\\.gz")) | .browser_download_url' | head -1) ; \
-        fi && \
-        if [ -z "$URL" ] || [ "$URL" = "null" ]; then echo "获取下载链接失败"; exit 1; fi && \
+        echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
+        URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
+        jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_ubuntu_resolute_arm64\\.tar\\.gz")) | .browser_download_url' | head -1) && \
+        if [ -z "$URL" ] || [ "$URL" = "null" ]; then echo "获取下载链接失败，可能是源仓库还没有提供 Ubuntu 版本的 Mesa 驱动或触发了限制"; exit 1; fi && \
         wget -q --tries=5 --waitretry=3 -O /tmp/mesa.tar.gz "$URL" && \
         tar -zxf /tmp/mesa.tar.gz -C / && \
         rm /tmp/mesa.tar.gz && \
-        ldconfig ; \
+        ldconfig; \
     else \
-        echo "--> [跳过] 未开启 Mesa 驱动安装" ; \
+        echo "--> [跳过] 未开启 Mesa 驱动安装"; \
     fi
-
 # 修复容器内的 DHCP 网络服务配置
 RUN mkdir -p /etc/systemd/network && \
     cat <<'EOF' > /etc/systemd/network/10-eth-dhcp.network
