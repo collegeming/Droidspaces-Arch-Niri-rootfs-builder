@@ -82,6 +82,7 @@ jobs:
             -e ANLAND_REPO \
             -e ANLAND_REF \
             -e BUILD_SCRIPT \
+            -e BUILD_TARGET \
             -v "$PWD/$OUTPUT_DIR:/root/anland-debbuild" \
             "$DISTRO_IMAGE" \
             bash -lc '
