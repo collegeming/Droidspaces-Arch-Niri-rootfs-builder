@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'Wayland 支持（目前仅支持 Ubuntu-26，需要 KDE 桌面选择为 conc 或 min）'
+        description: 'Wayland 支持（目前仅支持 Ubuntu-26 Debian13）'
         required: true
         type: boolean
         default: false
