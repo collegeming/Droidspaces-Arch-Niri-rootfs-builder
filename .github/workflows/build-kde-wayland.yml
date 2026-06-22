@@ -102,7 +102,7 @@ jobs:
               # build.sh 自带的 deb-src 启用逻辑不兼容此格式，需手动修复
               if [ "$BUILD_TARGET" = "Debian13" ]; then
                 if [ -f /etc/apt/sources.list.d/debian.sources ]; then
-                  sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources
+                  sed -i "s/^Types: deb\$/Types: deb deb-src/" /etc/apt/sources.list.d/debian.sources
                 fi
                 apt-get update
               fi 
