@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: 检出本仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -137,7 +137,7 @@ jobs:
           find "$DEST_DIR" -type f -name '*.deb' -print | sort
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: anland-debbuild-${{ github.event.inputs.build_target }}
           path: ${{ steps.target.outputs.dest }}/**/*.deb

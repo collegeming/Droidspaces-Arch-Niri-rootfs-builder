@@ -107,7 +107,7 @@ jobs:
       build_date: ${{ steps.prep.outputs.build_date }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Parse user build choices
         id: find-templates
@@ -145,7 +145,7 @@ jobs:
         template: ${{ fromJson(needs.setup.outputs.templates) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Verify build options
         run: |
@@ -177,7 +177,7 @@ jobs:
             -u "${{ inputs.custom_username }}"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.template }}-rootfs
           path: "*.tar.xz"
@@ -194,10 +194,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: "*-rootfs"
           merge-multiple: true
@@ -214,7 +214,7 @@ jobs:
           fi
           
       - name: Create unified Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.setup.outputs.build_id }}
           name: "Droidspaces RootFS ${{ needs.setup.outputs.build_id }}"

@@ -107,7 +107,7 @@ jobs:
       build_date: ${{ steps.prep.outputs.build_date }}
     steps:
       - name: 检出代码库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 解析用户的构建选择
         id: find-templates
@@ -145,7 +145,7 @@ jobs:
         template: ${{ fromJson(needs.setup.outputs.templates) }}
     steps:
       - name: 检出代码库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 验证构建选项
         run: |
@@ -177,7 +177,7 @@ jobs:
             -u "${{ inputs.custom_username }}"
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.template }}-rootfs
           path: "*.tar.xz"
@@ -194,10 +194,10 @@ jobs:
       contents: write
     steps:
       - name: 检出代码库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: 下载所有产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: "*-rootfs"
           merge-multiple: true
@@ -215,7 +215,7 @@ jobs:
           fi
           
       - name: 创建统一 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.setup.outputs.build_id }}
           name: "Droidspaces RootFS ${{ needs.setup.outputs.build_id }}"
