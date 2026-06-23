@@ -125,8 +125,8 @@ jobs:
           rm -rf "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
           mkdir -p "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
 
-          find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name '*.deb' -exec cp -v {} "$DEST_DIR/kwin/" \;
-          find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name '*.deb' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+          find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name '*.deb' ! -name '*dbgsym*' -exec cp -v {} "$DEST_DIR/kwin/" \;
+          find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name '*.deb' ! -name '*dbgsym*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
 
           deb_count="$(find "$DEST_DIR" -type f -name '*.deb' | wc -l)"
           if [ "$deb_count" -eq 0 ]; then
