@@ -16,6 +16,7 @@ on:
           - 'Fedora-43-KDE'
           - 'Arch-KDE'
           - 'all'
+          - 'all-wayland'
       custom_username:
         description: 'Custom username (default: Gold)'
         required: false
@@ -108,6 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
+      wayland_enabled: ${{ steps.find-templates.outputs.wayland_enabled }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
     steps:
@@ -118,15 +120,31 @@ jobs:
         id: find-templates
         run: |
           TARGET="${{ github.event.inputs.build_target }}"
+          BUILD_KDE="${{ github.event.inputs.build_KDE }}"
+          ENABLE_ANLAND_KDE="${{ github.event.inputs.enable_anland_kde }}"
           
-          if [ "$TARGET" = "all" ]; then
-            TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
-          else
-            TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+          case "$TARGET" in
+            all)
+              TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
+              ;;
+            all-wayland)
+              TEMPLATES=$(jq -n -c '["Debian-13-KDE","Ubuntu-26-KDE","Fedora-43-KDE"]')
+              ENABLE_ANLAND_KDE="true"
+              ;;
+            *)
+              TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+              ;;
+          esac
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ]; then
+            echo "Error: KDE desktop choice cannot be 'none' when Wayland support is enabled" >&2
+            exit 1
           fi
           
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
+          echo "wayland_enabled=$ENABLE_ANLAND_KDE" >> $GITHUB_OUTPUT
           echo "Final decided build matrix: $TEMPLATES"
+          echo "Final Wayland support value: $ENABLE_ANLAND_KDE"
 
       - name: Prepare build metadata
         id: prep
@@ -178,7 +196,7 @@ jobs:
             -f "${{ inputs.enable_docker }}" \
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
-            -A "${{ inputs.enable_anland_kde }}" \
+            -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -r "${{ inputs.anland_repo }}" \
             -u "${{ inputs.custom_username }}"
 
@@ -235,7 +253,7 @@ jobs:
             - **Custom Username**: ${{ github.event.inputs.custom_username }}
             - **KDE Desktop**: ${{ github.event.inputs.build_KDE }}
             - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }}
-            - **Wayland support**: ${{ github.event.inputs.enable_anland_kde }}
+            - **Wayland support**: ${{ needs.setup.outputs.wayland_enabled }}
             - PulseAudio Audio Forwarding: ${{ github.event.inputs.PulseAudio }}
             - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
             - Qualcomm Snapdragon GPU Support: ${{ github.event.inputs.enable_mesa }}

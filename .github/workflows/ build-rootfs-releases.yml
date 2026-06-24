@@ -16,6 +16,7 @@ on:
           - 'Fedora-43-KDE'
           - 'Arch-KDE'
           - 'all'
+          - 'all-wayland'
       custom_username:
         description: '自定义用户名（默认 Gold）'
         required: false
@@ -108,6 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
+      wayland_enabled: ${{ steps.find-templates.outputs.wayland_enabled }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
     steps:
@@ -118,15 +120,31 @@ jobs:
         id: find-templates
         run: |
           TARGET="${{ github.event.inputs.build_target }}"
+          BUILD_KDE="${{ github.event.inputs.build_KDE }}"
+          ENABLE_ANLAND_KDE="${{ github.event.inputs.enable_anland_kde }}"
           
-          if [ "$TARGET" = "all" ]; then
-            TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
-          else
-            TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+          case "$TARGET" in
+            all)
+              TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
+              ;;
+            all-wayland)
+              TEMPLATES=$(jq -n -c '["Debian-13-KDE","Ubuntu-26-KDE","Fedora-43-KDE"]')
+              ENABLE_ANLAND_KDE="true"
+              ;;
+            *)
+              TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+              ;;
+          esac
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ]; then
+            echo "错误: 启用 Wayland 支持时，KDE 桌面选择不能为 'none'" >&2
+            exit 1
           fi
           
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
+          echo "wayland_enabled=$ENABLE_ANLAND_KDE" >> $GITHUB_OUTPUT
           echo "最终决定的构建矩阵: $TEMPLATES"
+          echo "Wayland 支持最终值: $ENABLE_ANLAND_KDE"
 
       - name: 准备构建元数据
         id: prep
@@ -178,7 +196,7 @@ jobs:
             -f "${{ inputs.enable_docker }}" \
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
-            -A "${{ inputs.enable_anland_kde }}" \
+            -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -r "${{ inputs.anland_repo }}" \
             -u "${{ inputs.custom_username }}"
 
@@ -236,7 +254,7 @@ jobs:
             - **自定义用户名**: ${{ github.event.inputs.custom_username }}
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
             - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}
-            - **Wayland 支持**: ${{ github.event.inputs.enable_anland_kde }}
+            - **Wayland 支持**: ${{ needs.setup.outputs.wayland_enabled }}
             - PulseAudio 音频转发: ${{ github.event.inputs.PulseAudio }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
