@@ -113,7 +113,6 @@ RUN cat <<'EOF' > /etc/profile.d/custom_env.sh
 export XCURSOR_SIZE=48
 export DISPLAY=:5
 EOF
-
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "export PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/profile.d/custom_env.sh; \

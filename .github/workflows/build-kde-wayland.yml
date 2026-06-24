@@ -11,11 +11,17 @@ on:
         options:
           - 'ubuntu2604'
           - 'Debian13'
+          - 'Fedora43'
       anland_ref:
         description: 'anland 仓库分支、标签或 commit'
         required: true
         type: string
         default: 'main'
+      anland_repo:
+        description: 'anland 仓库地址（默认上游，可填你的 fork）'
+        required: false
+        type: string
+        default: 'https://github.com/superturtlee/anland.git'
       commit_changes:
         description: '构建成功后提交更新到本仓库'
         required: true
@@ -35,7 +41,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
 
     env:
-      ANLAND_REPO: https://github.com/superturtlee/anland.git
+      ANLAND_REPO: ${{ github.event.inputs.anland_repo }}
       ANLAND_REF: ${{ github.event.inputs.anland_ref }}
       BUILD_TARGET: ${{ github.event.inputs.build_target }}
 
@@ -55,11 +61,19 @@ jobs:
               echo "image=ubuntu:26.04" >> "$GITHUB_OUTPUT"
               echo "script=producers/kde/ubuntu2604_v4/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-debbuild/ubuntu2604" >> "$GITHUB_OUTPUT"
+              echo "pkg_pattern=*.deb" >> "$GITHUB_OUTPUT"
               ;;
             Debian13)
               echo "image=debian:trixie" >> "$GITHUB_OUTPUT"
               echo "script=producers/kde/Debian13_v3/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-debbuild/Debian13" >> "$GITHUB_OUTPUT"
+              echo "pkg_pattern=*.deb" >> "$GITHUB_OUTPUT"
+              ;;
+            Fedora43)
+              echo "image=fedora:43" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/Fedora43_v3/build.sh" >> "$GITHUB_OUTPUT"
+              echo "dest=anland-rpmbuild/Fedora43" >> "$GITHUB_OUTPUT"
+              echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "不支持的构建目标: $BUILD_TARGET" >&2
@@ -67,10 +81,11 @@ jobs:
               ;;
           esac
 
-      - name: 在对应发行版中编译 deb 包
+      - name: 在对应发行版中编译包
         env:
           DISTRO_IMAGE: ${{ steps.target.outputs.image }}
           BUILD_SCRIPT: ${{ steps.target.outputs.script }}
+          PKG_PATTERN: ${{ steps.target.outputs.pkg_pattern }}
           OUTPUT_DIR: .anland-build/${{ github.event.inputs.build_target }}
         run: |
           set -euo pipefail
@@ -83,15 +98,26 @@ jobs:
             -e ANLAND_REF \
             -e BUILD_SCRIPT \
             -e BUILD_TARGET \
-            -v "$PWD/$OUTPUT_DIR:/root/anland-debbuild" \
+            -e PKG_PATTERN \
+            -v "$PWD/$OUTPUT_DIR:/root/anland-build" \
             "$DISTRO_IMAGE" \
             bash -lc '
               set -euo pipefail
 
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                git ca-certificates sudo \
-                build-essential devscripts dpkg-dev fakeroot patch
+              # 按发行版安装基础工具
+              case "$BUILD_TARGET" in
+                Debian13|ubuntu2604)
+                  apt-get update
+                  apt-get install -y --no-install-recommends \
+                    git ca-certificates sudo \
+                    build-essential devscripts dpkg-dev fakeroot patch
+                  ;;
+                Fedora43)
+                  dnf install -y --setopt=install_weak_deps=False \
+                    git ca-certificates sudo \
+                    dnf-plugins-core rpmdevtools rpm-build patch tar xz
+                  ;;
+              esac
 
               if ! git clone --depth=1 --branch "$ANLAND_REF" "$ANLAND_REPO" /tmp/anland; then
                 git clone --depth=1 "$ANLAND_REPO" /tmp/anland
@@ -106,18 +132,20 @@ jobs:
                   sed -i "s/^Types: deb\$/Types: deb deb-src/" /etc/apt/sources.list.d/debian.sources
                 fi
                 apt-get update
-              fi 
+              fi
 
               test -f "/tmp/anland/$BUILD_SCRIPT"
               chmod +x "/tmp/anland/$BUILD_SCRIPT"
 
               cd "/tmp/anland/$(dirname "$BUILD_SCRIPT")"
-              WORKDIR=/root/anland-debbuild sudo -E "./$(basename "$BUILD_SCRIPT")"
+
+              WORKDIR=/root/anland-build sudo -E "./$(basename "$BUILD_SCRIPT")"
             '
 
       - name: 更新本仓库预编译包目录
         env:
           DEST_DIR: ${{ steps.target.outputs.dest }}
+          PKG_PATTERN: ${{ steps.target.outputs.pkg_pattern }}
           OUTPUT_DIR: .anland-build/${{ github.event.inputs.build_target }}
         run: |
           set -euo pipefail
@@ -125,22 +153,34 @@ jobs:
           rm -rf "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
           mkdir -p "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
 
-          find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name '*.deb' ! -name '*dbgsym*' -exec cp -v {} "$DEST_DIR/kwin/" \;
-          find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name '*.deb' ! -name '*dbgsym*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+          # 按包格式收集产物
+          test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/kwin/" \;
+          test -d "$OUTPUT_DIR/xwayland" && find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
 
-          deb_count="$(find "$DEST_DIR" -type f -name '*.deb' | wc -l)"
-          if [ "$deb_count" -eq 0 ]; then
-            echo "没有找到生成的 deb 包" >&2
+          # Fedora 的 xwayland 包名不同，尝试备选目录
+          if [ ! -d "$OUTPUT_DIR/xwayland" ] && [ -d "$OUTPUT_DIR/xorg-x11-server-Xwayland" ]; then
+            find "$OUTPUT_DIR/xorg-x11-server-Xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+          fi
+
+          pkg_count="$(find "$DEST_DIR" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) | wc -l)"
+          if [ "$pkg_count" -eq 0 ]; then
+            echo "没有找到生成的包" >&2
             exit 1
           fi
 
-          find "$DEST_DIR" -type f -name '*.deb' -print | sort
+          find "$DEST_DIR" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) -print | sort
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v6
         with:
-          name: anland-debbuild-${{ github.event.inputs.build_target }}
-          path: ${{ steps.target.outputs.dest }}/**/*.deb
+          name: anland-pkgs-${{ github.event.inputs.build_target }}
+          path: |
+            ${{ steps.target.outputs.dest }}/kwin/*.deb
+            ${{ steps.target.outputs.dest }}/kwin/*.rpm
+            ${{ steps.target.outputs.dest }}/kwin/*.pkg.tar.zst
+            ${{ steps.target.outputs.dest }}/xwayland/*.deb
+            ${{ steps.target.outputs.dest }}/xwayland/*.rpm
+            ${{ steps.target.outputs.dest }}/xwayland/*.pkg.tar.zst
           if-no-files-found: error
 
       - name: 提交更新
@@ -159,4 +199,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A "$DEST_DIR"
           git commit -m "Update anland KDE Wayland packages ($BUILD_TARGET)"
+          git pull --rebase --autostash origin "${{ github.ref_name }}" || true
           git push

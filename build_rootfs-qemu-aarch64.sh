@@ -6,11 +6,13 @@ PLATFORM="linux/arm64"    # Docker buildx 的平台参数
 
 ENABLE_binfmt="false"
 BUILD_KDE_plus="false"
+ANLAND_REPO=""
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:u:A:" opt; do
+while getopts "i:v:r:K:L:P:a:b:c:d:e:f:g:h:j:u:A:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; 
     v) VERSION="$OPTARG" ;;    
+    r) ANLAND_REPO="$OPTARG" ;; # anland 仓库地址
     K) BUILD_KDE="$OPTARG"  ;;
     L) BUILD_KDE_plus="$OPTARG"  ;;
     P) PulseAudio="$OPTARG"  ;;
@@ -97,6 +99,7 @@ docker buildx build \
   --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
   --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
   --build-arg ENABLE_anland_kde_ARG="$ENABLE_anland_kde" \
+  --build-arg ANLAND_REPO="$ANLAND_REPO" \
   --build-arg USERNAME="$USERNAME" \
   -f "$DOCKERFILE" \
   .
