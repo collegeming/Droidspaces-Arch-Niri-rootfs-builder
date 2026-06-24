@@ -77,7 +77,7 @@ jobs:
               echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
               ;;
             Arch)
-              echo "image=archlinux:latest" >> "$GITHUB_OUTPUT"
+              echo "image=ogarcia/archlinux:latest" >> "$GITHUB_OUTPUT"
               echo "script=producers/kde/Arch_v3/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-pkgbuild/Arch" >> "$GITHUB_OUTPUT"
               echo "pkg_pattern=*.pkg.tar.zst" >> "$GITHUB_OUTPUT"
