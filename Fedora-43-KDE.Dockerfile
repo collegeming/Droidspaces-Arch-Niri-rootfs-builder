@@ -14,10 +14,15 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
+ARG ENABLE_anland_kde_ARG
 ARG USERNAME
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# 复制本仓库内预编译的 anland_kde rpm 包
+COPY anland-rpmbuild/Fedora43/kwin/*.rpm /tmp/anland-rpmbuild/Fedora43/kwin/
+COPY anland-rpmbuild/Fedora43/xwayland/*.rpm /tmp/anland-rpmbuild/Fedora43/xwayland/
 
 RUN dnf install -y --setopt=install_weak_deps=False \
     # 核心工具组件 
@@ -78,6 +83,28 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     dnf clean all && \
     rm -rf /var/cache/dnf
 
+############################################## anland_kde(wayland) 支持 ################################################
+RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
+        echo "--> [开启] 正在安装 anland_kde..." && \
+        echo "--> [开启] 正在安装预编译的 kwin rpm 包..." && \
+        dnf install -y /tmp/anland-rpmbuild/Fedora43/kwin/*.rpm && \
+        echo "--> [开启] 正在安装预编译的 xwayland rpm 包..." && \
+        dnf install -y /tmp/anland-rpmbuild/Fedora43/xwayland/*.rpm && \
+        echo "--> [开启] 设置预编译 rpm 包为 exclude，防止被 dnf 更新覆盖..." && \
+        echo "exclude=kwin* xorg-x11-server-Xwayland*" >> /etc/dnf/dnf.conf && \
+        echo "--> [开启] 正在安装 anland 启动脚本..." && \
+        mkdir -p /opt/anland && \
+        git clone --depth=1 https://github.com/superturtlee/anland.git /tmp/anland && \
+        cp /tmp/anland/producers/kde/Fedora43_v3/startup.sh /opt/anland/ && \
+        cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
+        chmod +x /usr/local/bin/startanland-kde.sh && \
+        echo "--> [开启] 清理临时文件..." && \
+        rm -rf /tmp/anland-rpmbuild /tmp/anland && \
+        echo "--> [开启] anland_kde 支持已安装"; \
+    else \
+        rm -rf /tmp/anland-rpmbuild; \
+    fi
+
 # 强制配置使用 iptables-legacy（兼容 Android 内核的硬性要求）
 RUN ln -sf /usr/sbin/iptables-legacy /usr/sbin/iptables && \
     ln -sf /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables && \
@@ -106,8 +133,13 @@ RUN if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
 XCURSOR_SIZE=48
-DISPLAY=:5
 EOF
+RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
+        echo "DISPLAY=:5" >> /etc/environment; \
+    else \
+        echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
+        echo "DISPLAY=:0" >> /etc/environment; \
+    fi
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
@@ -176,6 +208,29 @@ WantedBy=multi-user.target
 EOF
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
+    fi
+    # KDE wayland 自启动
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
+    cat <<EOF > /etc/systemd/system/plasma-wayland.service
+[Unit]
+Description=Start Plasma Wayland
+After=network.target display-manager.service
+
+[Service]
+Type=simple
+User=${USERNAME}
+Group=${USERNAME}
+PAMName=login
+
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc '/usr/local/bin/startanland-kde.sh'
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-wayland.service /etc/systemd/system/multi-user.target.wants/plasma-wayland.service
     fi
 EOF_RUN
 
