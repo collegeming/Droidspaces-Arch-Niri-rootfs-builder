@@ -36,10 +36,15 @@ on:
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'Wayland support (currently only supported on Ubuntu-26 Debian13).'
+        description: 'Wayland support (requires anland-debbuild precompiled packages).'
         required: true
         type: boolean
         default: false
+      anland_repo:
+        description: 'anland repository URL (leave empty for upstream, use your fork for custom builds)'
+        required: false
+        type: string
+        default: ''
       PulseAudio:
         description: 'PulseAudio audio forwarding'
         required: true
@@ -174,6 +179,7 @@ jobs:
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
             -A "${{ inputs.enable_anland_kde }}" \
+            -r "${{ inputs.anland_repo }}" \
             -u "${{ inputs.custom_username }}"
 
       - name: Upload build artifacts

@@ -15,6 +15,7 @@ ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_anland_kde_ARG
+ARG ANLAND_REPO
 ARG USERNAME
 ######################################################
 
@@ -100,7 +101,7 @@ RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "
         sed -i "/^\[options\]/a IgnorePkg = kwin xorg-xwayland" /etc/pacman.conf && \
         echo "--> [开启] 正在安装 anland 启动脚本..." && \
         mkdir -p /opt/anland && \
-        git clone --depth=1 https://github.com/superturtlee/anland.git /tmp/anland && \
+        git clone --depth=1 "${ANLAND_REPO:-https://github.com/superturtlee/anland.git}" /tmp/anland && \
         cp /tmp/anland/producers/kde/Arch_v3/startup.sh /opt/anland/ && \
         cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
         chmod +x /usr/local/bin/startanland-kde.sh && \

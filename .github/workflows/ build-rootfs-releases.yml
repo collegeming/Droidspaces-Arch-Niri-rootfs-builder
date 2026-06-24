@@ -36,10 +36,15 @@ on:
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'Wayland 支持（目前仅支持 Ubuntu-26 Debian13）'
+        description: 'Wayland 支持（需要预编译 anland 包）'
         required: true
         type: boolean
         default: false
+      anland_repo:
+        description: 'anland 仓库地址（留空使用上游，使用你的 fork 进行自定义编译）'
+        required: false
+        type: string
+        default: ''
       PulseAudio:
         description: 'PulseAudio 音频转发'
         required: true
@@ -174,6 +179,7 @@ jobs:
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
             -A "${{ inputs.enable_anland_kde }}" \
+            -r "${{ inputs.anland_repo }}" \
             -u "${{ inputs.custom_username }}"
 
       - name: 上传构建产物
