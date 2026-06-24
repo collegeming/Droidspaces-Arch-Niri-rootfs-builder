@@ -18,6 +18,11 @@ on:
         required: true
         type: string
         default: 'main'
+      anland_repo:
+        description: 'anland 仓库地址（默认上游，可填你的 fork）'
+        required: false
+        type: string
+        default: 'https://github.com/superturtlee/anland.git'
       commit_changes:
         description: '构建成功后提交更新到本仓库'
         required: true
@@ -37,7 +42,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
 
     env:
-      ANLAND_REPO: https://github.com/superturtlee/anland.git
+      ANLAND_REPO: ${{ github.event.inputs.anland_repo }}
       ANLAND_REF: ${{ github.event.inputs.anland_ref }}
       BUILD_TARGET: ${{ github.event.inputs.build_target }}
 
