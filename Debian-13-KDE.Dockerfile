@@ -82,7 +82,7 @@ RUN apt-get update && \
         echo "--> [开启] 正在安装 anland 启动脚本..." && \
         mkdir -p /opt/anland && \
         git clone --depth=1 https://github.com/superturtlee/anland.git /tmp/anland && \
-        cp /tmp/anland/producers/kde/Debian13_v2/startup.sh /opt/anland/ && \
+        cp /tmp/anland/producers/kde/Debian13_v4/startup.sh /opt/anland/ && \
         cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
         chmod +x /usr/local/bin/startanland-kde.sh && \
         echo "--> [开启] 清理临时文件..." && \
