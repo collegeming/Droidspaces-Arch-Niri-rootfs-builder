@@ -53,12 +53,12 @@ jobs:
           case "$BUILD_TARGET" in
             ubuntu2604)
               echo "image=ubuntu:26.04" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/ubuntu2604_v3/build.sh" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/ubuntu2604_v4/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-debbuild/ubuntu2604" >> "$GITHUB_OUTPUT"
               ;;
             Debian13)
               echo "image=debian:trixie" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/Debian13_v2/build.sh" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/Debian13_v3/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-debbuild/Debian13" >> "$GITHUB_OUTPUT"
               ;;
             *)
