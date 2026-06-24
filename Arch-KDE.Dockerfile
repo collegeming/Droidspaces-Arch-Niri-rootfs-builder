@@ -14,15 +14,9 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
-ARG ENABLE_anland_kde_ARG
-ARG ANLAND_REPO
 ARG USERNAME
 ######################################################
 
-
-# 复制本仓库内预编译的 anland_kde pkg 包
-COPY anland-pkgbuild/Arch/kwin/*.pkg.tar.zst /tmp/anland-pkgbuild/Arch/kwin/
-COPY anland-pkgbuild/Arch/xwayland/*.pkg.tar.zst /tmp/anland-pkgbuild/Arch/xwayland/
 
 RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
@@ -90,28 +84,6 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi 
 
-############################################## anland_kde(wayland) 支持 ################################################
-RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
-        echo "--> [开启] 正在安装 anland_kde..." && \
-        echo "--> [开启] 正在安装预编译的 kwin pkg 包..." && \
-        pacman -U --noconfirm /tmp/anland-pkgbuild/Arch/kwin/*.pkg.tar.zst && \
-        echo "--> [开启] 正在安装预编译的 xwayland pkg 包..." && \
-        pacman -U --noconfirm /tmp/anland-pkgbuild/Arch/xwayland/*.pkg.tar.zst && \
-        echo "--> [开启] 设置预编译 pkg 包为 IgnorePkg，防止被 pacman 更新覆盖..." && \
-        sed -i "/^\[options\]/a IgnorePkg = kwin xorg-xwayland" /etc/pacman.conf && \
-        echo "--> [开启] 正在安装 anland 启动脚本..." && \
-        mkdir -p /opt/anland && \
-        git clone --depth=1 "${ANLAND_REPO:-https://github.com/superturtlee/anland.git}" /tmp/anland && \
-        cp /tmp/anland/producers/kde/Arch_v3/startup.sh /opt/anland/ && \
-        cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
-        chmod +x /usr/local/bin/startanland-kde.sh && \
-        echo "--> [开启] 清理临时文件..." && \
-        rm -rf /tmp/anland-pkgbuild /tmp/anland && \
-        echo "--> [开启] anland_kde 支持已安装"; \
-    else \
-        rm -rf /tmp/anland-pkgbuild; \
-    fi
-
 # 配置 Locale 与 SSH
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
@@ -139,14 +111,8 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
 # 添加环境变量 (注意每个变量前都加了 export)
 RUN cat <<'EOF' > /etc/profile.d/custom_env.sh
 export XCURSOR_SIZE=48
+export DISPLAY=:5
 EOF
-RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
-        echo "export DISPLAY=:5" >> /etc/profile.d/custom_env.sh; \
-    else \
-        echo "export WAYLAND_DISPLAY=wayland-0" >> /etc/profile.d/custom_env.sh; \
-        echo "export DISPLAY=:0" >> /etc/profile.d/custom_env.sh; \
-    fi
-
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "export PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/profile.d/custom_env.sh; \
@@ -221,29 +187,6 @@ WantedBy=multi-user.target
 EOF
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
-    fi
-    # KDE wayland 自启动
-    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
-    cat <<EOF > /etc/systemd/system/plasma-wayland.service
-[Unit]
-Description=Start Plasma Wayland
-After=network.target display-manager.service
-
-[Service]
-Type=simple
-User=${USERNAME}
-Group=${USERNAME}
-PAMName=login
-
-EnvironmentFile=-/etc/environment
-ExecStart=/bin/bash -lc '/usr/local/bin/startanland-kde.sh'
-Restart=no
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    mkdir -p /etc/systemd/system/multi-user.target.wants
-    ln -sf /etc/systemd/system/plasma-wayland.service /etc/systemd/system/multi-user.target.wants/plasma-wayland.service
     fi
 EOF_RUN
 

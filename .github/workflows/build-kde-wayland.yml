@@ -12,7 +12,6 @@ on:
           - 'ubuntu2604'
           - 'Debian13'
           - 'Fedora43'
-          - 'Arch'
       anland_ref:
         description: 'anland 仓库分支、标签或 commit'
         required: true
@@ -76,12 +75,6 @@ jobs:
               echo "dest=anland-rpmbuild/Fedora43" >> "$GITHUB_OUTPUT"
               echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
               ;;
-            Arch)
-              echo "image=ogarcia/archlinux:latest" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/Arch_v3/build.sh" >> "$GITHUB_OUTPUT"
-              echo "dest=anland-pkgbuild/Arch" >> "$GITHUB_OUTPUT"
-              echo "pkg_pattern=*.pkg.tar.zst" >> "$GITHUB_OUTPUT"
-              ;;
             *)
               echo "不支持的构建目标: $BUILD_TARGET" >&2
               exit 1
@@ -124,14 +117,6 @@ jobs:
                     git ca-certificates sudo \
                     dnf-plugins-core rpmdevtools rpm-build patch tar xz
                   ;;
-                Arch)
-                  pacman -Sy --noconfirm archlinux-keyring glibc
-                  pacman -Su --noconfirm
-                  pacman -S --noconfirm --needed git ca-certificates sudo base-devel patch tar
-                  useradd -m builder 2>/dev/null || true
-                  echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
-                  chmod 0440 /etc/sudoers.d/builder
-                  ;;
               esac
 
               if ! git clone --depth=1 --branch "$ANLAND_REF" "$ANLAND_REPO" /tmp/anland; then
@@ -154,15 +139,7 @@ jobs:
 
               cd "/tmp/anland/$(dirname "$BUILD_SCRIPT")"
 
-              # Arch 的 makepkg 不允许 root 运行，需切到 builder 用户
-              if [ "$BUILD_TARGET" = "Arch" ]; then
-                chmod 777 /root/anland-build
-                WORKDIR=/root/anland-build sudo -u builder \
-                  SCRIPT_DIR="$(pwd)" \
-                  /bin/bash "./$(basename "$BUILD_SCRIPT")"
-              else
-                WORKDIR=/root/anland-build sudo -E "./$(basename "$BUILD_SCRIPT")"
-              fi
+              WORKDIR=/root/anland-build sudo -E "./$(basename "$BUILD_SCRIPT")"
             '
 
       - name: 更新本仓库预编译包目录
@@ -180,10 +157,7 @@ jobs:
           test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/kwin/" \;
           test -d "$OUTPUT_DIR/xwayland" && find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
 
-          # Arch / Fedora 的 xwayland 包名不同，尝试备选目录
-          if [ ! -d "$OUTPUT_DIR/xwayland" ] && [ -d "$OUTPUT_DIR/xorg-xwayland" ]; then
-            find "$OUTPUT_DIR/xorg-xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
-          fi
+          # Fedora 的 xwayland 包名不同，尝试备选目录
           if [ ! -d "$OUTPUT_DIR/xwayland" ] && [ -d "$OUTPUT_DIR/xorg-x11-server-Xwayland" ]; then
             find "$OUTPUT_DIR/xorg-x11-server-Xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
           fi

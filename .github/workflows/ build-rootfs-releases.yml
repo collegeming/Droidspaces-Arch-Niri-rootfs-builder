@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'Wayland 支持（需要预编译 anland 包）'
+        description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43）'
         required: true
         type: boolean
         default: false
