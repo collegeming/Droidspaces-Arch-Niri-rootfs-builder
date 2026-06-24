@@ -177,12 +177,15 @@ jobs:
           mkdir -p "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
 
           # 按包格式收集产物
-          find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' -exec cp -v {} "$DEST_DIR/kwin/" \;
-          find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+          test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/kwin/" \;
+          test -d "$OUTPUT_DIR/xwayland" && find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
 
-          # Arch 的 xwayland 包名是 xorg-xwayland，产物目录可能不同
-          if [ -d "$OUTPUT_DIR/xorg-xwayland" ]; then
-            find "$OUTPUT_DIR/xorg-xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" -exec cp -v {} "$DEST_DIR/xwayland/" \;
+          # Arch / Fedora 的 xwayland 包名不同，尝试备选目录
+          if [ ! -d "$OUTPUT_DIR/xwayland" ] && [ -d "$OUTPUT_DIR/xorg-xwayland" ]; then
+            find "$OUTPUT_DIR/xorg-xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+          fi
+          if [ ! -d "$OUTPUT_DIR/xwayland" ] && [ -d "$OUTPUT_DIR/xorg-x11-server-Xwayland" ]; then
+            find "$OUTPUT_DIR/xorg-x11-server-Xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
           fi
 
           pkg_count="$(find "$DEST_DIR" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) | wc -l)"
