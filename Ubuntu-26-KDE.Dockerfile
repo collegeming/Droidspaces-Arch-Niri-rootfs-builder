@@ -32,8 +32,8 @@ COPY scripts/download-firmware /usr/local/bin/
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
 # 复制本仓库内预编译的 anland_kde deb 包
-COPY anland-debbuild/ubuntu2604/kwin/*.deb /tmp/anland-debbuild/ubuntu2604/kwin/
-COPY anland-debbuild/ubuntu2604/xwayland/*.deb /tmp/anland-debbuild/ubuntu2604/xwayland/
+COPY anland-build/ubuntu2604/kwin/*.deb /tmp/anland-build/ubuntu2604/kwin/
+COPY anland-build/ubuntu2604/xwayland/*.deb /tmp/anland-build/ubuntu2604/xwayland/
 
 # 赋予相关脚本可执行权限
 RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
@@ -75,11 +75,11 @@ RUN apt-get update && \
     if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin deb 包..." && \
-        dpkg -i /tmp/anland-debbuild/ubuntu2604/kwin/*.deb || apt-get install -f -y && \
+        dpkg -i /tmp/anland-build/ubuntu2604/kwin/*.deb || apt-get install -f -y && \
         echo "--> [开启] 正在安装预编译的 xwayland deb 包..." && \
-        dpkg -i /tmp/anland-debbuild/ubuntu2604/xwayland/*.deb || apt-get install -f -y && \
+        dpkg -i /tmp/anland-build/ubuntu2604/xwayland/*.deb || apt-get install -f -y && \
         echo "--> [开启] 设置预编译 deb 包为 hold 模式，防止被 apt 更新覆盖..." && \
-        for f in /tmp/anland-debbuild/ubuntu2604/kwin/*.deb /tmp/anland-debbuild/ubuntu2604/xwayland/*.deb; do \
+        for f in /tmp/anland-build/ubuntu2604/kwin/*.deb /tmp/anland-build/ubuntu2604/xwayland/*.deb; do \
             pkgname=$(dpkg-deb -f "$f" Package) && \
             apt-mark hold "$pkgname" && \
             echo "    hold: $pkgname"; \
@@ -91,10 +91,10 @@ RUN apt-get update && \
         cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
         chmod +x /usr/local/bin/startanland-kde.sh && \
         echo "--> [开启] 清理临时文件..." && \
-        rm -rf /tmp/anland-debbuild /tmp/anland && \
+        rm -rf /tmp/anland-build /tmp/anland && \
         echo "--> [开启] anland_kde 支持已安装"; \
     else \
-        rm -rf /tmp/anland-debbuild; \
+        rm -rf /tmp/anland-build; \
     fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)

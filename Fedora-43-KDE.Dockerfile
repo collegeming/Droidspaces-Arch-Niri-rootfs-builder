@@ -22,8 +22,8 @@ ARG USERNAME
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 复制本仓库内预编译的 anland_kde rpm 包
-COPY anland-rpmbuild/Fedora43/kwin/*.rpm /tmp/anland-rpmbuild/Fedora43/kwin/
-COPY anland-rpmbuild/Fedora43/xwayland/*.rpm /tmp/anland-rpmbuild/Fedora43/xwayland/
+COPY anland-build/Fedora43/kwin/*.rpm /tmp/anland-build/Fedora43/kwin/
+COPY anland-build/Fedora43/xwayland/*.rpm /tmp/anland-build/Fedora43/xwayland/
 
 RUN dnf install -y --setopt=install_weak_deps=False \
     # 核心工具组件 
@@ -88,9 +88,9 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin rpm 包..." && \
-        dnf install -y /tmp/anland-rpmbuild/Fedora43/kwin/*.rpm && \
+        dnf install -y /tmp/anland-build/Fedora43/kwin/*.rpm && \
         echo "--> [开启] 正在安装预编译的 xwayland rpm 包..." && \
-        dnf install -y /tmp/anland-rpmbuild/Fedora43/xwayland/*.rpm && \
+        dnf install -y /tmp/anland-build/Fedora43/xwayland/*.rpm && \
         echo "--> [开启] 设置预编译 rpm 包为 exclude，防止被 dnf 更新覆盖..." && \
         echo "exclude=kwin* xorg-x11-server-Xwayland*" >> /etc/dnf/dnf.conf && \
         echo "--> [开启] 正在安装 anland 启动脚本..." && \
@@ -100,10 +100,10 @@ RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "
         cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
         chmod +x /usr/local/bin/startanland-kde.sh && \
         echo "--> [开启] 清理临时文件..." && \
-        rm -rf /tmp/anland-rpmbuild /tmp/anland && \
+        rm -rf /tmp/anland-build /tmp/anland && \
         echo "--> [开启] anland_kde 支持已安装"; \
     else \
-        rm -rf /tmp/anland-rpmbuild; \
+        rm -rf /tmp/anland-build; \
     fi
 
 # 强制配置使用 iptables-legacy（兼容 Android 内核的硬性要求）
