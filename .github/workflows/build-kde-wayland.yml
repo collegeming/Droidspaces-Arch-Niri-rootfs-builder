@@ -98,7 +98,7 @@ jobs:
               ;;
             Debian13)
               echo "image=debian:trixie" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/Debian13_v4/build.sh" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/Debian13_v5/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-build/Debian13" >> "$GITHUB_OUTPUT"
               echo "pkg_pattern=*.deb" >> "$GITHUB_OUTPUT"
               ;;

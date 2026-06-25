@@ -105,6 +105,7 @@ jobs:
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
       wayland_enabled: ${{ steps.find-templates.outputs.wayland_enabled }}
+      pulseaudio_effective: ${{ steps.find-templates.outputs.pulseaudio_effective }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
     steps:
@@ -117,6 +118,7 @@ jobs:
           TARGET="${{ github.event.inputs.build_target }}"
           BUILD_KDE="${{ github.event.inputs.build_KDE }}"
           ENABLE_ANLAND_KDE="${{ github.event.inputs.enable_anland_kde }}"
+          PULSE_AUDIO="${{ github.event.inputs.PulseAudio }}"
           
           case "$TARGET" in
             all)
@@ -135,11 +137,17 @@ jobs:
             echo "Error: KDE desktop choice cannot be 'none' when Wayland support is enabled" >&2
             exit 1
           fi
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ]; then
+            PULSE_AUDIO="none"
+          fi
           
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
           echo "wayland_enabled=$ENABLE_ANLAND_KDE" >> $GITHUB_OUTPUT
+          echo "pulseaudio_effective=$PULSE_AUDIO" >> $GITHUB_OUTPUT
           echo "Final decided build matrix: $TEMPLATES"
           echo "Final Wayland support value: $ENABLE_ANLAND_KDE"
+          echo "Final PulseAudio value: $PULSE_AUDIO"
 
       - name: Prepare build metadata
         id: prep
@@ -181,7 +189,7 @@ jobs:
             -v "${{ needs.setup.outputs.build_id }}" \
             -K "${{ inputs.build_KDE }}" \
             -L "${{ inputs.build_KDE_plus }}" \
-            -P "${{ inputs.PulseAudio }}" \
+            -P "${{ needs.setup.outputs.pulseaudio_effective }}" \
             -g "${{ inputs.enable_zh_tz }}" \
             -a "${{ inputs.enable_binfmt }}" \
             -b "${{ inputs.enable_yj }}" \
@@ -224,8 +232,9 @@ jobs:
         run: |
           mkdir -p release_assets
           mv *.tar.xz release_assets/
-          PA_CHOICE="${{ github.event.inputs.PulseAudio }}"
+          PA_CHOICE="${{ needs.setup.outputs.pulseaudio_effective }}"
           CUSTOM_USERNAME="${{ github.event.inputs.custom_username }}"
+          build_KDE_plus="${{ github.event.inputs.build_KDE_plus }}"
           if [ "$PA_CHOICE" != "none" ] && [ "$build_KDE_plus" = "false" ]; then
             cp "scripts/on_aaudio_${PA_CHOICE}.sh" "release_assets/on_aaudio_${PA_CHOICE}.sh"
             sed -i "s/USERNAME=\"Gold\"/USERNAME=\"${CUSTOM_USERNAME}\"/g" "release_assets/on_aaudio_${PA_CHOICE}.sh"
@@ -248,7 +257,8 @@ jobs:
             - **KDE Desktop**: ${{ github.event.inputs.build_KDE }}
             - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }}
             - **Wayland support**: ${{ needs.setup.outputs.wayland_enabled }}
-            - PulseAudio Audio Forwarding: ${{ github.event.inputs.PulseAudio }}
+            - PulseAudio Audio Forwarding: ${{ needs.setup.outputs.pulseaudio_effective }}
+            - anland audio note: Wayland mode uses the built-in anland app audio, so PulseAudio is not needed
             - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
             - Qualcomm Snapdragon GPU Support: ${{ github.event.inputs.enable_mesa }}
             - Integrate TMOE: ${{ github.event.inputs.enable_tmoe }}

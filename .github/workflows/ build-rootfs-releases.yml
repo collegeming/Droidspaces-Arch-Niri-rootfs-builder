@@ -105,6 +105,7 @@ jobs:
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
       wayland_enabled: ${{ steps.find-templates.outputs.wayland_enabled }}
+      pulseaudio_effective: ${{ steps.find-templates.outputs.pulseaudio_effective }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
     steps:
@@ -117,6 +118,7 @@ jobs:
           TARGET="${{ github.event.inputs.build_target }}"
           BUILD_KDE="${{ github.event.inputs.build_KDE }}"
           ENABLE_ANLAND_KDE="${{ github.event.inputs.enable_anland_kde }}"
+          PULSE_AUDIO="${{ github.event.inputs.PulseAudio }}"
           
           case "$TARGET" in
             all)
@@ -135,11 +137,17 @@ jobs:
             echo "错误: 启用 Wayland 支持时，KDE 桌面选择不能为 'none'" >&2
             exit 1
           fi
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ]; then
+            PULSE_AUDIO="none"
+          fi
           
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
           echo "wayland_enabled=$ENABLE_ANLAND_KDE" >> $GITHUB_OUTPUT
+          echo "pulseaudio_effective=$PULSE_AUDIO" >> $GITHUB_OUTPUT
           echo "最终决定的构建矩阵: $TEMPLATES"
           echo "Wayland 支持最终值: $ENABLE_ANLAND_KDE"
+          echo "PulseAudio 最终值: $PULSE_AUDIO"
 
       - name: 准备构建元数据
         id: prep
@@ -181,7 +189,7 @@ jobs:
             -v "${{ needs.setup.outputs.build_id }}" \
             -K "${{ inputs.build_KDE }}" \
             -L "${{ inputs.build_KDE_plus }}" \
-            -P "${{ inputs.PulseAudio }}" \
+            -P "${{ needs.setup.outputs.pulseaudio_effective }}" \
             -g "${{ inputs.enable_zh_tz }}" \
             -a "${{ inputs.enable_binfmt }}" \
             -b "${{ inputs.enable_yj }}" \
@@ -224,7 +232,7 @@ jobs:
         run: |
           mkdir -p release_assets
           mv *.tar.xz release_assets/
-          PA_CHOICE="${{ github.event.inputs.PulseAudio }}"
+          PA_CHOICE="${{ needs.setup.outputs.pulseaudio_effective }}"
           CUSTOM_USERNAME="${{ github.event.inputs.custom_username }}"
           build_KDE_plus="${{ github.event.inputs.build_KDE_plus }}"
           if [ "$PA_CHOICE" != "none" ] && [ "$build_KDE_plus" = "false" ]; then
@@ -249,7 +257,8 @@ jobs:
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
             - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}
             - **Wayland 支持**: ${{ needs.setup.outputs.wayland_enabled }}
-            - PulseAudio 音频转发: ${{ github.event.inputs.PulseAudio }}
+            - PulseAudio 音频转发: ${{ needs.setup.outputs.pulseaudio_effective }}
+            - anland 音频说明: Wayland 模式下使用 anland app 自带音频，无需 PulseAudio
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
             - 集成 TMOE : ${{ github.event.inputs.enable_tmoe }}
