@@ -221,11 +221,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 下载所有构建产物
-        uses: actions/download-artifact@v7
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
         with:
-          pattern: anland-pkgs-*
           path: .anland-artifacts
+          pattern: anland-pkgs-*
+          merge-multiple: false
+
 
       - name: 提交更新
         run: |
