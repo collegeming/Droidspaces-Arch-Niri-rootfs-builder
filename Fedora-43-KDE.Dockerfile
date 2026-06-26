@@ -146,6 +146,11 @@ RUN if [ "$PulseAudio" = "socket" ]; then \
     elif [ "$PulseAudio" = "tcp" ]; then \
         echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
     fi
+# 修复anland 音频堵塞
+RUN if [ "$ENABLE_anland_kde_ARG" = "true" ]; then \
+       mkdir -p /home/${USERNAME}/.config && \
+      echo -e "\n[Sounds]\nEnable=false" >> /home/${USERNAME}/.config/kdeglobals ; \
+    fi
 
 # 输入法开机自启动
 RUN <<'EOF_RUN'
