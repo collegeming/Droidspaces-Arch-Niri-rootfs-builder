@@ -51,7 +51,7 @@
 - 在[Releases · superturtlee/anland](https://github.com/superturtlee/anland/releases)中下载[virtual-drm-daemon.zip](https://github.com/superturtlee/anland/releases/download/2.0/virtual-drm-daemon.zip)刷入并重启，下载[app-debug.apk](https://github.com/superturtlee/anland/releases/download/2.0/app-debug.apk)并安装。
 - 导入容器时，配置开启**硬件访问**、**SELinux宽容模式**，**特权模式**开启**nocaps**、**noseccomp**；
 - 在高级选项中添加绑定挂载点，将 `/data/local/tmp/display_daemon.sock` 挂载到 `/run/display.sock`。
-- 完成配置后在终端选择你的用户，执行 `startanland-kde.sh` 即可在 VirtualDRM（刚安装的apk）中使用KDE。
+- 完成配置后在终端选择你的用户，执行 `startplasma-wayland` 即可在 Anland 中使用KDE。
 
 ### 🛠️ DRI3 报错解决方案
 

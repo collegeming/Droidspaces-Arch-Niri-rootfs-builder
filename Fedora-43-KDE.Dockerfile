@@ -92,14 +92,8 @@ RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "
         dnf install -y /tmp/anland-build/Fedora43/xwayland/*.rpm && \
         echo "--> [开启] 设置预编译 rpm 包为 exclude，防止被 dnf 更新覆盖..." && \
         echo "exclude=kwin* xorg-x11-server-Xwayland*" >> /etc/dnf/dnf.conf && \
-        echo "--> [开启] 正在安装 anland 启动脚本..." && \
-        mkdir -p /opt/anland && \
-        git clone --depth=1 https://github.com/superturtlee/anland.git /tmp/anland && \
-        cp /tmp/anland/producers/kde/Fedora43_v5/startup.sh /opt/anland/ && \
-        cp /opt/anland/startup.sh /usr/local/bin/startanland-kde.sh && \
-        chmod +x /usr/local/bin/startanland-kde.sh && \
         echo "--> [开启] 清理临时文件..." && \
-        rm -rf /tmp/anland-build /tmp/anland && \
+        rm -rf /tmp/anland-build && \
         echo "--> [开启] anland_kde 支持已安装"; \
     else \
         rm -rf /tmp/anland-build; \
@@ -139,6 +133,13 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
     else \
         echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
         echo "DISPLAY=:0" >> /etc/environment; \
+        echo "QT_QPA_PLATFORM=wayland" >> /etc/environment; \
+        echo "ANLAND=1" >> /etc/environment; \
+        echo "ANLAND_SOCKET=/run/display.sock" >> /etc/environment; \
+        echo "ANLAND_DRM_DEVICE=/dev/dri/renderD128" >> /etc/environment; \
+        echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
+        echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
+        echo "FD_FORCE_KGSL=1" >> /etc/environment; \
     fi
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
@@ -178,7 +179,7 @@ GLFW_IM_MODULE=fcitx
 EOF
     fi
 
-    if [ "$ENABLE_mesa_ARG" = "true" ] ; then
+    if [ "$ENABLE_mesa_ARG" = "true" ] && [ "$ENABLE_anland_kde_ARG" != "true" ] ; then
         cat <<'EOF' >> /etc/environment
 MESA_LOADER_DRIVER_OVERRIDE=kgsl
 TU_DEBUG=noconform
@@ -228,7 +229,7 @@ Group=${USERNAME}
 PAMName=login
 
 EnvironmentFile=-/etc/environment
-ExecStart=/bin/bash -lc '/usr/local/bin/startanland-kde.sh'
+ExecStart=/bin/bash -lc 'startplasma-wayland'
 Restart=no
 
 [Install]

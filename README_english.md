@@ -57,7 +57,7 @@ When triggering the workflow, you can freely configure the target system version
 - Download [virtual-drm-daemon.zip](https://github.com/superturtlee/anland/releases/download/1.9/virtual-drm-daemon.zip) from [Releases · superturtlee/anland](https://github.com/superturtlee/anland/releases), flash it and reboot. Download [app-debug.apk](https://github.com/superturtlee/anland/releases/download/1.9/app-debug.apk) and install it.
 - When importing the container, enable **hardware access**, **SELinux permissive mode**, and in privileged mode enable **nocaps** and **noseccomp**.
 - In advanced options, add a bind mount to mount `/data/local/tmp/display_daemon.sock` to `/run/display.sock`.
-- After configuration, select your user in the terminal and run `startanland-kde.sh` to use KDE in VirtualDRM (the APK you just installed).
+- After configuration, select your user in the terminal and run `startplasma-wayland` to use KDE in Anland .
 
 ### 🛠️ DRI3 Error Fix
 
@@ -105,5 +105,4 @@ Save the file and reboot the device for the change to take effect.
 * **[Droidspaces-OOS](https://github.com/ravindu644/Droidspaces-OSS/)** - the foundation that made this project possible.
 * **[mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)** - Snapdragon GPU driver support used for building RootFS.
 * **[TMOE](https://github.com/2moe/tmoe)** - a very convenient management tool inside the container.
-
 
