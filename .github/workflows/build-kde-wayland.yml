@@ -1,4 +1,5 @@
 name: 构建并更新 KDE Wayland 预编译包(anland)
+run-name: KDE Wayland ${{ inputs.build_target }} ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -28,6 +29,11 @@ on:
         required: true
         type: boolean
         default: true
+      request_id:
+        description: '调用方传入的请求 ID，用于等待对应 workflow run'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write

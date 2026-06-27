@@ -94,7 +94,12 @@ on:
         description: 'Docker integration'
         required: true
         type: boolean
-        default: false    
+        default: false
+      build_wayland_packages:
+        description: 'Trigger KDE Wayland precompiled package workflow'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   # --------------------------------------------------------
@@ -105,6 +110,7 @@ jobs:
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
       wayland_enabled: ${{ steps.find-templates.outputs.wayland_enabled }}
+      wayland_package_target: ${{ steps.find-templates.outputs.wayland_package_target }}
       pulseaudio_effective: ${{ steps.find-templates.outputs.pulseaudio_effective }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
@@ -118,15 +124,31 @@ jobs:
           TARGET="${{ github.event.inputs.build_target }}"
           BUILD_KDE="${{ github.event.inputs.build_KDE }}"
           ENABLE_ANLAND_KDE="${{ github.event.inputs.enable_anland_kde }}"
+          BUILD_WAYLAND_PACKAGES="${{ github.event.inputs.build_wayland_packages }}"
           PULSE_AUDIO="${{ github.event.inputs.PulseAudio }}"
+          WAYLAND_PACKAGE_TARGET=""
           
           case "$TARGET" in
             all)
               TEMPLATES=$(ls *.Dockerfile | sed 's/\.Dockerfile//' | jq -R -s -c 'split("\n")[:-1]')
+              WAYLAND_PACKAGE_TARGET="all"
               ;;
             all-wayland)
               TEMPLATES=$(jq -n -c '["Debian-13-KDE","Ubuntu-26-KDE","Fedora-43-KDE"]')
               ENABLE_ANLAND_KDE="true"
+              WAYLAND_PACKAGE_TARGET="all"
+              ;;
+            Debian-13-KDE)
+              TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+              WAYLAND_PACKAGE_TARGET="Debian13"
+              ;;
+            Ubuntu-26-KDE)
+              TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+              WAYLAND_PACKAGE_TARGET="ubuntu2604"
+              ;;
+            Fedora-43-KDE)
+              TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
+              WAYLAND_PACKAGE_TARGET="Fedora43"
               ;;
             *)
               TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
@@ -141,12 +163,19 @@ jobs:
           if [ "$ENABLE_ANLAND_KDE" = "true" ]; then
             PULSE_AUDIO="none"
           fi
+
+          if [ "$BUILD_WAYLAND_PACKAGES" = "true" ] && [ -z "$WAYLAND_PACKAGE_TARGET" ]; then
+            echo "Error: KDE Wayland precompiled packages are only available for Debian-13-KDE, Ubuntu-26-KDE, Fedora-43-KDE, all, or all-wayland" >&2
+            exit 1
+          fi
           
           echo "templates=$TEMPLATES" >> $GITHUB_OUTPUT
           echo "wayland_enabled=$ENABLE_ANLAND_KDE" >> $GITHUB_OUTPUT
+          echo "wayland_package_target=$WAYLAND_PACKAGE_TARGET" >> $GITHUB_OUTPUT
           echo "pulseaudio_effective=$PULSE_AUDIO" >> $GITHUB_OUTPUT
           echo "Final decided build matrix: $TEMPLATES"
           echo "Final Wayland support value: $ENABLE_ANLAND_KDE"
+          echo "Final KDE Wayland package target: ${WAYLAND_PACKAGE_TARGET:-none}"
           echo "Final PulseAudio value: $PULSE_AUDIO"
 
       - name: Prepare build metadata
@@ -159,10 +188,73 @@ jobs:
           echo "Build ID: $BUILD_ID"
 
   # --------------------------------------------------------
+  # Optional: trigger KDE Wayland package rebuild
+  # --------------------------------------------------------
+  build-wayland-packages:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: write
+      checks: read
+      contents: read
+    steps:
+      - name: Skip KDE Wayland package workflow
+        if: ${{ github.event.inputs.build_wayland_packages != 'true' }}
+        run: echo "KDE Wayland package workflow trigger is disabled."
+
+      - name: Trigger and wait for KDE Wayland precompiled package workflow
+        if: ${{ github.event.inputs.build_wayland_packages == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WAYLAND_PACKAGE_TARGET: ${{ needs.setup.outputs.wayland_package_target }}
+          REQUEST_ID: rootfs-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/dispatches" \
+            -f "ref=${{ github.ref_name }}" \
+            -f "inputs[build_target]=$WAYLAND_PACKAGE_TARGET" \
+            -f "inputs[anland_ref]=main" \
+            -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
+            -f "inputs[commit_changes]=true" \
+            -f "inputs[request_id]=$REQUEST_ID"
+
+          echo "Triggered build-kde-wayland.yml with build_target=$WAYLAND_PACKAGE_TARGET request_id=$REQUEST_ID"
+
+          run_id=""
+          for attempt in {1..60}; do
+            run_id="$(gh api \
+              --method GET \
+              "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/runs" \
+              -f event=workflow_dispatch \
+              -f branch="${{ github.ref_name }}" \
+              -f per_page=20 \
+              --jq "first(.workflow_runs[] | select(.display_title | contains(\"$REQUEST_ID\")) | .id) // \"\"")"
+
+            if [ -n "$run_id" ]; then
+              break
+            fi
+
+            echo "Waiting for build-kde-wayland.yml run to appear ($attempt/60)..."
+            sleep 10
+          done
+
+          if [ -z "$run_id" ]; then
+            echo "Error: timed out while waiting for build-kde-wayland.yml run to appear" >&2
+            exit 1
+          fi
+
+          echo "Waiting for build-kde-wayland.yml run $run_id to complete..."
+          gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status --interval 60
+
+  # --------------------------------------------------------
   # Phase 2: build (Build of regular Linux distribution RootFS)
   # --------------------------------------------------------
   build:
-    needs: setup
+    needs: [setup, build-wayland-packages]
     if: ${{ needs.setup.outputs.templates != '[]' }}
     runs-on: ubuntu-24.04-arm
     strategy:
@@ -172,6 +264,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Verify build options
         run: |
@@ -214,7 +308,7 @@ jobs:
   # --------------------------------------------------------
   release:
     needs: [setup, build]
-    if: ${{ !cancelled() && needs.setup.result == 'success' }}
+    if: ${{ !cancelled() && needs.setup.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -257,6 +351,7 @@ jobs:
             - **KDE Desktop**: ${{ github.event.inputs.build_KDE }}
             - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }}
             - **Wayland support**: ${{ needs.setup.outputs.wayland_enabled }}
+            - KDE Wayland package target: ${{ needs.setup.outputs.wayland_package_target || 'none' }}
             - PulseAudio Audio Forwarding: ${{ needs.setup.outputs.pulseaudio_effective }}
             - anland audio note: Wayland mode uses the built-in anland app audio, so PulseAudio is not needed
             - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
