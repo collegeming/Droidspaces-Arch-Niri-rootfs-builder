@@ -27,7 +27,18 @@
   - **容器增强**：深度优化容器对底层硬件与网络环境的识别。
   - **生产力工具**：可选集成开发工具链、压缩工具包及 Docker 容器引擎。
 - **Wayland 支持**：使用 anland-kwin 为 Wayland 提供特殊支持，通过 patched KWin 和 Xwayland 实现与 anland 显示后端的直接通信。需要同时启用 KDE 桌面，详细配置参考下文"Wayland 配置方法"。项目上游：[anland](https://github.com/superturtlee/anland)
-- **账户密码**：所有构建的 `Rootfs` 账户默认为: `Gold`，可自行修改；密码均为: `1234`
+- **账户密码**：所有构建的 `Rootfs` 账户默认为: `Gold`，密码均为: `1234`
+  - **修改方式（需在`root`用户下操作）**
+    - 修改用户名：`usermod -l 新名字 Gold`
+    - 修改家目录：`usermod -d /home/新名字 -m 新名字（或Gold，如果未更改）`
+    - 修改用户组名：`groupmod -n 新名字 Gold`
+  - 同时需修改自启动服务
+    ```
+    修改 /etc/systemd/system/plasma-wayland.service（或 /etc/systemd/system/plasma-wayland.service）
+
+    User=新名字
+    Group=新名字
+    ```
 
 ## 🔥 快速上手
 
