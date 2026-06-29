@@ -55,7 +55,7 @@ RUN sed -i 's/Components: main/Components: main restricted universe multiverse/g
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     # 核心工具组件
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates locales bash-completion udev dbus systemd-sysv systemd-resolved fastfetch \
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates locales bash-completion udev dbus systemd-sysv systemd-resolved fastfetch pciutils \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具
@@ -182,7 +182,7 @@ RUN cat <<'EOF' > /etc/environment
 XCURSOR_SIZE=48
 EOF
 # wayland 显示服务器环境变量配置
-RUN if [ "$ENABLE_anland_kde_ARG" != "true" ] && [ "$BUILD_KDE" != "mobile" ]; then \
+RUN if [ "$ENABLE_anland_kde_ARG" != "true" ] ; then \
         echo "DISPLAY=:5" >> /etc/environment; \
     else \
         echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
