@@ -55,13 +55,13 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     if [ "$BUILD_KDE" = "mobile" ]; then \
         dnf install -y --setopt=install_weak_deps=False \
         dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts xorg-x11-server-Xorg wayland-utils \
-        plasma-nano plasma-mobile plasma-mobile-sddm-config maliit-keyboard maliit-framework \
+        plasma-nano plasma-mobile maliit-keyboard maliit-framework \
         kwin pipewire pipewire-pulseaudio wireplumber powerdevil plasma-pa upower pulseaudio-utils \
         konsole dolphin kate kinfocenter glx-utils vulkan-tools \
         systemsettings plasma-systemmonitor kscreenlocker kio-extras xdg-user-dirs \
         dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kf6-kimageformats plasma-settings angelfish \
         gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop libcanberra-gtk3 \
-        polkit-kde-agent-1 plasma-workspace plasma-workspace-wayland \
+        polkit-kde-agent-1 plasma-workspace \
         kf6-kirigami qt6-qtquickcontrols2 qt6-qtdeclarative \
         glibc-langpack-zh && \
         echo "--> [mobile] 正在移除 ModemManager (容器内无真实 modem 硬件，会导致开机卡住)..." && \
