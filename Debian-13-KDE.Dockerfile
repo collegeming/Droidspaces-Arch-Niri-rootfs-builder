@@ -31,12 +31,15 @@ COPY scripts/download-firmware /usr/local/bin/
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
+# 修复骁龙8gen2设备在Wayland的花屏问题
+COPY scripts/enable_tp_ubwc.sh /etc/profile.d/enable_tp_ubwc.sh
+
 # 复制本仓库内预编译的 anland_kde deb 包
 COPY anland-build/Debian13/kwin/*.deb /tmp/anland-build/Debian13/kwin/
 COPY anland-build/Debian13/xwayland/*.deb /tmp/anland-build/Debian13/xwayland/
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
+RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh /etc/profile.d/enable_tp_ubwc.sh
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
