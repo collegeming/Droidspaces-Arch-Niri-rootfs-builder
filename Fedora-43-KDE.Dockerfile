@@ -62,6 +62,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kf6-kimageformats plasma-settings angelfish \
         gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop libcanberra-gtk3 \
         polkit-kde-agent-1 plasma-workspace \
+        breeze-icon-theme plasma-breeze qt6-qtsvg \
         kf6-kirigami qt6-qtquickcontrols2 qt6-qtdeclarative \
         glibc-langpack-zh && \
         echo "--> [mobile] 正在移除 ModemManager (容器内无真实 modem 硬件，会导致开机卡住)..." && \
@@ -100,7 +101,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     rm -rf /var/cache/dnf
 
 ############################################## anland_kde(wayland) 支持 ################################################
-RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
+RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin rpm 包..." && \
         dnf install -y /tmp/anland-build/Fedora43/kwin/*.rpm && \
@@ -160,6 +161,10 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
         echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
         echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
         echo "FD_FORCE_KGSL=1" >> /etc/environment; \
+    fi
+# Fedora mobile 默认缩放 300%
+RUN if [ "$BUILD_KDE" = "mobile" ]; then \
+        echo "QT_SCALE_FACTOR=3" >> /etc/environment; \
     fi
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
