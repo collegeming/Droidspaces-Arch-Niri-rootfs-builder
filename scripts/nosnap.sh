@@ -48,8 +48,12 @@ rm -rf \
 echo "[nosnap] blocking snapd reinstall through apt"
 mkdir -p /etc/apt/preferences.d
 cat > /etc/apt/preferences.d/nosnap.pref <<'EOF'
-Package: snapd
+Package: snapd snapd-desktop-integration gnome-software-plugin-snap plasma-discover-backend-snap
 Pin: release a=*
+Pin-Priority: -10
+
+Package: *
+Pin: version *snap*
 Pin-Priority: -10
 EOF
 
