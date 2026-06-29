@@ -23,21 +23,22 @@ on:
         type: string
         default: 'Gold'
       build_KDE:
-        description: 'KDE桌面选择(conc-精简 min-最小构造 none-不用KDE)'
+        description: 'KDE桌面选择(conc-精简 min-最小构造 mobile-移动版 none-不用KDE)'
         required: true
         type: choice
         default: 'min'
         options: 
           - 'conc'
           - 'min'
+          - 'mobile'
           - 'none'
       build_KDE_plus:
-        description: 'KDE 桌面开机自启动 (需要 KDE 桌面选择为 conc 或 min)'
+        description: 'KDE 桌面开机自启动 (需要 KDE 桌面选择为 conc、min 或 mobile)'
         required: true
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43）'
+        description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43,选择 mobile 强制 wayland）'
         required: true
         type: boolean
         default: false
@@ -160,12 +161,23 @@ jobs:
               ;;
           esac
 
+          if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ]; then
+            echo "错误: 移动版 KDE 目前仅支持 Ubuntu-26-KDE" >&2
+            exit 1
+          fi
+
           if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ]; then
             echo "错误: 启用 Wayland 支持时，KDE 桌面选择不能为 'none'" >&2
             exit 1
           fi
 
+          if [ "$BUILD_KDE" = "mobile" ]; then
+            echo "提示: 选择了移动版 KDE，Wayland 支持已强制启用"
+            ENABLE_ANLAND_KDE="true"
+          fi
+
           if [ "$ENABLE_ANLAND_KDE" = "true" ]; then
+            echo "提示: 选择了启用 Wayland 支持，PulseAudio 将被禁用，Anland app 自带音频"
             PULSE_AUDIO="none"
           fi
 

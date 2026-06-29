@@ -23,21 +23,22 @@ on:
         type: string
         default: 'Gold'
       build_KDE:
-        description: 'KDE desktop choice (conc-compact, min-minimal, none-no KDE)'
+        description: 'KDE desktop choice (conc-compact, min-minimal, mobile-mobile edition, none-no KDE)'
         required: true
         type: choice
         default: 'min'
         options: 
           - 'conc'
           - 'min'
+          - 'mobile'
           - 'none'
       build_KDE_plus:
-        description: 'KDE desktop auto-start on boot (Requires KDE desktop choice to be conc or min)'
+        description: 'KDE desktop auto-start on boot (Requires KDE desktop choice to be conc, min, or mobile)'
         required: true
         type: boolean
         default: false
       enable_anland_kde:
-        description: 'Wayland support (supported on Debian-13, Ubuntu-26, Fedora-43).'
+        description: 'Wayland support (supported on Debian-13, Ubuntu-26, Fedora-43; mobile forces Wayland).'
         required: true
         type: boolean
         default: false
@@ -160,12 +161,23 @@ jobs:
               ;;
           esac
 
+          if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ]; then
+            echo "Error: KDE mobile edition is currently only supported on Ubuntu-26-KDE" >&2
+            exit 1
+          fi
+
           if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ]; then
             echo "Error: KDE desktop choice cannot be 'none' when Wayland support is enabled" >&2
             exit 1
           fi
 
+          if [ "$BUILD_KDE" = "mobile" ]; then
+            echo "Notice: KDE mobile edition selected, Wayland support has been forced on"
+            ENABLE_ANLAND_KDE="true"
+          fi
+
           if [ "$ENABLE_ANLAND_KDE" = "true" ]; then
+            echo "Notice: Wayland support enabled, PulseAudio will be disabled because the Anland app provides audio"
             PULSE_AUDIO="none"
           fi
 
