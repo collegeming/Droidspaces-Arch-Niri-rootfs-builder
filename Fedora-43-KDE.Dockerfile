@@ -99,6 +99,10 @@ RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "
         rm -rf /tmp/anland-build; \
     fi
 
+# 修复骁龙8gen2设备在Wayland的花屏问题
+COPY scripts/enable_tp_ubwc.sh /etc/profile.d/enable_tp_ubwc.sh
+RUN chmod +x /etc/profile.d/enable_tp_ubwc.sh
+
 # 强制配置使用 iptables-legacy（兼容 Android 内核的硬性要求）
 RUN ln -sf /usr/sbin/iptables-legacy /usr/sbin/iptables && \
     ln -sf /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables && \
