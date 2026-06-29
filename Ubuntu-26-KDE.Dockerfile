@@ -15,6 +15,7 @@ ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_anland_kde_ARG
+ARG ENABLE_nosnap_ARG
 ARG USERNAME
 ######################################################
 
@@ -27,6 +28,7 @@ RUN sed -i 's/Components: main/Components: main restricted universe multiverse/g
 
 # 优先复制自定义脚本
 COPY scripts/download-firmware /usr/local/bin/
+COPY scripts/nosnap.sh /usr/local/sbin/nosnap
 
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
@@ -36,7 +38,7 @@ COPY anland-build/ubuntu2604/kwin/*.deb /tmp/anland-build/ubuntu2604/kwin/
 COPY anland-build/ubuntu2604/xwayland/*.deb /tmp/anland-build/ubuntu2604/xwayland/
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh
+RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -436,6 +438,14 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
+
+RUN if [ "$ENABLE_nosnap_ARG" = "true" ]; then \
+        echo "--> [开启] nosnap: 正在移除 Ubuntu Snap..." && \
+        bash /usr/local/sbin/nosnap; \
+    else \
+        echo "--> [跳过] 未开启 nosnap"; \
+    fi && \
+    rm -f /usr/local/sbin/nosnap
 
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*

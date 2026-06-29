@@ -30,6 +30,7 @@ When triggering the workflow, you can freely configure the target system version
   - **Cross-architecture support**: Enable `binfmt` for running programs across architectures.  
     Note: Arch Linux does not support this QEMU-based approach.
   - **Container enhancements**: Deep optimization for container recognition of underlying hardware and network environments.
+  - **nosnap**: Optionally remove Snap, snapd, and the APT policy path that can reinstall snapd from Ubuntu RootFS builds.
   - **Productivity tools**: Optional integration of development toolchains, compression utilities, and the Docker engine.
 - **anland_kde support** : Special support for Wayland, enabling direct communication with the anland display backend through patched KWin and Xwayland. Requires KDE desktop to be enabled. For detailed configuration, refer to the "📱 anland_kde Configuration" section below.  
   Upstream project: [anland](https://github.com/superturtlee/anland)
@@ -105,4 +106,3 @@ Save the file and reboot the device for the change to take effect.
 * **[Droidspaces-OOS](https://github.com/ravindu644/Droidspaces-OSS/)** - the foundation that made this project possible.
 * **[mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)** - Snapdragon GPU driver support used for building RootFS.
 * **[TMOE](https://github.com/2moe/tmoe)** - a very convenient management tool inside the container.
-

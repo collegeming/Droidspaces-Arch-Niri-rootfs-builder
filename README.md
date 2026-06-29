@@ -25,6 +25,7 @@
   - **TMOE 部署**：集成 TMOE 环境。在终端输入 `tmoe` 即可自动安装依赖并运行。（项目上游：[TMOE](https://github.com/2moe/tmoe)）
   - **跨架构支持**：启用 `binfmt` 实现跨架构程序运行（注：Arch Linux 暂不支持此 QEMU 方案）。
   - **容器增强**：深度优化容器对底层硬件与网络环境的识别。
+  - **nosnap**：可选移除 Ubuntu RootFS 中的 Snap、snapd 及 APT 自动安装策略。
   - **生产力工具**：可选集成开发工具链、压缩工具包及 Docker 容器引擎。
 - **Wayland 支持**：使用 anland-kwin 为 Wayland 提供特殊支持，通过 patched KWin 和 Xwayland 实现与 anland 显示后端的直接通信。需要同时启用 KDE 桌面，详细配置参考下文"Wayland 配置方法"。项目上游：[anland](https://github.com/superturtlee/anland)
 - **账户密码**：所有构建的 `Rootfs` 账户默认为: `Gold`，密码均为: `1234`

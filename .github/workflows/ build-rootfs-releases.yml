@@ -65,6 +65,11 @@ on:
         required: true
         type: boolean
         default: true
+      nosnap:
+        description: 'nosnap: 干掉 Ubuntu 的 Snap'
+        required: true
+        type: boolean
+        default: false
       enable_srf:
         description: '开启 输入法 fcitx5 支持'
         required: true
@@ -293,6 +298,7 @@ jobs:
             -f "${{ inputs.enable_docker }}" \
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
+            -n "${{ inputs.nosnap }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}"
 
@@ -354,6 +360,7 @@ jobs:
             - KDE Wayland 预编译包目标: ${{ needs.setup.outputs.wayland_package_target || 'none' }}
             - PulseAudio 音频转发: ${{ needs.setup.outputs.pulseaudio_effective }}
             - anland 音频说明: Wayland 模式下使用 anland app 自带音频，无需 PulseAudio
+            - nosnap: ${{ github.event.inputs.nosnap }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
             - 集成 TMOE : ${{ github.event.inputs.enable_tmoe }}

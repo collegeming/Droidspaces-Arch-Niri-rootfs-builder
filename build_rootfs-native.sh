@@ -4,8 +4,9 @@ DATE=$(date +%Y%m%d)      # 获取当前日期
 ARCH=$(uname -m)          # 获取当前系统架构
 ENABLE_binfmt="false"
 BUILD_KDE_plus="false"
+ENABLE_nosnap="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:u:A:" opt; do
+while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:u:A:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; # -i 参数赋值给 DOCKERFILE 变量
     v) VERSION="$OPTARG" ;;    # -v 参数赋值给 VERSION 变量
@@ -21,6 +22,7 @@ while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:u:A:" opt; do
     f) ENABLE_docker="$OPTARG" ;;
     h) ENABLE_srf="$OPTARG" ;; # 输入法 fcitx5
     j) ENABLE_tmoe="$OPTARG" ;; # tmoe
+    n) ENABLE_nosnap="$OPTARG" ;; # Ubuntu nosnap
     u) USERNAME="$OPTARG" ;; # 自定义用户名
     A) ENABLE_anland_kde="$OPTARG" ;; # anland_kde 支持
     *) echo "用法: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
@@ -50,6 +52,7 @@ echo " 使用模板文件 : $DOCKERFILE"
 echo " 当前构建版本 : $VERSION"
 echo " 跨架构 : $ENABLE_binfmt"
 echo " 容器识别部分硬件和网络：$ENABLE_yj"
+echo " Ubuntu nosnap：$ENABLE_nosnap"
 echo "========================================================="
 
 # 1. 环境初始化（原生架构模式）
@@ -96,6 +99,7 @@ docker buildx build \
   --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
   --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
   --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
+  --build-arg ENABLE_nosnap_ARG="$ENABLE_nosnap" \
   --build-arg ENABLE_anland_kde_ARG="$ENABLE_anland_kde" \
   --build-arg USERNAME="$USERNAME" \
   -f "$DOCKERFILE" \
