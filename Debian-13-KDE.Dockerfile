@@ -79,13 +79,15 @@ RUN apt-get update && \
         systemsettings plasma-systemmonitor kde-config-screenlocker kio-extras xdg-user-dirs \
         dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kimageformat6-plugins plasma-settings angelfish \
         gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop libcanberra-pulse \
+        gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop libcanberra-pulse \
         polkit-kde-agent-1 libpam-systemd libpam-modules libpam-kwallet5 \
+        breeze-icon-theme plasma-desktoptheme libqt6svg6 qt6-svg-plugins \
         qml6-module-org-kde-kirigami qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates && \
         echo "--> [mobile] 正在移除 ModemManager (容器内无真实 modem 硬件，会导致开机卡住)..." && \
         apt-get purge -y --auto-remove modemmanager || true; \
     fi && \
     ############################################## anland_kde(wayland) 支持 ################################################
-    if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
+    if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin deb 包..." && \
         dpkg -i /tmp/anland-build/Debian13/kwin/*.deb || apt-get install -f -y && \
