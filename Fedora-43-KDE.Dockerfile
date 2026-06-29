@@ -51,6 +51,23 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kf6-kimageformats plasma-browser-integration libcanberra-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop chromium plasma-workspace plasma-workspace-x11 kwin-x11; \
     fi && \
+    # mobile版KDE
+    if [ "$BUILD_KDE" = "mobile" ]; then \
+        dnf install -y --setopt=install_weak_deps=False \
+        dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts xorg-x11-server-Xorg wayland-utils \
+        plasma-nano plasma-mobile maliit-keyboard maliit-framework \
+        kwin pipewire pipewire-pulseaudio wireplumber powerdevil plasma-pa upower pulseaudio-utils \
+        konsole dolphin kate kinfocenter glx-utils vulkan-tools \
+        systemsettings plasma-systemmonitor kscreenlocker kio-extras xdg-user-dirs \
+        dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kf6-kimageformats plasma-settings angelfish \
+        gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop libcanberra-gtk3 \
+        polkit-kde-agent-1 plasma-workspace \
+        breeze-icon-theme plasma-breeze qt6-qtsvg \
+        kf6-kirigami qt6-qtquickcontrols2 qt6-qtdeclarative \
+        glibc-langpack-zh && \
+        echo "--> [mobile] 正在移除 ModemManager (容器内无真实 modem 硬件，会导致开机卡住)..." && \
+        dnf remove -y ModemManager || true; \
+    fi && \
     ######################################################################################################
     # 输入法 fcitx5 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
@@ -84,7 +101,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     rm -rf /var/cache/dnf
 
 ############################################## anland_kde(wayland) 支持 ################################################
-RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]); then \
+RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin rpm 包..." && \
         dnf install -y /tmp/anland-build/Fedora43/kwin/*.rpm && \
@@ -145,6 +162,10 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
         echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
         echo "FD_FORCE_KGSL=1" >> /etc/environment; \
     fi
+# Fedora mobile 默认缩放 300%
+RUN if [ "$BUILD_KDE" = "mobile" ]; then \
+        echo "QT_SCALE_FACTOR=3" >> /etc/environment; \
+    fi
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
@@ -199,7 +220,29 @@ Enabled=false
 EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
-    if [ "$BUILD_KDE_plus" = "true" ] ; then
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" = "mobile" ] ; then
+    cat <<EOF > /etc/systemd/system/plasma-mobile.service
+[Unit]
+Description=Start Plasma Mobile
+After=network.target display-manager.service
+
+[Service]
+Type=simple
+User=${USERNAME}
+Group=${USERNAME}
+PAMName=login
+
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc 'startplasmamobile'
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-mobile.service /etc/systemd/system/multi-user.target.wants/plasma-mobile.service
+    fi
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" != "mobile" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-x11.service
 [Unit]
 Description=Start Plasma X11
@@ -220,7 +263,7 @@ EOF
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
     fi
     # KDE wayland 自启动
-    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] && [ "$BUILD_KDE" != "mobile" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-wayland.service
 [Unit]
 Description=Start Plasma Wayland
