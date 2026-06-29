@@ -73,15 +73,14 @@ RUN apt-get update && \
     if [ "$BUILD_KDE" = "mobile" ]; then \
         apt-get install -y --no-install-recommends \
         dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji wayland-utils xserver-xorg dbus-user-session \
-        plasma-nano plasma-mobile plasma-mobile-phone maliit-keyboard maliit-framework maliit-server-qt6 \
+        plasma-nano plasma-mobile plasma-mobile-phone maliit-keyboard maliit-framework \
         kwin-wayland pipewire pipewire-pulse wireplumber powerdevil plasma-pa upower pulseaudio-utils \
         konsole dolphin kate kinfocenter mesa-utils vulkan-tools \
         systemsettings plasma-systemmonitor kde-config-screenlocker kio-extras xdg-user-dirs \
         dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kimageformat6-plugins plasma-settings angelfish \
         gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop libcanberra-pulse \
         polkit-kde-agent-1 libpam-systemd libpam-modules libpam-kwallet5 \
-        qml6-module-org-kde-kirigami qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates \
-        language-pack-kde-zh-hans language-pack-zh-hans qt6-translations-l10n && \
+        qml6-module-org-kde-kirigami qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-templates && \
         echo "--> [mobile] 正在移除 ModemManager (容器内无真实 modem 硬件，会导致开机卡住)..." && \
         apt-get purge -y --auto-remove modemmanager || true; \
     fi && \
