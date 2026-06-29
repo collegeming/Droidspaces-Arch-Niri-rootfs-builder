@@ -31,6 +31,15 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 # 赋予相关脚本可执行权限
 RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh
 
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl wget && \
+    if [ "$ENABLE_nosnap_ARG" = "true" ]; then \
+        echo "--> [开启] nosnap: 正在预配置并移除 Ubuntu Snap..." && \
+        bash /usr/local/sbin/nosnap; \
+    else \
+        echo "--> [跳过] 未开启 nosnap"; \
+    fi && \
+    rm -f /usr/local/sbin/nosnap
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -392,14 +401,6 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
-
-RUN if [ "$ENABLE_nosnap_ARG" = "true" ]; then \
-        echo "--> [开启] nosnap: 正在移除 Ubuntu Snap..." && \
-        bash /usr/local/sbin/nosnap; \
-    else \
-        echo "--> [跳过] 未开启 nosnap"; \
-    fi && \
-    rm -f /usr/local/sbin/nosnap
 
 # 最终清理 APT 包管理器缓存，尽可能缩减镜像层体积
 RUN apt-get clean && \

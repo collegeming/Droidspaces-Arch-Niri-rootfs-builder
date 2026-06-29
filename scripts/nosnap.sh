@@ -62,4 +62,46 @@ if [ ! -f /etc/apt/preferences.d/nosnap.pref ]; then
   exit 1
 fi
 
+echo "[nosnap] adding ppa:xtradeb/apps"
+xtradeb_codename=""
+if [ -r /etc/os-release ]; then
+  . /etc/os-release
+  xtradeb_codename="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+fi
+
+if [ -n "$xtradeb_codename" ]; then
+  xtradeb_key=""
+  xtradeb_release_ok="false"
+  xtradeb_api="https://api.launchpad.net/1.0/~xtradeb/+archive/ubuntu/apps"
+  xtradeb_release="https://ppa.launchpadcontent.net/xtradeb/apps/ubuntu/dists/${xtradeb_codename}/Release"
+
+  if command -v curl >/dev/null 2>&1; then
+    xtradeb_key="$(curl -fsSL "$xtradeb_api" 2>/dev/null | awk -F'"' '/signing_key_fingerprint/ { print $4; exit }')"
+    curl -fsSL "$xtradeb_release" >/dev/null 2>&1 && xtradeb_release_ok="true"
+  elif command -v wget >/dev/null 2>&1; then
+    xtradeb_key="$(wget -qO- "$xtradeb_api" 2>/dev/null | awk -F'"' '/signing_key_fingerprint/ { print $4; exit }')"
+    wget -qO- "$xtradeb_release" >/dev/null 2>&1 && xtradeb_release_ok="true"
+  fi
+
+  if [ "$xtradeb_release_ok" = "true" ] && [ -n "$xtradeb_key" ]; then
+    mkdir -p /etc/apt/keyrings /etc/apt/sources.list.d
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${xtradeb_key}" > /etc/apt/keyrings/xtradeb-apps.asc 2>/dev/null || rm -f /etc/apt/keyrings/xtradeb-apps.asc
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO /etc/apt/keyrings/xtradeb-apps.asc "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${xtradeb_key}" 2>/dev/null || rm -f /etc/apt/keyrings/xtradeb-apps.asc
+    fi
+
+    if [ -s /etc/apt/keyrings/xtradeb-apps.asc ]; then
+      chmod 0644 /etc/apt/keyrings/xtradeb-apps.asc
+      echo "deb [signed-by=/etc/apt/keyrings/xtradeb-apps.asc] https://ppa.launchpadcontent.net/xtradeb/apps/ubuntu ${xtradeb_codename} main" > /etc/apt/sources.list.d/xtradeb-apps.list
+    else
+      echo "[nosnap] failed to fetch xtradeb signing key, skipped ppa:xtradeb/apps"
+    fi
+  else
+    echo "[nosnap] ppa:xtradeb/apps does not support ${xtradeb_codename} or network is unavailable, skipped"
+  fi
+else
+  echo "[nosnap] unable to detect Ubuntu codename, skipped ppa:xtradeb/apps"
+fi
+
 echo "[nosnap] done"
