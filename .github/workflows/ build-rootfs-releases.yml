@@ -161,8 +161,8 @@ jobs:
               ;;
           esac
 
-          if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ]; then
-            echo "错误: 移动版 KDE 目前仅支持 Ubuntu-26-KDE" >&2
+          if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ] && [ "$TARGET" != "Debian-13-KDE" ] && [ "$TARGET" != "Fedora-43-KDE" ]; then
+            echo "错误: 移动版 KDE 目前支持 Ubuntu-26-KDE、Debian-13-KDE、Fedora-43-KDE" >&2
             exit 1
           fi
 

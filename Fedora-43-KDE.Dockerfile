@@ -51,6 +51,22 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kf6-kimageformats plasma-browser-integration libcanberra-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop chromium plasma-workspace plasma-workspace-x11 kwin-x11; \
     fi && \
+    # mobile版KDE
+    if [ "$BUILD_KDE" = "mobile" ]; then \
+        dnf install -y --setopt=install_weak_deps=False \
+        dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts xorg-x11-server-Xorg wayland-utils \
+        plasma-nano plasma-mobile plasma-mobile-sddm-config maliit-keyboard maliit-framework \
+        kwin pipewire pipewire-pulseaudio wireplumber powerdevil plasma-pa upower pulseaudio-utils \
+        konsole dolphin kate kinfocenter glx-utils vulkan-tools \
+        systemsettings plasma-systemmonitor kscreenlocker kio-extras xdg-user-dirs \
+        dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kf6-kimageformats plasma-settings angelfish \
+        gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop libcanberra-gtk3 \
+        polkit-kde-agent-1 plasma-workspace plasma-workspace-wayland \
+        kf6-kirigami qt6-qtquickcontrols2 qt6-qtdeclarative \
+        glibc-langpack-zh && \
+        echo "--> [mobile] 正在移除 ModemManager (容器内无真实 modem 硬件，会导致开机卡住)..." && \
+        dnf remove -y ModemManager || true; \
+    fi && \
     ######################################################################################################
     # 输入法 fcitx5 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
@@ -199,7 +215,29 @@ Enabled=false
 EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
-    if [ "$BUILD_KDE_plus" = "true" ] ; then
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" = "mobile" ] ; then
+    cat <<EOF > /etc/systemd/system/plasma-mobile.service
+[Unit]
+Description=Start Plasma Mobile
+After=network.target display-manager.service
+
+[Service]
+Type=simple
+User=${USERNAME}
+Group=${USERNAME}
+PAMName=login
+
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc 'startplasmamobile'
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/plasma-mobile.service /etc/systemd/system/multi-user.target.wants/plasma-mobile.service
+    fi
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" != "mobile" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-x11.service
 [Unit]
 Description=Start Plasma X11
@@ -220,7 +258,7 @@ EOF
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
     fi
     # KDE wayland 自启动
-    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] && [ "$BUILD_KDE" != "mobile" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-wayland.service
 [Unit]
 Description=Start Plasma Wayland
