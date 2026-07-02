@@ -36,7 +36,7 @@ on:
         description: 'KDE desktop auto-start on boot (Requires KDE desktop choice to be conc, min, or mobile)'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_anland_kde:
         description: 'Wayland support (supported on Debian-13, Ubuntu-26, Fedora-43; mobile forces Wayland).'
         required: true

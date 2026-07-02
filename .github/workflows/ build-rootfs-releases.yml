@@ -36,7 +36,7 @@ on:
         description: 'KDE 桌面开机自启动 (需要 KDE 桌面选择为 conc、min 或 mobile)'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_anland_kde:
         description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43,选择 mobile 强制 wayland）'
         required: true
