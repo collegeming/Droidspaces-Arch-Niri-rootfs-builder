@@ -107,7 +107,8 @@ Audio mode details:
 
 The Release usually contains:
 
-- One or more RootFS archives, with names similar to `Debian-13-KDE-Droidspaces-rootfs-aarch64-20260702-v20260702-120000.tar.xz`.
+- One or more RootFS archives
+- RootFS filenames are marked by display mode as `X11`, `Wayland`, or `Mobile`, for example `Ubuntu-26-KDE-Mobile-Droidspaces-rootfs-aarch64-v20260702-120000.tar.xz`.
 - `on_aaudio_socket.sh` or `on_aaudio_tcp.sh` when `PulseAudio` is set to `socket` or `tcp` and `build_KDE_plus=false`.
 - A Release body that records the build target, KDE mode, Wayland setting, username, and feature toggles.
 
@@ -386,7 +387,7 @@ chmod +x build_rootfs-qemu-aarch64.sh
 After a successful build, the output file will look similar to:
 
 ```text
-Ubuntu-26-KDE-Droidspaces-rootfs-arm64-20260702-local.tar.xz
+Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ```
 
 ## Repository Layout

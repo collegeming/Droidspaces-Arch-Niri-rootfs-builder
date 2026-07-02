@@ -107,7 +107,8 @@ KDE 模式说明：
 
 Release 通常包含：
 
-- 一个或多个 RootFS 压缩包，文件名类似 `Debian-13-KDE-Droidspaces-rootfs-aarch64-20260702-v20260702-120000.tar.xz`。
+- 一个或多个 RootFS 压缩包
+- RootFS 文件名会按显示模式标记为 `X11`、`Wayland` 或 `Mobile`，例如 `Ubuntu-26-KDE-Mobile-Droidspaces-rootfs-aarch64-v20260702-120000.tar.xz`。
 - 当 `PulseAudio` 为 `socket` 或 `tcp`，且 `build_KDE_plus=false` 时，会附带 `on_aaudio_socket.sh` 或 `on_aaudio_tcp.sh`。
 - Release 正文会记录构建目标、KDE 模式、Wayland 开关、用户名和各功能开关。
 
@@ -386,7 +387,7 @@ chmod +x build_rootfs-qemu-aarch64.sh
 构建完成后会生成类似下面的文件：
 
 ```text
-Ubuntu-26-KDE-Droidspaces-rootfs-arm64-20260702-local.tar.xz
+Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ```
 
 ## 仓库结构

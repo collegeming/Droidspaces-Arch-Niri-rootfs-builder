@@ -1,7 +1,6 @@
 #!/bin/bash
 : "${VERSION:=dev}"
-DATE=$(date +%Y%m%d)      # 获取当前日期
-TARGET_ARCH="arm64"       # 目标编译架构固定为 arm64
+TARGET_ARCH="aarch64"     # 产物命名使用的目标架构
 PLATFORM="linux/arm64"    # Docker buildx 的平台参数
 
 ENABLE_binfmt="false"
@@ -79,7 +78,14 @@ set -e
 
 # 3. 核心构建流程
 TEMP_TAR="custom-${PREFIX}-rootfs.tar"
-FINAL_NAME="${PREFIX}-Droidspaces-rootfs-${TARGET_ARCH}-${DATE}-${VERSION}.tar.xz"
+if [ "$BUILD_KDE" = "mobile" ]; then
+  DISPLAY_BACKEND="Mobile"
+elif [ "$ENABLE_anland_kde" = "true" ]; then
+  DISPLAY_BACKEND="Wayland"
+else
+  DISPLAY_BACKEND="X11"
+fi
+FINAL_NAME="${PREFIX}-${DISPLAY_BACKEND}-Droidspaces-rootfs-${TARGET_ARCH}-${VERSION}.tar.xz"
 
 echo "正在运行 Docker Buildx ($PLATFORM 跨架构模式)..."
 

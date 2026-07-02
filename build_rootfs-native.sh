@@ -1,6 +1,5 @@
 #!/bin/bash
 : "${VERSION:=dev}"
-DATE=$(date +%Y%m%d)      # 获取当前日期
 ARCH=$(uname -m)          # 获取当前系统架构
 ENABLE_binfmt="false"
 BUILD_KDE_plus="false"
@@ -77,7 +76,14 @@ set -e
 
 # 3. 核心构建流程
 TEMP_TAR="custom-${PREFIX}-rootfs.tar"
-FINAL_NAME="${PREFIX}-Droidspaces-rootfs-${ARCH}-${DATE}-${VERSION}.tar.xz"
+if [ "$BUILD_KDE" = "mobile" ]; then
+  DISPLAY_BACKEND="Mobile"
+elif [ "$ENABLE_anland_kde" = "true" ]; then
+  DISPLAY_BACKEND="Wayland"
+else
+  DISPLAY_BACKEND="X11"
+fi
+FINAL_NAME="${PREFIX}-${DISPLAY_BACKEND}-Droidspaces-rootfs-${ARCH}-${VERSION}.tar.xz"
 
 echo "正在运行 Docker Build (原生模式)..."
 
