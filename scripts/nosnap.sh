@@ -52,8 +52,8 @@ Package: snapd snapd-desktop-integration gnome-software-plugin-snap plasma-disco
 Pin: release a=*
 Pin-Priority: -10
 
-Package: *
-Pin: version *snap*
+Package: chromium-browser
+Pin: release o=Ubuntu
 Pin-Priority: -10
 EOF
 
@@ -69,31 +69,68 @@ if [ -r /etc/os-release ]; then
   xtradeb_codename="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
 fi
 
+download_stdout() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- "$1"
+  else
+    return 1
+  fi
+}
+
+download_file() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1" > "$2"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$2" "$1"
+  else
+    return 1
+  fi
+}
+
+release_exists() {
+  download_stdout "$1" >/dev/null 2>&1
+}
+
 if [ -n "$xtradeb_codename" ]; then
   xtradeb_key=""
-  xtradeb_release_ok="false"
+  xtradeb_source_codename=""
   xtradeb_api="https://api.launchpad.net/1.0/~xtradeb/+archive/ubuntu/apps"
-  xtradeb_release="https://ppa.launchpadcontent.net/xtradeb/apps/ubuntu/dists/${xtradeb_codename}/Release"
+  xtradeb_candidates="$xtradeb_codename"
 
-  if command -v curl >/dev/null 2>&1; then
-    xtradeb_key="$(curl -fsSL "$xtradeb_api" 2>/dev/null | awk -F'"' '/signing_key_fingerprint/ { print $4; exit }')"
-    curl -fsSL "$xtradeb_release" >/dev/null 2>&1 && xtradeb_release_ok="true"
-  elif command -v wget >/dev/null 2>&1; then
-    xtradeb_key="$(wget -qO- "$xtradeb_api" 2>/dev/null | awk -F'"' '/signing_key_fingerprint/ { print $4; exit }')"
-    wget -qO- "$xtradeb_release" >/dev/null 2>&1 && xtradeb_release_ok="true"
-  fi
+  case "$xtradeb_codename" in
+    resolute)
+      xtradeb_candidates="$xtradeb_codename questing plucky noble"
+      ;;
+    questing)
+      xtradeb_candidates="$xtradeb_codename plucky noble"
+      ;;
+    plucky|oracular)
+      xtradeb_candidates="$xtradeb_codename noble"
+      ;;
+  esac
 
-  if [ "$xtradeb_release_ok" = "true" ] && [ -n "$xtradeb_key" ]; then
-    mkdir -p /etc/apt/keyrings /etc/apt/sources.list.d
-    if command -v curl >/dev/null 2>&1; then
-      curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${xtradeb_key}" > /etc/apt/keyrings/xtradeb-apps.asc 2>/dev/null || rm -f /etc/apt/keyrings/xtradeb-apps.asc
-    elif command -v wget >/dev/null 2>&1; then
-      wget -qO /etc/apt/keyrings/xtradeb-apps.asc "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${xtradeb_key}" 2>/dev/null || rm -f /etc/apt/keyrings/xtradeb-apps.asc
+  xtradeb_key="$(download_stdout "$xtradeb_api" 2>/dev/null | awk -F'"' '/signing_key_fingerprint/ { print $4; exit }')"
+
+  for candidate in $xtradeb_candidates; do
+    xtradeb_release="https://ppa.launchpadcontent.net/xtradeb/apps/ubuntu/dists/${candidate}/Release"
+    if release_exists "$xtradeb_release"; then
+      xtradeb_source_codename="$candidate"
+      break
     fi
+  done
+
+  if [ -n "$xtradeb_source_codename" ] && [ -n "$xtradeb_key" ]; then
+    mkdir -p /etc/apt/keyrings /etc/apt/sources.list.d
+    download_file "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${xtradeb_key}" /etc/apt/keyrings/xtradeb-apps.asc 2>/dev/null || rm -f /etc/apt/keyrings/xtradeb-apps.asc
 
     if [ -s /etc/apt/keyrings/xtradeb-apps.asc ]; then
       chmod 0644 /etc/apt/keyrings/xtradeb-apps.asc
-      echo "deb [signed-by=/etc/apt/keyrings/xtradeb-apps.asc] https://ppa.launchpadcontent.net/xtradeb/apps/ubuntu ${xtradeb_codename} main" > /etc/apt/sources.list.d/xtradeb-apps.list
+      echo "deb [signed-by=/etc/apt/keyrings/xtradeb-apps.asc] https://ppa.launchpadcontent.net/xtradeb/apps/ubuntu ${xtradeb_source_codename} main" > /etc/apt/sources.list.d/xtradeb-apps.list
+      if [ "$xtradeb_source_codename" != "$xtradeb_codename" ]; then
+        echo "[nosnap] ppa:xtradeb/apps does not publish ${xtradeb_codename}; using ${xtradeb_source_codename}"
+      fi
     else
       echo "[nosnap] failed to fetch xtradeb signing key, skipped ppa:xtradeb/apps"
     fi
