@@ -306,27 +306,6 @@ groupmod -n NewUser Gold
 passwd NewUser
 ```
 
-If KDE auto-start services are enabled, also check these systemd service files:
-
-```text
-/etc/systemd/system/plasma-x11.service
-/etc/systemd/system/plasma-wayland.service
-/etc/systemd/system/plasma-mobile.service
-```
-
-Update the fields to the new username:
-
-```text
-User=NewUser
-Group=NewUser
-```
-
-Then run:
-
-```bash
-systemctl daemon-reload
-```
-
 ## Local Build
 
 This project is designed primarily for GitHub Actions, but local Docker Buildx builds are supported. Requirements:
