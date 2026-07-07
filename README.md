@@ -306,27 +306,6 @@ groupmod -n NewUser Gold
 passwd NewUser
 ```
 
-如果启用了 KDE 自启动服务，还需要检查相关 systemd 服务中的用户和用户组：
-
-```text
-/etc/systemd/system/plasma-x11.service
-/etc/systemd/system/plasma-wayland.service
-/etc/systemd/system/plasma-mobile.service
-```
-
-把其中的字段改为新用户名：
-
-```text
-User=NewUser
-Group=NewUser
-```
-
-修改后执行：
-
-```bash
-systemctl daemon-reload
-```
-
 ## 本地构建
 
 本项目主要面向 GitHub Actions，但也可以在本地使用 Docker Buildx 构建。你需要准备：
