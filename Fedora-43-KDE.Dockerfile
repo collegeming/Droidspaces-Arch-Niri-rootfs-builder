@@ -25,15 +25,15 @@ COPY anland-build/Fedora43/kwin/*.rpm /tmp/anland-build/Fedora43/kwin/
 COPY anland-build/Fedora43/xwayland/*.rpm /tmp/anland-build/Fedora43/xwayland/
 
 RUN dnf install -y --setopt=install_weak_deps=False \
-    # 核心工具组件 
+    # 核心工具组件 \
     bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-resolved fastfetch pciutils \
-    # 用户请求的基础开发/编辑工具
+    # 用户请求的基础开发/编辑工具 \
     git nano sudo \
-    # 网络与 SSH 工具
+    # 网络与 SSH 工具 \
     openssh-server net-tools iptables iptables-legacy iputils iproute bind-utils \
-    # 用于系统监控的 procps 进程工具
+    # 用于系统监控的 procps 进程工具 \
     procps-ng \
-    # 核心内核模块支持及语言包
+    # 核心内核模块支持及语言包 \
     kmod tzdata glibc-locale-source glibc-langpack-en glibc-langpack-zh && \
     ############################################## KDE支持 ################################################
     # 最小化KDE
@@ -220,7 +220,7 @@ Enabled=false
 EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
-    if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" = "mobile" ] ; then
+    if [ "$BUILD_KDE" = "mobile" ] && [ "$BUILD_KDE_plus" = "true" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-mobile.service
 [Unit]
 Description=Start Plasma Mobile
@@ -367,7 +367,8 @@ if [ "$ENABLE_yj_ARG" = "true" ]; then
         fi
     done
 else
-    for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
+    # UPDATED: Removed NetworkManager, systemd-networkd, and systemd-resolved from structural masking loop to prevent DNS breakages.
+    for service in systemd-udevd.service; do
         ln -sf /dev/null "/etc/systemd/system/$service"
     done
 fi
@@ -395,16 +396,7 @@ for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-sett
     printf "[Unit]\nConditionPathIsReadWrite=\n" > "/etc/systemd/system/${unit}.d/99-readonly-fix.conf"
 done
 
-for unit in NetworkManager.service dhcpcd.service systemd-resolved.service systemd-networkd.service; do
-    if [ -f "$GUEST_SYSTEMD_PATH/$unit" ] || [ -f "/etc/systemd/system/multi-user.target.wants/$unit" ]; then
-        mkdir -p "/etc/systemd/system/${unit}.d"
-        cat > "/etc/systemd/system/${unit}.d/99-netmode-limit.conf" << 'EOF'
-[Service]
-ExecCondition=
-ExecCondition=/bin/sh -c "grep -qE 'net_mode=(nat|gateway)' /run/droidspaces/container.config"
-EOF
-    fi
-done
+# UPDATED: Completely removed the block here that was writing conditional '99-netmode-limit.conf' files which masked/blocked the execution of NetworkManager.service, dhcpcd.service, systemd-resolved.service, and systemd-networkd.service when setting up container configurations.
 
 for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service; do
     if [ -f "$GUEST_SYSTEMD_PATH/$unit" ] || [ -f "/etc/systemd/system/multi-user.target.wants/$unit" ]; then
