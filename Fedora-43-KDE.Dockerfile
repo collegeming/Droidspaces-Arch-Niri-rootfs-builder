@@ -25,15 +25,15 @@ COPY anland-build/Fedora43/kwin/*.rpm /tmp/anland-build/Fedora43/kwin/
 COPY anland-build/Fedora43/xwayland/*.rpm /tmp/anland-build/Fedora43/xwayland/
 
 RUN dnf install -y --setopt=install_weak_deps=False \
-    # 核心工具组件 \
+    # 核心工具组件 
     bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-resolved fastfetch pciutils \
-    # 用户请求的基础开发/编辑工具 \
+    # 用户请求的基础开发/编辑工具
     git nano sudo \
-    # 网络与 SSH 工具 \
-    openssh-server net-tools iptables iptables-legacy iputils iproute bind-utils \
-    # 用于系统监控的 procps 进程工具 \
+    # 网络与 SSH 工具 (Added dhcp-client here)
+    openssh-server net-tools iptables iptables-legacy iputils iproute bind-utils dhcp-client \
+    # 用于系统监控的 procps 进程工具
     procps-ng \
-    # 核心内核模块支持及语言包 \
+    # 核心内核模块支持及语言包
     kmod tzdata glibc-locale-source glibc-langpack-en glibc-langpack-zh && \
     ############################################## KDE支持 ################################################
     # 最小化KDE
@@ -172,11 +172,6 @@ RUN if [ "$PulseAudio" = "socket" ]; then \
     elif [ "$PulseAudio" = "tcp" ]; then \
         echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
     fi
-# 修复anland 音频堵塞
-# RUN if [ "$ENABLE_anland_kde_ARG" = "true" ]; then \
-#        mkdir -p /home/${USERNAME}/.config && \
-#       echo -e "\n[Sounds]\nEnable=false" >> /home/${USERNAME}/.config/kdeglobals ; \
-#     fi
 
 # 输入法开机自启动
 RUN <<'EOF_RUN'
@@ -220,7 +215,7 @@ Enabled=false
 EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
-    if [ "$BUILD_KDE" = "mobile" ] && [ "$BUILD_KDE_plus" = "true" ] ; then
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" = "mobile" ] ; then
     cat <<EOF > /etc/systemd/system/plasma-mobile.service
 [Unit]
 Description=Start Plasma Mobile
@@ -367,8 +362,8 @@ if [ "$ENABLE_yj_ARG" = "true" ]; then
         fi
     done
 else
-    # UPDATED: Removed NetworkManager, systemd-networkd, and systemd-resolved from structural masking loop to prevent DNS breakages.
-    for service in systemd-udevd.service; do
+    # ORIGINAL MASKING REVERTED: Keeping the original block that nullifies daemons
+    for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
         ln -sf /dev/null "/etc/systemd/system/$service"
     done
 fi
@@ -396,7 +391,17 @@ for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-sett
     printf "[Unit]\nConditionPathIsReadWrite=\n" > "/etc/systemd/system/${unit}.d/99-readonly-fix.conf"
 done
 
-# UPDATED: Completely removed the block here that was writing conditional '99-netmode-limit.conf' files which masked/blocked the execution of NetworkManager.service, dhcpcd.service, systemd-resolved.service, and systemd-networkd.service when setting up container configurations.
+# ORIGINAL CONDITION REVERTED: Re-adding the netmode limits block
+for unit in NetworkManager.service dhcpcd.service systemd-resolved.service systemd-networkd.service; do
+    if [ -f "$GUEST_SYSTEMD_PATH/$unit" ] || [ -f "/etc/systemd/system/multi-user.target.wants/$unit" ]; then
+        mkdir -p "/etc/systemd/system/${unit}.d"
+        cat > "/etc/systemd/system/${unit}.d/99-netmode-limit.conf" << 'EOF'
+[Service]
+ExecCondition=
+ExecCondition=/bin/sh -c "grep -qE 'net_mode=(nat|gateway)' /run/droidspaces/container.config"
+EOF
+    fi
+done
 
 for unit in systemd-udevd.service systemd-udev-trigger.service systemd-udev-settle.service; do
     if [ -f "$GUEST_SYSTEMD_PATH/$unit" ] || [ -f "/etc/systemd/system/multi-user.target.wants/$unit" ]; then
@@ -408,6 +413,29 @@ ExecCondition=/bin/sh -c "grep -q 'enable_hw_access=1' /run/droidspaces/containe
 EOF
     fi
 done
+
+# --- 3. Droidspaces NAT & DNS Fallback Fix ---
+# Force standard glibc resolution and disable systemd-resolved dependency
+rm -f /etc/resolv.conf
+echo 'nameserver 8.8.8.8' > /etc/resolv.conf
+echo 'nameserver 1.1.1.1' >> /etc/resolv.conf
+sed -i 's/^hosts:.*/hosts: files dns myhostname/' /etc/nsswitch.conf
+
+# Create Root-level DHCP Bypass Service for NAT mode
+cat > /etc/systemd/system/ds-dhcp.service << 'EOF_DHCP'
+[Unit]
+Description=Droidspaces NAT DHCP (Root Bypass)
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/dhclient
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF_DHCP
+ln -sf /etc/systemd/system/ds-dhcp.service /etc/systemd/system/multi-user.target.wants/ds-dhcp.service
 
 if [ -f /etc/logrotate.conf ]; then
     sed -i 's/^#maxsize.*/maxsize 50M/' /etc/logrotate.conf
