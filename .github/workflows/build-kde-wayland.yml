@@ -257,7 +257,7 @@ jobs:
           for artifact_dir in "${artifact_dirs[@]}"; do
             target="${artifact_dir##*/anland-pkgs-}"
             case "$target" in
-              ubuntu2604|Debian13|Fedora43)
+              ubuntu2604|Debian13|Fedora43|Fedora44)
                 ;;
               *)
                 echo "不支持的构建产物目标: $target" >&2
