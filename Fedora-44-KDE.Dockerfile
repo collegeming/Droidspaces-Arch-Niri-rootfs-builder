@@ -216,7 +216,7 @@ if [ ! -d "$XDG_RUNTIME_DIR" ]; then
     mkdir -p "$XDG_RUNTIME_DIR"
     chmod 0700 "$XDG_RUNTIME_DIR"
 fi
-alias startplasma-wayland='dbus-run-session startplasma-wayland'
+alias startplasma-wayland='dbus-run-session bash -c "pipewire & pipewire-pulse & wireplumber & sleep 1 && startplasma-wayland"'
 EOF
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
     mkdir -p /home/${USERNAME}/.config
