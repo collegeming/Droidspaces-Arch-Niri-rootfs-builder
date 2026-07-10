@@ -45,7 +45,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     if [ "$BUILD_KDE" = "min" ]; then \
         dnf install -y --setopt=install_weak_deps=False \
         dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts plasma-desktop pipewire pipewire-pulseaudio wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
-        dolphin kate kinfocenter glx-utils pulseaudio-utils vulkan-tools fedora-logos plasma-workspace plasma-workspace-x11 kwin-x11; \
+        dolphin kate kinfocenter glx-utils pulseaudio-utils vulkan-tools fedora-logos plasma-milou plasma-workspace plasma-workspace-x11 kwin-x11; \
     fi && \
     # 精简KDE
     if [ "$BUILD_KDE" = "conc" ]; then \
@@ -53,7 +53,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts plasma-desktop pipewire pipewire-pulseaudio wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
         dolphin kate kinfocenter glx-utils pulseaudio-utils vulkan-tools fedora-logos aha clinfo dmidecode libdisplay-info pciutils wayland-utils xorg-x11-server-Xorg \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
-        kf6-kimageformats plasma-browser-integration libcanberra-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop firefox plasma-discover plasma-workspace plasma-workspace-x11 kwin-x11; \
+        kf6-kimageformats plasma-browser-integration libcanberra-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop firefox plasma-milou plasma-workspace plasma-workspace-x11 kwin-x11; \
     fi && \
     # mobile版KDE
     if [ "$BUILD_KDE" = "mobile" ]; then \
@@ -105,6 +105,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         sed -i 's/^Exec=firefox/Exec=firefox --no-sandbox/g' /usr/share/applications/firefox.desktop && \
         sed -i 's/^Exec=mozilla-firefox/Exec=mozilla-firefox --no-sandbox/g' /usr/share/applications/firefox.desktop; \
     fi && \
+    dnf upgrade -y && \
     dnf clean all && \
     rm -rf /var/cache/dnf
 
