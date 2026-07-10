@@ -24,7 +24,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 COPY anland-build/Fedora44/kwin/*.rpm /tmp/anland-build/Fedora44/kwin/
 COPY anland-build/Fedora44/xwayland/*.rpm /tmp/anland-build/Fedora44/xwayland/
 
-RUN dnf install -y --setopt=install_weak_deps=False \
+RUN echo "fastestmirror=True" >> /etc/dnf/dnf.conf && \
+    echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf && \
+    echo "defaultyes=True" >> /etc/dnf/dnf.conf && \
+    dnf install -y --setopt=install_weak_deps=False \
     # 核心工具组件 
     bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-resolved fastfetch pciutils \
     # 用户请求的基础开发/编辑工具
@@ -97,11 +100,8 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
-    dnf clean all && \
-    rm -rf /var/cache/dnf
-
 ############################################## anland_kde(wayland) 支持 ################################################
-RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
+    if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin rpm 包..." && \
         dnf install -y /tmp/anland-build/Fedora44/kwin/*.rpm && \
@@ -114,7 +114,9 @@ RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "
         echo "--> [开启] anland_kde 支持已安装"; \
     else \
         rm -rf /tmp/anland-build; \
-    fi
+    fi && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
 
 # 修复骁龙8gen2设备在Wayland的花屏问题
 COPY scripts/enable_tp_ubwc.sh /etc/profile.d/enable_tp_ubwc.sh
@@ -126,9 +128,9 @@ RUN ln -sf /usr/sbin/iptables-legacy /usr/sbin/iptables && \
     ln -sf /usr/sbin/iptables-legacy-save /usr/sbin/iptables-save && \
     ln -sf /usr/sbin/iptables-legacy-restore /usr/sbin/iptables-restore && \
     ln -sf /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save && \
-    ln -sf /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore
-
-RUN if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
+    ln -sf /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save && \
+    ln -sf /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore && \
+    if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
         echo "Asia/Shanghai" > /etc/timezone && \
         echo "LANG=zh_CN.UTF-8" > /etc/locale.conf && \
