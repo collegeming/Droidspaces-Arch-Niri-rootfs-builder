@@ -14,6 +14,7 @@ on:
           - 'Ubuntu-25-KDE'
           - 'Ubuntu-26-KDE'
           - 'Fedora-43-KDE'
+          - 'Fedora-44-KDE'
           - 'Arch-KDE'
           - 'all'
           - 'all-wayland'
@@ -38,7 +39,7 @@ on:
         type: boolean
         default: true
       enable_anland_kde:
-        description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43,选择 mobile 强制 wayland）'
+        description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43, Fedora-44,选择 mobile 强制 wayland）'
         required: true
         type: boolean
         default: false
@@ -140,7 +141,7 @@ jobs:
               WAYLAND_PACKAGE_TARGET="all"
               ;;
             all-wayland)
-              TEMPLATES=$(jq -n -c '["Debian-13-KDE","Ubuntu-26-KDE","Fedora-43-KDE"]')
+              TEMPLATES=$(jq -n -c '["Debian-13-KDE","Ubuntu-26-KDE","Fedora-43-KDE","Fedora-44-KDE"]')
               ENABLE_ANLAND_KDE="true"
               WAYLAND_PACKAGE_TARGET="all"
               ;;
@@ -153,6 +154,9 @@ jobs:
               WAYLAND_PACKAGE_TARGET="ubuntu2604"
               ;;
             Fedora-43-KDE)
+              WAYLAND_PACKAGE_TARGET="Fedora43"
+              ;;
+            Fedora-44-KDE)
               TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
               WAYLAND_PACKAGE_TARGET="Fedora43"
               ;;
@@ -161,7 +165,7 @@ jobs:
               ;;
           esac
 
-          if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ] && [ "$TARGET" != "Debian-13-KDE" ] && [ "$TARGET" != "Fedora-43-KDE" ] && [ "$TARGET" != "all-wayland" ]; then
+          if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ] && [ "$TARGET" != "Debian-13-KDE" ] && [ "$TARGET" != "Fedora-43-KDE" ] && [ "$TARGET" != "Fedora-44-KDE" ] && [ "$TARGET" != "all-wayland" ]; then
             echo "错误: 移动版 KDE 目前支持 Ubuntu-26-KDE、Debian-13-KDE、Fedora-43-KDE、all-wayland" >&2
             exit 1
           fi
@@ -182,7 +186,7 @@ jobs:
           fi
 
           if [ "$BUILD_WAYLAND_PACKAGES" = "true" ] && [ -z "$WAYLAND_PACKAGE_TARGET" ]; then
-            echo "错误: KDE Wayland 预编译包仅支持 Debian-13-KDE、Ubuntu-26-KDE、Fedora-43-KDE、all 或 all-wayland" >&2
+            echo "错误: KDE Wayland 预编译包仅支持 Debian-13-KDE、Ubuntu-26-KDE、Fedora-43-KDE、Fedora-44-KDE、all 或 all-wayland" >&2
             exit 1
           fi
           
@@ -235,7 +239,7 @@ jobs:
             -f "ref=${{ github.ref_name }}" \
             -f "inputs[build_target]=$WAYLAND_PACKAGE_TARGET" \
             -f "inputs[anland_ref]=main" \
-            -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
+            -f "inputs[anland_repo]=https://github.com/cramqin/anland.git" \
             -f "inputs[commit_changes]=true" \
             -f "inputs[request_id]=$REQUEST_ID"
 

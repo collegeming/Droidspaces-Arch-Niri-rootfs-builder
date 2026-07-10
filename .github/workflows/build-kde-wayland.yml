@@ -13,6 +13,7 @@ on:
           - 'ubuntu2604'
           - 'Debian13'
           - 'Fedora43'
+          - 'Fedora44'
           - 'all'
       anland_ref:
         description: 'anland 仓库分支、标签或 commit'
@@ -23,7 +24,7 @@ on:
         description: 'anland 仓库地址（默认上游，可填你的 fork）'
         required: false
         type: string
-        default: 'https://github.com/superturtlee/anland.git'
+        default: 'https://github.com/cramqin/anland.git'
       commit_changes:
         description: '构建成功后提交更新到本仓库'
         required: true
