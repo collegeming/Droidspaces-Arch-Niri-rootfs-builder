@@ -158,7 +158,7 @@ jobs:
                     git ca-certificates sudo \
                     build-essential devscripts dpkg-dev fakeroot patch
                   ;;
-                Fedora43)
+                Fedora43|Fedora44)
                   dnf install -y --setopt=install_weak_deps=False \
                     git ca-certificates sudo \
                     dnf-plugins-core rpmdevtools rpm-build patch tar xz
