@@ -31,7 +31,7 @@ COPY anland-build/Fedora44/xwayland/*.rpm /tmp/anland-build/Fedora44/xwayland/
 
 RUN dnf install -y --setopt=install_weak_deps=False \
     # 核心工具组件 
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-resolved fastfetch pciutils \
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-resolved systemd-pam fastfetch pciutils \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具（包含 DHCP 客户端）
@@ -215,14 +215,7 @@ TU_DEBUG=noconform
 EOF
     fi
 
-    cat <<'EOF' >> /home/${USERNAME}/.bashrc
-export XDG_RUNTIME_DIR=/tmp/run-$(id -u)
-if [ ! -d "$XDG_RUNTIME_DIR" ]; then
-    mkdir -p "$XDG_RUNTIME_DIR"
-    chmod 0700 "$XDG_RUNTIME_DIR"
-fi
-alias startplasma-wayland='dbus-run-session startplasma-wayland'
-EOF
+    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
     mkdir -p /home/${USERNAME}/.config
     cat <<'EOF' > /home/${USERNAME}/.config/kwinrc
