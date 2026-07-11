@@ -214,6 +214,8 @@ EOF
     fi
 
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
+    echo 'mkdir -p $XDG_RUNTIME_DIR' >> /home/${USERNAME}/.bashrc
+    echo "alias startplasma-wayland='dbus-run-session startplasma-wayland'" >> /home/${USERNAME}/.bashrc
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
     mkdir -p /home/${USERNAME}/.config
     cat <<'EOF' > /home/${USERNAME}/.config/kwinrc
