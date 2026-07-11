@@ -192,6 +192,19 @@ startplasma-wayland
 
 Wayland support depends on [anland](https://github.com/superturtlee/anland) and the patched KWin/Xwayland prebuilt packages stored in this repository. `Ubuntu-26-KDE` is recommended, while `Debian-13-KDE`, `Fedora-43-KDE`, and the experimental `Fedora-44-KDE` are also available. Fedora 44 uses the Fedora 43 Anland build script but rebuilds the RPMs inside a Fedora 44 container.
 
+### One-Click Installation of anland-build Packages
+
+`anland-build/install.sh` automatically detects the current Linux distribution, installs the matching patched KWin/Xwayland packages, and prevents system updates from overwriting them. If the distribution repositories contain newer versions, the script allows the affected packages to be downgraded to the patched versions included in this repository. Packages that are already held can be updated and then placed on hold again.
+The script reads the system language in `LC_ALL`, `LC_MESSAGES`, and `LANG` priority order. Chinese locales produce Chinese messages; all other locales produce English messages.
+
+The installer supports Debian 13, Ubuntu 26.04, Fedora 43, and Fedora 44 on ARM64/aarch64 only. Debian and Ubuntu use `apt-mark hold`, while Fedora uses `exclude` entries in `/etc/dnf/dnf.conf` to provide equivalent package locking.
+
+Run it from the repository root:
+
+```bash
+sudo ./anland-build/install.sh
+```
+
 Recommended build options:
 
 | Option | Recommended value |
@@ -394,6 +407,7 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 │   ├── qemu-binfmt-register.service
 │   └── qemu-binfmt-register.sh
 ├── anland-build/
+│   ├── install.sh
 │   ├── Debian13/
 │   ├── Fedora43/
 │   ├── Fedora44/
@@ -405,7 +419,7 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
     └── clear.yml
 ```
 
-`anland-build/` stores patched KWin and Xwayland prebuilt packages. `build-kde-wayland.yml` can rebuild those packages and commit the updates back to the repository. The current Chinese RootFS workflow filename contains a leading space: `.github/workflows/ build-rootfs-releases.yml`.
+`anland-build/` stores the patched KWin and Xwayland prebuilt packages together with the one-click installer. `build-kde-wayland.yml` can rebuild those packages and commit the updates back to the repository. The current Chinese RootFS workflow filename contains a leading space: `.github/workflows/ build-rootfs-releases.yml`.
 
 ## Known Limitations
 
