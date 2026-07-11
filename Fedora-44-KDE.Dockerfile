@@ -102,12 +102,17 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
-    if [ -f /usr/share/applications/chromium-browser.desktop ]; then \
-        sed -i 's/^Exec=chromium-browser/Exec=chromium-browser --no-sandbox --test-type/g' /usr/share/applications/chromium-browser.desktop; \
-    fi && \
+    for desktop_file in /usr/share/applications/*chromium*.desktop; do \
+        if [ -f "$desktop_file" ]; then \
+            sed -i 's/^Exec=\([^ ]*chromium[^ ]*\)/Exec=\1 --no-sandbox --test-type/g' "$desktop_file"; \
+        fi; \
+    done && \
     echo '#!/bin/bash' > /usr/local/bin/chromium-browser && \
     echo 'exec /usr/bin/chromium-browser --no-sandbox --test-type "$@"' >> /usr/local/bin/chromium-browser && \
     chmod +x /usr/local/bin/chromium-browser && \
+    echo '#!/bin/bash' > /usr/local/bin/chromium && \
+    echo 'exec /usr/bin/chromium --no-sandbox --test-type "$@"' >> /usr/local/bin/chromium && \
+    chmod +x /usr/local/bin/chromium && \
     dnf upgrade -y && \
     dnf clean all && \
     rm -rf /var/cache/dnf
