@@ -39,7 +39,7 @@ on:
         type: boolean
         default: true
       enable_anland_kde:
-        description: 'Wayland support (supported on Debian-13, Ubuntu-26, Fedora-43; mobile forces Wayland).'
+        description: 'Wayland support (supported on Debian-13, Ubuntu-26, Fedora-43/44; mobile forces Wayland).'
         required: true
         type: boolean
         default: false
@@ -154,6 +154,7 @@ jobs:
               WAYLAND_PACKAGE_TARGET="ubuntu2604"
               ;;
             Fedora-43-KDE)
+              TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
               WAYLAND_PACKAGE_TARGET="Fedora43"
               ;;
             Fedora-44-KDE)
@@ -166,7 +167,7 @@ jobs:
           esac
 
           if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ] && [ "$TARGET" != "Debian-13-KDE" ] && [ "$TARGET" != "Fedora-43-KDE" ] && [ "$TARGET" != "Fedora-44-KDE" ] && [ "$TARGET" != "all-wayland" ]; then
-            echo "Error: KDE mobile edition is currently supported on Ubuntu-26-KDE, Debian-13-KDE, Fedora-43-KDE, all-wayland" >&2
+            echo "Error: KDE mobile edition is currently supported on Ubuntu-26-KDE, Debian-13-KDE, Fedora-43-KDE, Fedora-44-KDE, all-wayland" >&2
             exit 1
           fi
 
@@ -186,7 +187,7 @@ jobs:
           fi
 
           if [ "$BUILD_WAYLAND_PACKAGES" = "true" ] && [ -z "$WAYLAND_PACKAGE_TARGET" ]; then
-            echo "Error: KDE Wayland precompiled packages are only available for Debian-13-KDE, Ubuntu-26-KDE, Fedora-43-KDE, all, or all-wayland" >&2
+            echo "Error: KDE Wayland precompiled packages are only available for Debian-13-KDE, Ubuntu-26-KDE, Fedora-43-KDE, Fedora-44-KDE, all, or all-wayland" >&2
             exit 1
           fi
           
@@ -239,7 +240,7 @@ jobs:
             -f "ref=${{ github.ref_name }}" \
             -f "inputs[build_target]=$WAYLAND_PACKAGE_TARGET" \
             -f "inputs[anland_ref]=main" \
-            -f "inputs[anland_repo]=https://github.com/cramqin/anland.git" \
+            -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
             -f "inputs[commit_changes]=true" \
             -f "inputs[request_id]=$REQUEST_ID"
 

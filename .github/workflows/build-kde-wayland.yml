@@ -24,7 +24,7 @@ on:
         description: 'anland 仓库地址（默认上游，可填你的 fork）'
         required: false
         type: string
-        default: 'https://github.com/cramqin/anland.git'
+        default: 'https://github.com/superturtlee/anland.git'
       commit_changes:
         description: '构建成功后提交更新到本仓库'
         required: true
@@ -117,7 +117,7 @@ jobs:
               ;;
             Fedora44)
               echo "image=fedora:44" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/Fedora44_v5/build.sh" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/Fedora43_v5/build.sh" >> "$GITHUB_OUTPUT"
               echo "dest=anland-build/Fedora44" >> "$GITHUB_OUTPUT"
               echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
               ;;
