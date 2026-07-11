@@ -20,6 +20,9 @@ ARG USERNAME
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# 加速下载
+RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf
+
 # 复制本仓库内预编译的 anland_kde rpm 包
 COPY anland-build/Fedora44/kwin/*.rpm /tmp/anland-build/Fedora44/kwin/
 COPY anland-build/Fedora44/xwayland/*.rpm /tmp/anland-build/Fedora44/xwayland/
@@ -100,7 +103,6 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     if [ -f /usr/share/applications/chromium-browser.desktop ]; then \
         sed -i 's/^Exec=chromium-browser/Exec=chromium-browser --no-sandbox/g' /usr/share/applications/chromium-browser.desktop; \
     fi && \
-    dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm && \
     dnf upgrade -y && \
     dnf clean all && \
     rm -rf /var/cache/dnf
