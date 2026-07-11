@@ -31,7 +31,7 @@
 | `Ubuntu-25-KDE` | `ubuntu:25.10` | `min`、`conc`、`none` | 不支持 | 支持 `nosnap`。 |
 | `Ubuntu-26-KDE` | `ubuntu:26.04` | `min`、`conc`、`mobile`、`none` | 支持 | 支持 `nosnap`，推荐用于 Anland KDE。 |
 | `Fedora-43-KDE` | `fedora:43` | `min`、`conc`、`mobile`、`none` | 支持 | 某些设备需要启用硬件访问。 |
-| `Fedora-44-KDE` | `fedora:44` | `min`、`conc`、`mobile`、`none` | 实验性支持 | Wayland 复用 Fedora 43 的 patched KWin/Xwayland RPM。 |
+| `Fedora-44-KDE` | `fedora:44` | `min`、`conc`、`mobile`、`none` | 实验性支持 | Wayland 使用 Fedora 44 环境构建的 patched KWin/Xwayland RPM。 |
 | `Arch-KDE` | `ogarcia/archlinux` | `min`、`conc`、`none` | 不支持 | 内核建议 5.10 或更新；当前不建议使用本项目的 QEMU/binfmt 跨架构方案。 |
 
 `all` 会构建全部 Dockerfile 模板。`all-wayland` 只构建支持 Wayland/Anland 的目标，也就是 `Debian-13-KDE`、`Ubuntu-26-KDE`、`Fedora-43-KDE` 和 `Fedora-44-KDE`，并强制启用 Wayland 支持。
@@ -190,7 +190,7 @@ startplasma-wayland
 
 ## Wayland 和 Anland 配置
 
-Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 以及本仓库内的 patched KWin/Xwayland 预编译包。建议使用 `Ubuntu-26-KDE`，也可以使用 `Debian-13-KDE`、`Fedora-43-KDE` 或实验性的 `Fedora-44-KDE`。Fedora 44 暂时复用 Fedora 43 的 patched KWin/Xwayland RPM。
+Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 以及本仓库内的 patched KWin/Xwayland 预编译包。建议使用 `Ubuntu-26-KDE`，也可以使用 `Debian-13-KDE`、`Fedora-43-KDE` 或实验性的 `Fedora-44-KDE`。Fedora 44 使用 Fedora 43 的 Anland 构建脚本，但在 Fedora 44 容器内重新构建 RPM。
 
 推荐构建选项：
 
@@ -396,6 +396,7 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ├── anland-build/
 │   ├── Debian13/
 │   ├── Fedora43/
+│   ├── Fedora44/
 │   └── ubuntu2604/
 └── .github/workflows/
     ├── build-kde-wayland.yml

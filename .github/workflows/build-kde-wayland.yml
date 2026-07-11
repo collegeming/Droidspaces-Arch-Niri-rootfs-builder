@@ -13,6 +13,7 @@ on:
           - 'ubuntu2604'
           - 'Debian13'
           - 'Fedora43'
+          - 'Fedora44'
           - 'all'
       anland_ref:
         description: 'anland 仓库分支、标签或 commit'
@@ -56,9 +57,9 @@ jobs:
 
           case "${{ github.event.inputs.build_target }}" in
             all)
-              targets='["ubuntu2604","Debian13","Fedora43"]'
+              targets='["ubuntu2604","Debian13","Fedora43","Fedora44"]'
               ;;
-            ubuntu2604|Debian13|Fedora43)
+            ubuntu2604|Debian13|Fedora43|Fedora44)
               targets='["${{ github.event.inputs.build_target }}"]'
               ;;
             *)
@@ -114,6 +115,12 @@ jobs:
               echo "dest=anland-build/Fedora43" >> "$GITHUB_OUTPUT"
               echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
               ;;
+            Fedora44)
+              echo "image=fedora:44" >> "$GITHUB_OUTPUT"
+              echo "script=producers/kde/Fedora43_v5/build.sh" >> "$GITHUB_OUTPUT"
+              echo "dest=anland-build/Fedora44" >> "$GITHUB_OUTPUT"
+              echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
+              ;;
             *)
               echo "不支持的构建目标: $BUILD_TARGET" >&2
               exit 1
@@ -151,7 +158,7 @@ jobs:
                     git ca-certificates sudo \
                     build-essential devscripts dpkg-dev fakeroot patch
                   ;;
-                Fedora43)
+                Fedora43|Fedora44)
                   dnf install -y --setopt=install_weak_deps=False \
                     git ca-certificates sudo \
                     dnf-plugins-core rpmdevtools rpm-build patch tar xz
@@ -250,7 +257,7 @@ jobs:
           for artifact_dir in "${artifact_dirs[@]}"; do
             target="${artifact_dir##*/anland-pkgs-}"
             case "$target" in
-              ubuntu2604|Debian13|Fedora43)
+              ubuntu2604|Debian13|Fedora43|Fedora44)
                 ;;
               *)
                 echo "不支持的构建产物目标: $target" >&2

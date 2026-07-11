@@ -31,7 +31,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 | `Ubuntu-25-KDE` | `ubuntu:25.10` | `min`, `conc`, `none` | Not supported | Supports `nosnap`. |
 | `Ubuntu-26-KDE` | `ubuntu:26.04` | `min`, `conc`, `mobile`, `none` | Supported | Supports `nosnap`; recommended for Anland KDE. |
 | `Fedora-43-KDE` | `fedora:43` | `min`, `conc`, `mobile`, `none` | Supported | Some devices require hardware access to avoid flicker or crashes. |
-| `Fedora-44-KDE` | `fedora:44` | `min`, `conc`, `mobile`, `none` | Experimental | Wayland reuses the Fedora 43 patched KWin/Xwayland RPMs. |
+| `Fedora-44-KDE` | `fedora:44` | `min`, `conc`, `mobile`, `none` | Experimental | Wayland uses patched KWin/Xwayland RPMs built in Fedora 44. |
 | `Arch-KDE` | `ogarcia/archlinux` | `min`, `conc`, `none` | Not supported | Kernel 5.10 or newer is recommended; this project's QEMU/binfmt flow is not recommended for Arch at the moment. |
 
 `all` builds every Dockerfile template. `all-wayland` builds only the Wayland-capable targets, currently `Debian-13-KDE`, `Ubuntu-26-KDE`, `Fedora-43-KDE`, and `Fedora-44-KDE`, and forces Wayland support on.
@@ -190,7 +190,7 @@ startplasma-wayland
 
 ## Wayland and Anland Setup
 
-Wayland support depends on [anland](https://github.com/superturtlee/anland) and the patched KWin/Xwayland prebuilt packages stored in this repository. `Ubuntu-26-KDE` is recommended, while `Debian-13-KDE`, `Fedora-43-KDE`, and the experimental `Fedora-44-KDE` are also available. Fedora 44 currently reuses the Fedora 43 patched KWin/Xwayland RPMs.
+Wayland support depends on [anland](https://github.com/superturtlee/anland) and the patched KWin/Xwayland prebuilt packages stored in this repository. `Ubuntu-26-KDE` is recommended, while `Debian-13-KDE`, `Fedora-43-KDE`, and the experimental `Fedora-44-KDE` are also available. Fedora 44 uses the Fedora 43 Anland build script but rebuilds the RPMs inside a Fedora 44 container.
 
 Recommended build options:
 
@@ -396,6 +396,7 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ├── anland-build/
 │   ├── Debian13/
 │   ├── Fedora43/
+│   ├── Fedora44/
 │   └── ubuntu2604/
 └── .github/workflows/
     ├── build-kde-wayland.yml

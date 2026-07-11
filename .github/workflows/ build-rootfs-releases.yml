@@ -159,7 +159,7 @@ jobs:
               ;;
             Fedora-44-KDE)
               TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
-              WAYLAND_PACKAGE_TARGET="Fedora43"
+              WAYLAND_PACKAGE_TARGET="Fedora44"
               ;;
             *)
               TEMPLATES=$(jq -n -c --arg t "$TARGET" '[$t]')
