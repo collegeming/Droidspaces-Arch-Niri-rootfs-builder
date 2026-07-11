@@ -104,14 +104,14 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     fi && \
     for desktop_file in /usr/share/applications/*chromium*.desktop; do \
         if [ -f "$desktop_file" ]; then \
-            sed -i 's/^Exec=\([^ ]*chromium[^ ]*\)/Exec=\1 --no-sandbox --test-type/g' "$desktop_file"; \
+            sed -i 's/^Exec=\([^ ]*chromium[^ ]*\)/Exec=\1 --no-sandbox --test-type --password-store=basic/g' "$desktop_file"; \
         fi; \
     done && \
     echo '#!/bin/bash' > /usr/local/bin/chromium-browser && \
-    echo 'exec /usr/bin/chromium-browser --no-sandbox --test-type "$@"' >> /usr/local/bin/chromium-browser && \
+    echo 'exec /usr/bin/chromium-browser --no-sandbox --test-type --password-store=basic "$@"' >> /usr/local/bin/chromium-browser && \
     chmod +x /usr/local/bin/chromium-browser && \
     echo '#!/bin/bash' > /usr/local/bin/chromium && \
-    echo 'exec /usr/bin/chromium --no-sandbox --test-type "$@"' >> /usr/local/bin/chromium && \
+    echo 'exec /usr/bin/chromium --no-sandbox --test-type --password-store=basic "$@"' >> /usr/local/bin/chromium && \
     chmod +x /usr/local/bin/chromium && \
     dnf upgrade -y && \
     dnf clean all && \
