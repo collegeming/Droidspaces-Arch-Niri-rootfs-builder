@@ -192,6 +192,19 @@ startplasma-wayland
 
 Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 以及本仓库内的 patched KWin/Xwayland 预编译包。建议使用 `Ubuntu-26-KDE`，也可以使用 `Debian-13-KDE`、`Fedora-43-KDE` 或实验性的 `Fedora-44-KDE`。Fedora 44 使用 Fedora 43 的 Anland 构建脚本，但在 Fedora 44 容器内重新构建 RPM。
 
+### 一键安装 anland-build 包
+
+`anland-build/install.sh` 会自动识别当前发行版，安装对应的 patched KWin/Xwayland 包，并防止系统更新将它们覆盖。如果系统仓库中的版本更新，脚本会允许将相关包降级到本仓库的 patched 版本；已经 hold 的相关包也会在更新后重新设置 hold。
+脚本会按 `LC_ALL`、`LC_MESSAGES`、`LANG` 的优先级读取系统语言：中文 locale 输出中文，其他 locale 输出英文。
+
+支持 Debian 13、Ubuntu 26.04、Fedora 43 和 Fedora 44，仅支持 ARM64/aarch64。Debian/Ubuntu 使用 `apt-mark hold`，Fedora 通过 `/etc/dnf/dnf.conf` 的 `exclude` 实现等效锁定。
+
+在仓库根目录运行：
+
+```bash
+sudo ./anland-build/install.sh
+```
+
 推荐构建选项：
 
 | 选项 | 推荐值 |
@@ -394,6 +407,7 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 │   ├── qemu-binfmt-register.service
 │   └── qemu-binfmt-register.sh
 ├── anland-build/
+│   ├── install.sh
 │   ├── Debian13/
 │   ├── Fedora43/
 │   ├── Fedora44/
@@ -405,7 +419,7 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
     └── clear.yml
 ```
 
-`anland-build/` 存放 patched KWin 和 Xwayland 预编译包。`build-kde-wayland.yml` 可以重新构建这些包并提交回仓库。当前中文 RootFS workflow 文件名包含一个前导空格，路径为 `.github/workflows/ build-rootfs-releases.yml`。
+`anland-build/` 存放 patched KWin 和 Xwayland 预编译包以及一键安装脚本。`build-kde-wayland.yml` 可以重新构建这些包并提交回仓库。当前中文 RootFS workflow 文件名包含一个前导空格，路径为 `.github/workflows/ build-rootfs-releases.yml`。
 
 ## 已知限制
 
