@@ -20,6 +20,14 @@ ARG USERNAME
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# 启用 APT 并行连接、HTTP(S) pipeline 和下载重试
+RUN printf '%s\n' \
+    'Acquire::Queue-Mode "host";' \
+    'Acquire::http::Pipeline-Depth "10";' \
+    'Acquire::https::Pipeline-Depth "10";' \
+    'Acquire::Retries "3";' \
+    > /etc/apt/apt.conf.d/99parallel-downloads
+
 # 更新基础系统并启用 non-free（非自由）和 contrib 软件源
 RUN (sed -i 's/main/main contrib non-free/g' /etc/apt/sources.list 2>/dev/null || sed -i 's/Components: main/Components: main contrib non-free/g' /etc/apt/sources.list.d/debian.sources) && \
     apt-get update && \

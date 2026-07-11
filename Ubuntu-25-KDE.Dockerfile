@@ -20,6 +20,14 @@ ARG USERNAME
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# 启用 APT 并行连接、HTTP(S) pipeline 和下载重试
+RUN printf '%s\n' \
+    'Acquire::Queue-Mode "host";' \
+    'Acquire::http::Pipeline-Depth "10";' \
+    'Acquire::https::Pipeline-Depth "10";' \
+    'Acquire::Retries "3";' \
+    > /etc/apt/apt.conf.d/99parallel-downloads
+
 # 优先复制自定义脚本
 COPY scripts/download-firmware /usr/local/bin/
 COPY scripts/nosnap.sh /usr/local/sbin/nosnap
