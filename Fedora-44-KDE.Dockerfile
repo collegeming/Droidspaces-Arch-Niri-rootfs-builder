@@ -215,9 +215,14 @@ TU_DEBUG=noconform
 EOF
     fi
 
-    echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
-    echo 'mkdir -p $XDG_RUNTIME_DIR' >> /home/${USERNAME}/.bashrc
-    echo "alias startplasma-wayland='dbus-run-session startplasma-wayland'" >> /home/${USERNAME}/.bashrc
+    cat <<'EOF' >> /home/${USERNAME}/.bashrc
+export XDG_RUNTIME_DIR=/tmp/run-$(id -u)
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chmod 0700 "$XDG_RUNTIME_DIR"
+fi
+alias startplasma-wayland='dbus-run-session startplasma-wayland'
+EOF
     if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] ; then
     mkdir -p /home/${USERNAME}/.config
     cat <<'EOF' > /home/${USERNAME}/.config/kwinrc
