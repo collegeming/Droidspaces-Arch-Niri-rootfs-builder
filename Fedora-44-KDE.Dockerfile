@@ -21,7 +21,9 @@ ARG USERNAME
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 加速下载
-RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf
+RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf && \
+    echo "fastestmirror=True" >> /etc/dnf/dnf.conf && \
+    echo "defaultyes=True" >> /etc/dnf/dnf.conf
 
 # 复制本仓库内预编译的 anland_kde rpm 包
 COPY anland-build/Fedora44/kwin/*.rpm /tmp/anland-build/Fedora44/kwin/
