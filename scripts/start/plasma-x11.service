@@ -1,0 +1,18 @@
+[Unit]
+Description=Start Plasma X11
+After=network.target display-manager.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=1000
+PAMName=login
+
+EnvironmentFile=-/etc/environment
+ExecStart=/bin/bash -lc 'DISPLAY=:5 startplasma-x11'
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

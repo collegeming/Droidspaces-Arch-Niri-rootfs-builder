@@ -170,7 +170,6 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
         echo "DISPLAY=:5" >> /etc/environment; \
     else \
         echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
-        echo "DISPLAY=:0" >> /etc/environment; \
         echo "QT_QPA_PLATFORM=wayland" >> /etc/environment; \
         echo "ANLAND=1" >> /etc/environment; \
         echo "ANLAND_SOCKET=/run/display.sock" >> /etc/environment; \
@@ -178,10 +177,6 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
         echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
         echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
         echo "FD_FORCE_KGSL=1" >> /etc/environment; \
-    fi
-# Fedora mobile 默认缩放 300%
-RUN if [ "$BUILD_KDE" = "mobile" ]; then \
-        echo "QT_SCALE_FACTOR=3" >> /etc/environment; \
     fi
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
@@ -191,6 +186,7 @@ RUN if [ "$PulseAudio" = "socket" ]; then \
     fi
 
 # 输入法开机自启动
+COPY scripts/start/ /tmp/droidspaces-start/
 RUN <<'EOF_RUN'
     if [ "$ENABLE_srf_ARG" = "true" ]; then
     mkdir -p /home/${USERNAME}/.config/autostart
@@ -233,68 +229,22 @@ EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
     if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" = "mobile" ] ; then
-    cat <<EOF > /etc/systemd/system/plasma-mobile.service
-[Unit]
-Description=Start Plasma Mobile
-After=network.target display-manager.service
-
-[Service]
-Type=simple
-User=1000
-PAMName=login
-
-EnvironmentFile=-/etc/environment
-ExecStart=/bin/bash -lc 'startplasmamobile'
-Restart=no
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    install -Dm644 /tmp/droidspaces-start/plasma-mobile.service /etc/systemd/system/plasma-mobile.service
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-mobile.service /etc/systemd/system/multi-user.target.wants/plasma-mobile.service
     fi
     if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "false" ] && [ "$BUILD_KDE" != "mobile" ] ; then
-    cat <<EOF > /etc/systemd/system/plasma-x11.service
-[Unit]
-Description=Start Plasma X11
-After=network.target display-manager.service
-
-[Service]
-Type=simple
-User=1000
-EnvironmentFile=-/etc/environment
-ExecStart=/bin/bash -lc 'DISPLAY=:5 startplasma-x11'
-Restart=no
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    install -Dm644 /tmp/droidspaces-start/plasma-x11.service /etc/systemd/system/plasma-x11.service
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
     fi
     # KDE wayland 自启动
     if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] && [ "$BUILD_KDE" != "mobile" ] ; then
-    cat <<EOF > /etc/systemd/system/plasma-wayland.service
-[Unit]
-Description=Start Plasma Wayland
-After=network.target display-manager.service
-
-[Service]
-Type=simple
-User=1000
-PAMName=login
-
-EnvironmentFile=-/etc/environment
-ExecStart=/bin/bash -lc 'startplasma-wayland'
-Restart=no
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    install -Dm644 /tmp/droidspaces-start/plasma-wayland.service /etc/systemd/system/plasma-wayland.service
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-wayland.service /etc/systemd/system/multi-user.target.wants/plasma-wayland.service
     fi
+    rm -rf /tmp/droidspaces-start
 EOF_RUN
 
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
