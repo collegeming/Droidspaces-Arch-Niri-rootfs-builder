@@ -180,7 +180,6 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
         echo "DISPLAY=:5" >> /etc/environment; \
     else \
         echo "WAYLAND_DISPLAY=wayland-0" >> /etc/environment; \
-        echo "DISPLAY=:0" >> /etc/environment; \
         echo "QT_QPA_PLATFORM=wayland" >> /etc/environment; \
         echo "ANLAND=1" >> /etc/environment; \
         echo "ANLAND_SOCKET=/run/display.sock" >> /etc/environment; \

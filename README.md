@@ -18,6 +18,7 @@
 - [DRI3 和 SELinux 问题处理](#dri3-和-selinux-问题处理)
 - [账户、密码和用户名修改](#账户密码和用户名修改)
 - [本地构建](#本地构建)
+- [安装硬件固件](#安装硬件固件)
 - [仓库结构](#仓库结构)
 - [已知限制](#已知限制)
 - [致谢](#致谢)
@@ -31,7 +32,7 @@
 | `Ubuntu-25-KDE` | `ubuntu:25.10` | `min`、`conc`、`none` | 不支持 | 支持 `nosnap`。 |
 | `Ubuntu-26-KDE` | `ubuntu:26.04` | `min`、`conc`、`mobile`、`none` | 支持 | 支持 `nosnap`，推荐用于 Anland KDE。 |
 | `Fedora-43-KDE` | `fedora:43` | `min`、`conc`、`mobile`、`none` | 支持 | 某些设备需要启用硬件访问。 |
-| `Fedora-44-KDE` | `fedora:44` | `min`、`conc`、`mobile`、`none` | 实验性支持 | Wayland 使用 Fedora 44 环境构建的 patched KWin/Xwayland RPM。 |
+| `Fedora-44-KDE` | `fedora:44` | `min`、`conc`、`mobile`、`none` | 支持 | 某些设备需要启用硬件访问。 |
 | `Arch-KDE` | `ogarcia/archlinux` | `min`、`conc`、`none` | 不支持 | 内核建议 5.10 或更新；当前不建议使用本项目的 QEMU/binfmt 跨架构方案。 |
 
 `all` 会构建全部 Dockerfile 模板。`all-wayland` 只构建支持 Wayland/Anland 的目标，也就是 `Debian-13-KDE`、`Ubuntu-26-KDE`、`Fedora-43-KDE` 和 `Fedora-44-KDE`，并强制启用 Wayland 支持。
@@ -40,6 +41,7 @@
 
 - 多发行版 RootFS 构建：支持 Debian、Ubuntu、Fedora 和 Arch。
 - KDE 桌面可裁剪：支持命令行 RootFS、最小 KDE、精简 KDE 和移动版 KDE。
+- 桌面自动启动与故障恢复：X11、Plasma Wayland 和 Plasma Mobile 使用统一的 systemd 服务模板，异常退出后会限频自动重启。
 - Termux:X11 桌面启动：X11 模式下默认使用 `DISPLAY=:5`。
 - PulseAudio 音频转发：支持 Unix socket、TCP 和关闭音频转发。
 - 中文环境：可选启用 `zh_CN.UTF-8` 和 `Asia/Shanghai` 时区。
@@ -50,7 +52,7 @@
 - 开发工具：可选安装编译器、CMake、Python 开发环境等。
 - 压缩工具：可选安装 `zip`、`unzip`、`7z`、`xz`、`tar`、`gzip` 等工具。
 - Docker：可选在 RootFS 内安装 Docker 相关软件包。
-- Wayland/Anland：对 Debian 13、Ubuntu 26.04 和 Fedora 43 提供 patched KWin 与 Xwayland 包。
+- Wayland/Anland：对 Debian 13、Ubuntu 26.04、Fedora 43 和 Fedora 44 提供稳定的 patched KWin 与 Xwayland 包。
 - Release 自动发布：构建完成后会把 RootFS `.tar.xz` 和对应的音频启动脚本上传到 GitHub Release。
 
 ## 构建选项说明
@@ -63,7 +65,7 @@ GitHub Actions 的主要输入项如下：
 | 自定义用户名 (`custom_username`) | 字符串 | `Gold` | RootFS 默认用户。Release 中的音频启动脚本会同步替换该用户名。 |
 | KDE 桌面选择 (`build_KDE`) | `conc`、`min`、`mobile`、`none` | `min` | KDE 桌面规模。`none` 表示只构建命令行环境。 |
 | KDE 桌面开机自启动 (`build_KDE_plus`) | `true`、`false` | `true` | 是否创建 KDE 自启动 systemd 服务。需要已安装 KDE；选择 `none` 桌面时应关闭。 |
-| Wayland 支持 (`enable_anland_kde`) | `true`、`false` | `false` | 是否启用 Wayland/Anland 支持。只支持 Debian 13、Ubuntu 26 和 Fedora 43。 |
+| Wayland 支持 (`enable_anland_kde`) | `true`、`false` | `false` | 是否启用 Wayland/Anland 支持。支持 Debian 13、Ubuntu 26、Fedora 43 和 Fedora 44。 |
 | PulseAudio 音频转发 (`PulseAudio`) | `socket`、`tcp`、`none` | `socket` | X11 模式下的音频转发方式。启用 Anland 时会被强制改为 `none`。 |
 | 使用中文语言和时区 (`enable_zh_tz`) | `true`、`false` | 中文工作流默认为 `true` | 启用中文 locale 并设置上海时区。 |
 | 高通骁龙 GPU 支持 (`enable_mesa`) | `true`、`false` | `true` | 启用高通 GPU/Mesa 相关支持。 |
@@ -126,6 +128,16 @@ Release 通常包含：
 
 ## 启动 KDE 桌面
 
+启用 `build_KDE_plus` 后，构建流程会根据桌面模式安装对应的 systemd 服务：
+
+| 桌面模式 | 服务文件 | 启动命令 |
+| --- | --- | --- |
+| X11 | `plasma-x11.service` | `DISPLAY=:5 startplasma-x11` |
+| Wayland | `plasma-wayland.service` | `startplasma-wayland` |
+| Mobile | `plasma-mobile.service` | `startplasmamobile` |
+
+这些服务以 UID 1000 用户运行并读取 `/etc/environment`。桌面进程异常退出时会在 2 秒后自动重启；如果 60 秒内启动失败超过 5 次，systemd 会暂时停止重试，防止形成崩溃循环。正常退出不会触发自动重启。
+
 ### X11 模式
 
 X11 模式适用于未启用 `enable_anland_kde` 的构建。默认环境变量为：
@@ -171,7 +183,7 @@ startplasma-x11
 
 ### Wayland/Anland 模式
 
-Wayland/Anland 模式适用于启用 `enable_anland_kde` 的 Debian 13、Ubuntu 26 和 Fedora 43 构建。默认环境变量包括：
+Wayland/Anland 模式适用于启用 `enable_anland_kde` 的 Debian 13、Ubuntu 26、Fedora 43 和 Fedora 44 构建。默认环境变量包括：
 
 ```text
 WAYLAND_DISPLAY=wayland-0
@@ -188,9 +200,15 @@ ANLAND_DRM_DEVICE=/dev/dri/renderD128
 startplasma-wayland
 ```
 
+如果构建的是 `mobile` 模式，对应的手动启动命令为：
+
+```bash
+startplasmamobile
+```
+
 ## Wayland 和 Anland 配置
 
-Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 以及本仓库内的 patched KWin/Xwayland 预编译包。建议使用 `Ubuntu-26-KDE`，也可以使用 `Debian-13-KDE`、`Fedora-43-KDE` 或实验性的 `Fedora-44-KDE`。Fedora 44 使用 Fedora 43 的 Anland 构建脚本，但在 Fedora 44 容器内重新构建 RPM。
+Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 以及本仓库内的 patched KWin/Xwayland 预编译包。建议使用 `Ubuntu-26-KDE`，也可以使用 `Debian-13-KDE`、`Fedora-43-KDE` 或 `Fedora-44-KDE`。Fedora 44 已稳定支持 Wayland/Anland；它使用 Fedora 43 的 Anland 构建脚本，但在 Fedora 44 容器内重新构建 RPM。
 
 ### 一键安装 anland-build 包
 
@@ -295,30 +313,6 @@ allow untrusted_app_27 droidspacesd fd use
 
 保存后重启设备。
 
-## 账户、密码和用户名修改
-
-默认配置：
-
-| 项目 | 默认值 |
-| --- | --- |
-| 用户名 | `Gold`，可通过 workflow 的 `custom_username` 修改 |
-| 密码 | `1234` |
-| Shell | `/bin/bash` |
-
-建议导入后尽快修改密码：
-
-```bash
-passwd
-```
-
-如需在构建后手动修改用户名，请在 root 用户下执行。假设旧用户名为 `Gold`，新用户名为 `NewUser`：
-
-```bash
-usermod -l NewUser Gold
-usermod -d /home/NewUser -m NewUser
-groupmod -n NewUser Gold
-passwd NewUser
-```
 
 ## 本地构建
 
@@ -383,6 +377,18 @@ chmod +x build_rootfs-qemu-aarch64.sh
 Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ```
 
+## 安装硬件固件
+
+Debian 13 和 Ubuntu 24/25/26 RootFS 内置了 `/usr/local/bin/download-firmware`，用于安装 `linux-firmware`，并将 `/lib/firmware` 中的 `.zst` 压缩固件解压为普通固件文件。脚本还会修复原本指向 `.zst` 文件的软链接，适用于内核、驱动或容器环境无法直接读取压缩固件的情况。
+
+该工具只会被复制到 RootFS，不会在构建或容器启动时自动执行。需要使用时，在容器内手动运行：
+
+```bash
+sudo download-firmware
+```
+
+脚本会安装 `zstd` 和 `linux-firmware`，因此执行时需要可用的软件源和网络连接。成功后会创建 `/var/lib/.fw-setup-completed` 标记文件。当前脚本不会根据该标记跳过后续执行；重复运行仍会更新软件包列表并重新扫描固件目录。
+
 ## 仓库结构
 
 ```text
@@ -397,6 +403,10 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ├── build_rootfs-native.sh
 ├── build_rootfs-qemu-aarch64.sh
 ├── scripts/
+│   ├── start/
+│   │   ├── plasma-mobile.service
+│   │   ├── plasma-wayland.service
+│   │   └── plasma-x11.service
 │   ├── bashrc.sh
 │   ├── download-firmware
 │   ├── enable_tp_ubwc.sh
@@ -423,9 +433,9 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 
 ## 已知限制
 
-- Wayland/Anland 当前只覆盖 Debian 13、Ubuntu 26 和 Fedora 43。
+- Wayland/Anland 当前只覆盖 Debian 13、Ubuntu 26 和 Fedora 43/44。
 - Ubuntu 24、Ubuntu 25 和 Arch 当前按 X11 路径使用。
-- `mobile` 模式只允许 Debian 13、Ubuntu 26 和 Fedora 43。
+- `mobile` 模式只允许 Debian 13、Ubuntu 26 和 Fedora 43/44。
 - 启用 Anland 后，工作流会关闭 PulseAudio 转发，因为 Anland App 自带音频路径。
 - Fedora 在部分设备上需要硬件访问，否则可能闪屏或崩溃。
 - Ubuntu 和 Debian 在未启用 `noseccomp` 或内核缺少 `USER_NS` 时，可能出现卡顿。

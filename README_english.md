@@ -18,6 +18,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - [DRI3 and SELinux Fixes](#dri3-and-selinux-fixes)
 - [Account, Password, and Username Changes](#account-password-and-username-changes)
 - [Local Build](#local-build)
+- [Install Hardware Firmware](#install-hardware-firmware)
 - [Repository Layout](#repository-layout)
 - [Known Limitations](#known-limitations)
 - [Acknowledgements](#acknowledgements)
@@ -31,7 +32,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 | `Ubuntu-25-KDE` | `ubuntu:25.10` | `min`, `conc`, `none` | Not supported | Supports `nosnap`. |
 | `Ubuntu-26-KDE` | `ubuntu:26.04` | `min`, `conc`, `mobile`, `none` | Supported | Supports `nosnap`; recommended for Anland KDE. |
 | `Fedora-43-KDE` | `fedora:43` | `min`, `conc`, `mobile`, `none` | Supported | Some devices require hardware access to avoid flicker or crashes. |
-| `Fedora-44-KDE` | `fedora:44` | `min`, `conc`, `mobile`, `none` | Experimental | Wayland uses patched KWin/Xwayland RPMs built in Fedora 44. |
+| `Fedora-44-KDE` | `fedora:44` | `min`, `conc`, `mobile`, `none` | Supported | Some devices require hardware access. |
 | `Arch-KDE` | `ogarcia/archlinux` | `min`, `conc`, `none` | Not supported | Kernel 5.10 or newer is recommended; this project's QEMU/binfmt flow is not recommended for Arch at the moment. |
 
 `all` builds every Dockerfile template. `all-wayland` builds only the Wayland-capable targets, currently `Debian-13-KDE`, `Ubuntu-26-KDE`, `Fedora-43-KDE`, and `Fedora-44-KDE`, and forces Wayland support on.
@@ -40,6 +41,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 
 - Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, and Arch.
 - Scalable KDE desktop profiles, from command-line only to minimal, compact, and mobile KDE.
+- Desktop auto-start and failure recovery using shared systemd service templates for X11, Plasma Wayland, and Plasma Mobile, with rate-limited automatic restarts after failures.
 - Termux:X11 desktop startup support. X11 mode defaults to `DISPLAY=:5`.
 - PulseAudio forwarding through Unix socket, TCP, or disabled mode.
 - Optional Chinese locale with `zh_CN.UTF-8` and `Asia/Shanghai` timezone.
@@ -50,7 +52,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Optional development toolchain packages, including compilers, CMake, and Python development tooling.
 - Optional compression utilities such as `zip`, `unzip`, `7z`, `xz`, `tar`, and `gzip`.
 - Optional Docker packages inside the RootFS.
-- Wayland/Anland support for Debian 13, Ubuntu 26.04, and Fedora 43 through patched KWin and Xwayland packages.
+- Stable Wayland/Anland support for Debian 13, Ubuntu 26.04, Fedora 43, and Fedora 44 through patched KWin and Xwayland packages.
 - Automatic Release publishing with the RootFS `.tar.xz` files and matching audio startup scripts.
 
 ## Build Options
@@ -63,7 +65,7 @@ The main GitHub Actions inputs are:
 | Custom username (`custom_username`) | String | `Gold` | Default user inside the RootFS. The audio startup script in the Release is patched with this username. |
 | KDE desktop choice (`build_KDE`) | `conc`, `min`, `mobile`, `none` | `min` | KDE desktop size. `none` builds a command-line only RootFS. |
 | KDE desktop auto-start (`build_KDE_plus`) | `true`, `false` | `true` | Creates a systemd service to auto-start KDE. Requires a KDE mode other than `none`; turn it off when building `none`. |
-| Wayland support (`enable_anland_kde`) | `true`, `false` | `false` | Enables Wayland/Anland support. Supported only on Debian 13, Ubuntu 26, and Fedora 43. |
+| Wayland support (`enable_anland_kde`) | `true`, `false` | `false` | Enables Wayland/Anland support on Debian 13, Ubuntu 26, Fedora 43, and Fedora 44. |
 | PulseAudio forwarding (`PulseAudio`) | `socket`, `tcp`, `none` | `socket` | Audio forwarding mode for X11 builds. It is forced to `none` when Anland is enabled. |
 | Chinese language and timezone (`enable_zh_tz`) | `true`, `false` | `false` in the English workflow | Enables Chinese locale and the Shanghai timezone. |
 | Qualcomm Snapdragon GPU support (`enable_mesa`) | `true`, `false` | `true` | Enables Qualcomm Snapdragon GPU and Mesa-related support. |
@@ -126,6 +128,16 @@ The Release usually contains:
 
 ## Start KDE Desktop
 
+When `build_KDE_plus` is enabled, the build installs the systemd service matching the selected desktop mode:
+
+| Desktop mode | Service file | Start command |
+| --- | --- | --- |
+| X11 | `plasma-x11.service` | `DISPLAY=:5 startplasma-x11` |
+| Wayland | `plasma-wayland.service` | `startplasma-wayland` |
+| Mobile | `plasma-mobile.service` | `startplasmamobile` |
+
+These services run as UID 1000 and load `/etc/environment`. If the desktop process fails, systemd restarts it after 2 seconds. If it fails more than 5 times within 60 seconds, systemd temporarily stops retrying to prevent a crash loop. A normal exit does not trigger a restart.
+
 ### X11 Mode
 
 X11 mode applies to builds where `enable_anland_kde` is disabled. The default display environment is:
@@ -171,7 +183,7 @@ The actual auto-start behavior still depends on Droidspaces systemd support, per
 
 ### Wayland/Anland Mode
 
-Wayland/Anland mode applies to Debian 13, Ubuntu 26, and Fedora 43 builds where `enable_anland_kde` is enabled. The default environment includes:
+Wayland/Anland mode applies to Debian 13, Ubuntu 26, Fedora 43, and Fedora 44 builds where `enable_anland_kde` is enabled. The default environment includes:
 
 ```text
 WAYLAND_DISPLAY=wayland-0
@@ -188,9 +200,15 @@ After completing the host-side Anland setup, run this inside the container:
 startplasma-wayland
 ```
 
+For a `mobile` build, the corresponding manual start command is:
+
+```bash
+startplasmamobile
+```
+
 ## Wayland and Anland Setup
 
-Wayland support depends on [anland](https://github.com/superturtlee/anland) and the patched KWin/Xwayland prebuilt packages stored in this repository. `Ubuntu-26-KDE` is recommended, while `Debian-13-KDE`, `Fedora-43-KDE`, and the experimental `Fedora-44-KDE` are also available. Fedora 44 uses the Fedora 43 Anland build script but rebuilds the RPMs inside a Fedora 44 container.
+Wayland support depends on [anland](https://github.com/superturtlee/anland) and the patched KWin/Xwayland prebuilt packages stored in this repository. `Ubuntu-26-KDE` is recommended, while `Debian-13-KDE`, `Fedora-43-KDE`, and `Fedora-44-KDE` are also available. Fedora 44 now has stable Wayland/Anland support; it uses the Fedora 43 Anland build script but rebuilds the RPMs inside a Fedora 44 container.
 
 ### One-Click Installation of anland-build Packages
 
@@ -295,31 +313,6 @@ allow untrusted_app_27 droidspacesd fd use
 
 Save the file and reboot the device.
 
-## Account, Password, and Username Changes
-
-Default account settings:
-
-| Item | Default |
-| --- | --- |
-| Username | `Gold`, configurable through the workflow `custom_username` input |
-| Password | `1234` |
-| Shell | `/bin/bash` |
-
-Change the password after importing:
-
-```bash
-passwd
-```
-
-To rename the user after building, run the following as root. This example renames `Gold` to `NewUser`:
-
-```bash
-usermod -l NewUser Gold
-usermod -d /home/NewUser -m NewUser
-groupmod -n NewUser Gold
-passwd NewUser
-```
-
 ## Local Build
 
 This project is designed primarily for GitHub Actions, but local Docker Buildx builds are supported. Requirements:
@@ -383,6 +376,18 @@ After a successful build, the output file will look similar to:
 Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ```
 
+## Install Hardware Firmware
+
+Debian 13 and Ubuntu 24/25/26 RootFS images include `/usr/local/bin/download-firmware`. It installs `linux-firmware`, decompresses `.zst` firmware under `/lib/firmware` into regular firmware files, and repairs symbolic links that previously pointed to compressed files. This is useful when a kernel, driver, or container environment cannot load compressed firmware directly.
+
+The tool is copied into the RootFS but is not run automatically during the build or container startup. Run it manually inside the container when needed:
+
+```bash
+sudo download-firmware
+```
+
+The script installs `zstd` and `linux-firmware`, so working package repositories and network access are required. On success it creates `/var/lib/.fw-setup-completed`. The current script does not use this marker to skip later runs; running it again still refreshes package metadata and scans the firmware directory.
+
 ## Repository Layout
 
 ```text
@@ -397,6 +402,10 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 ├── build_rootfs-native.sh
 ├── build_rootfs-qemu-aarch64.sh
 ├── scripts/
+│   ├── start/
+│   │   ├── plasma-mobile.service
+│   │   ├── plasma-wayland.service
+│   │   └── plasma-x11.service
 │   ├── bashrc.sh
 │   ├── download-firmware
 │   ├── enable_tp_ubwc.sh
@@ -423,9 +432,9 @@ Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
 
 ## Known Limitations
 
-- Wayland/Anland support currently covers only Debian 13, Ubuntu 26, and Fedora 43.
+- Wayland/Anland support currently covers only Debian 13, Ubuntu 26, and Fedora 43/44.
 - Ubuntu 24, Ubuntu 25, and Arch currently use the X11 path.
-- `mobile` mode is allowed only on Debian 13, Ubuntu 26, and Fedora 43.
+- `mobile` mode is allowed only on Debian 13, Ubuntu 26, and Fedora 43/44.
 - When Anland is enabled, the workflow disables PulseAudio forwarding because the Anland app provides its own audio path.
 - Fedora may require hardware access on some devices to avoid flicker or crashes.
 - Ubuntu and Debian may lag or freeze if `noseccomp` is disabled or the kernel lacks `USER_NS`.
