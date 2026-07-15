@@ -15,6 +15,7 @@ ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_anland_kde_ARG
+ARG ENABLE_8gen2_wayland_ARG
 ARG USERNAME
 ######################################################
 
@@ -31,7 +32,7 @@ COPY anland-build/Fedora44/xwayland/*.rpm /tmp/anland-build/Fedora44/xwayland/
 
 RUN dnf install -y --setopt=install_weak_deps=False \
     # 核心工具组件 
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-pam systemd-resolved fastfetch pciutils \
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-pam systemd-resolved fastfetch \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具（包含 DHCP 客户端）
@@ -52,7 +53,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     if [ "$BUILD_KDE" = "conc" ]; then \
         dnf install -y --setopt=install_weak_deps=False \
         dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts plasma-desktop pipewire pipewire-pulseaudio wireplumber powerdevil kscreen plasma-pa ark kwin upower konsole \
-        dolphin kate kinfocenter glx-utils pulseaudio-utils vulkan-tools fedora-logos aha clinfo dmidecode libdisplay-info pciutils wayland-utils xorg-x11-server-Xorg \
+        dolphin kate kinfocenter glx-utils pulseaudio-utils vulkan-tools fedora-logos aha clinfo dmidecode libdisplay-info wayland-utils xorg-x11-server-Xorg \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kf6-kimageformats plasma-browser-integration libcanberra-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop chromium plasma-milou plasma-workspace plasma-workspace-x11 kwin-x11; \
     fi && \
@@ -133,10 +134,6 @@ RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "
         rm -rf /tmp/anland-build; \
     fi
 
-# 修复骁龙8gen2设备在Wayland的花屏问题
-COPY scripts/enable_tp_ubwc.sh /etc/profile.d/enable_tp_ubwc.sh
-RUN chmod +x /etc/profile.d/enable_tp_ubwc.sh
-
 # 强制配置使用 iptables-legacy（兼容 Android 内核的硬性要求）
 RUN ln -sf /usr/sbin/iptables-legacy /usr/sbin/iptables && \
     ln -sf /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables && \
@@ -177,6 +174,11 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
         echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
         echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
         echo "FD_FORCE_KGSL=1" >> /etc/environment; \
+    fi
+
+# 修复骁龙8 Gen 2 设备在 Wayland 下的花屏问题
+RUN if [ "$ENABLE_8gen2_wayland_ARG" = "true" ]; then \
+        echo "FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1" >> /etc/environment; \
     fi
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \

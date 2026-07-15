@@ -15,6 +15,7 @@ ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_anland_kde_ARG
+ARG ENABLE_8gen2_wayland_ARG
 ARG ENABLE_nosnap_ARG
 ARG USERNAME
 ######################################################
@@ -36,15 +37,12 @@ COPY scripts/nosnap.sh /usr/local/sbin/nosnap
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
-# 修复骁龙8gen2设备在Wayland的花屏问题
-COPY scripts/enable_tp_ubwc.sh /etc/profile.d/enable_tp_ubwc.sh
-
 # 复制本仓库内预编译的 anland_kde deb 包
 COPY anland-build/ubuntu2604/kwin/*.deb /tmp/anland-build/ubuntu2604/kwin/
 COPY anland-build/ubuntu2604/xwayland/*.deb /tmp/anland-build/ubuntu2604/xwayland/
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /etc/profile.d/enable_tp_ubwc.sh
+RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh
 
 RUN sed -i 's/Components: main/Components: main restricted universe multiverse/g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
     sed -i 's/main/main restricted universe multiverse/g' /etc/apt/sources.list 2>/dev/null && \
@@ -63,7 +61,7 @@ RUN sed -i 's/Components: main/Components: main restricted universe multiverse/g
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     # 核心工具组件
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates locales bash-completion udev dbus systemd-sysv systemd-resolved fastfetch pciutils \
+    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates locales bash-completion udev dbus systemd-sysv systemd-resolved fastfetch \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具
@@ -88,7 +86,7 @@ RUN apt-get update && \
         apt-get install -y --no-install-recommends \
         dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji kde-plasma-desktop kubuntu-settings-desktop kubuntu-wallpapers \
         pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin-x11 upower konsole \
-        dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools dbus-user-session aha clinfo dmidecode libdisplay-info-bin pciutils wayland-utils xserver-xorg \
+        dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools dbus-user-session aha clinfo dmidecode libdisplay-info-bin wayland-utils xserver-xorg \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kde-config-screenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kimageformat6-plugins plasma-browser-integration libcanberra-pulse gstreamer1.0-plugins-base gstreamer1.0-plugins-good sound-theme-freedesktop \
         polkit-kde-agent-1 libpam-systemd libpam-modules libpam-kwallet5 plasma-session-x11 language-pack-kde-zh-hans language-pack-zh-hans qt6-translations-l10n; \
@@ -203,6 +201,11 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ] ; then \
         echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
         echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
         echo "FD_FORCE_KGSL=1" >> /etc/environment; \
+    fi
+
+# 修复骁龙8 Gen 2 设备在 Wayland 下的花屏问题
+RUN if [ "$ENABLE_8gen2_wayland_ARG" = "true" ]; then \
+        echo "FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1" >> /etc/environment; \
     fi
 
 # 音频选择

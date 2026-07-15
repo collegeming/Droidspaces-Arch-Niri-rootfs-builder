@@ -62,6 +62,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_8gen2_wayland:
+        description: '修复 8Gen2 Wayland 花屏'
+        required: true
+        type: boolean
+        default: false
       enable_tmoe:
         description: '集成 TMOE '
         required: true
@@ -316,6 +321,7 @@ jobs:
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
             -n "${{ inputs.nosnap }}" \
+            -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}"
 
@@ -380,6 +386,7 @@ jobs:
             - nosnap: ${{ github.event.inputs.nosnap }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
+            - 修复 8Gen2 Wayland 花屏: ${{ github.event.inputs.enable_8gen2_wayland }}
             - 集成 TMOE : ${{ github.event.inputs.enable_tmoe }}
             - 输入法 fcitx5 支持: ${{ github.event.inputs.enable_srf }}
             - 跨架构支持: ${{ github.event.inputs.enable_binfmt }}

@@ -62,6 +62,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_8gen2_wayland:
+        description: 'Fix Snapdragon 8 Gen 2 Wayland display corruption'
+        required: true
+        type: boolean
+        default: false
       enable_tmoe:
         description: 'Integrate TMOE'
         required: true
@@ -316,6 +321,7 @@ jobs:
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
             -n "${{ inputs.nosnap }}" \
+            -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}"
 
@@ -380,6 +386,7 @@ jobs:
             - nosnap: ${{ github.event.inputs.nosnap }}
             - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
             - Qualcomm Snapdragon GPU Support: ${{ github.event.inputs.enable_mesa }}
+            - Fix Snapdragon 8 Gen 2 Wayland display corruption: ${{ github.event.inputs.enable_8gen2_wayland }}
             - Integrate TMOE: ${{ github.event.inputs.enable_tmoe }}
             - Input Method fcitx5 Support: ${{ github.event.inputs.enable_srf }}
             - Cross-architecture Support: ${{ github.event.inputs.enable_binfmt }}

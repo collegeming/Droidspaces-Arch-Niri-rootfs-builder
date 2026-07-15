@@ -47,6 +47,7 @@
 - 中文环境：可选启用 `zh_CN.UTF-8` 和 `Asia/Shanghai` 时区。
 - 输入法：可选安装 Fcitx5；启用中文环境时会额外安装中文输入支持。
 - Snapdragon GPU 支持：集成来自 `mesa-for-android-container` 的高通 GPU 相关配置。
+- 骁龙 8 Gen 2 Wayland 花屏修复：可选将 Turnip UBWC 修复开关写入 RootFS 环境变量。
 - 容器增强：补充 Android/Droidspaces 环境下常见的硬件、网络和用户组识别配置。
 - TMOE：可选集成 TMOE，容器内执行 `tmoe` 即可启动。
 - 开发工具：可选安装编译器、CMake、Python 开发环境等。
@@ -69,6 +70,7 @@ GitHub Actions 的主要输入项如下：
 | PulseAudio 音频转发 (`PulseAudio`) | `socket`、`tcp`、`none` | `socket` | X11 模式下的音频转发方式。启用 Anland 时会被强制改为 `none`。 |
 | 使用中文语言和时区 (`enable_zh_tz`) | `true`、`false` | 中文工作流默认为 `true` | 启用中文 locale 并设置上海时区。 |
 | 高通骁龙 GPU 支持 (`enable_mesa`) | `true`、`false` | `true` | 启用高通 GPU/Mesa 相关支持。 |
+| 修复 8Gen2 Wayland 花屏 (`enable_8gen2_wayland`) | `true`、`false` | `false` | 为 Debian 13、Ubuntu 26、Fedora 43/44 写入 `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` 到 `/etc/environment`。 |
 | 集成 TMOE (`enable_tmoe`) | `true`、`false` | `true` | 集成 TMOE。 |
 | 移除 Ubuntu Snap (`nosnap`) | `true`、`false` | `false` | 只对 Ubuntu 有意义，用于移除 Snap、snapd 和可能重新安装 snapd 的 APT 策略。 |
 | 输入法 Fcitx5 支持 (`enable_srf`) | `true`、`false` | `false` | 安装 Fcitx5 输入法。 |
@@ -343,6 +345,7 @@ chmod +x build_rootfs-native.sh
   -h false \
   -j true \
   -n false \
+  -t false \
   -u Gold \
   -A false
 ```
@@ -367,6 +370,7 @@ chmod +x build_rootfs-qemu-aarch64.sh
   -h true \
   -j true \
   -n true \
+  -t false \
   -u Gold \
   -A true
 ```
@@ -409,7 +413,6 @@ sudo download-firmware
 │   │   └── plasma-x11.service
 │   ├── bashrc.sh
 │   ├── download-firmware
-│   ├── enable_tp_ubwc.sh
 │   ├── nosnap.sh
 │   ├── on_aaudio_socket.sh
 │   └── on_aaudio_tcp.sh

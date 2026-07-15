@@ -45,7 +45,7 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     if [ "$BUILD_KDE" = "conc" ]; then \
         pacman -S --noconfirm --needed \
         xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop pipewire pipewire-pulse wireplumber powerdevil kscreen plasma-pa ark kwin kwin-x11 upower konsole \
-        dolphin kate kinfocenter mesa-utils libpulse vulkan-tools aha clinfo dmidecode pciutils wayland-utils xorg-server \
+        dolphin kate kinfocenter mesa-utils libpulse vulkan-tools aha clinfo dmidecode wayland-utils xorg-server \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kimageformats plasma-browser-integration libcanberra gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop chromium; \
     fi && \

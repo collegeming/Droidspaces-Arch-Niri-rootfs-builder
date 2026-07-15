@@ -47,6 +47,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Optional Chinese locale with `zh_CN.UTF-8` and `Asia/Shanghai` timezone.
 - Optional Fcitx5 input method. Chinese input addons are installed when Chinese localization is enabled.
 - Snapdragon GPU support using configuration from `mesa-for-android-container`.
+- Optional Snapdragon 8 Gen 2 Wayland display-corruption fix through a Turnip UBWC environment setting.
 - Container integration improvements for common Android/Droidspaces hardware, network, and group recognition.
 - Optional TMOE integration. Run `tmoe` inside the container to start it.
 - Optional development toolchain packages, including compilers, CMake, and Python development tooling.
@@ -69,6 +70,7 @@ The main GitHub Actions inputs are:
 | PulseAudio forwarding (`PulseAudio`) | `socket`, `tcp`, `none` | `socket` | Audio forwarding mode for X11 builds. It is forced to `none` when Anland is enabled. |
 | Chinese language and timezone (`enable_zh_tz`) | `true`, `false` | `false` in the English workflow | Enables Chinese locale and the Shanghai timezone. |
 | Qualcomm Snapdragon GPU support (`enable_mesa`) | `true`, `false` | `true` | Enables Qualcomm Snapdragon GPU and Mesa-related support. |
+| Fix Snapdragon 8 Gen 2 Wayland display corruption (`enable_8gen2_wayland`) | `true`, `false` | `false` | Writes `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` to `/etc/environment` for Debian 13, Ubuntu 26, and Fedora 43/44. |
 | Integrate TMOE (`enable_tmoe`) | `true`, `false` | `true` | Integrates TMOE. |
 | Remove Ubuntu Snap (`nosnap`) | `true`, `false` | `false` | Ubuntu-only option that removes Snap, snapd, and APT policy paths that may reinstall snapd. |
 | Fcitx5 input method support (`enable_srf`) | `true`, `false` | `false` | Installs Fcitx5 input method support. |
@@ -342,6 +344,7 @@ chmod +x build_rootfs-native.sh
   -h false \
   -j true \
   -n false \
+  -t false \
   -u Gold \
   -A false
 ```
@@ -366,6 +369,7 @@ chmod +x build_rootfs-qemu-aarch64.sh
   -h true \
   -j true \
   -n true \
+  -t false \
   -u Gold \
   -A true
 ```
@@ -408,7 +412,6 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
 │   │   └── plasma-x11.service
 │   ├── bashrc.sh
 │   ├── download-firmware
-│   ├── enable_tp_ubwc.sh
 │   ├── nosnap.sh
 │   ├── on_aaudio_socket.sh
 │   └── on_aaudio_tcp.sh
