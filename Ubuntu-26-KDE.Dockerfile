@@ -38,8 +38,7 @@ COPY scripts/nosnap.sh /usr/local/sbin/nosnap
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
 # 复制本仓库内预编译的 anland_kde deb 包
-COPY anland-build/ubuntu2604/kwin/*.deb /tmp/anland-build/ubuntu2604/kwin/
-COPY anland-build/ubuntu2604/xwayland/*.deb /tmp/anland-build/ubuntu2604/xwayland/
+COPY anland-build/ubuntu2604/*.deb /tmp/anland-build/ubuntu2604/
 
 # 赋予相关脚本可执行权限
 RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh
@@ -110,11 +109,9 @@ RUN apt-get update && \
     if [ "$ENABLE_anland_kde_ARG" = "true" ] && [ "$BUILD_KDE" != "none" ]; then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin deb 包..." && \
-        dpkg -i /tmp/anland-build/ubuntu2604/kwin/*.deb || apt-get install -f -y && \
-        echo "--> [开启] 正在安装预编译的 xwayland deb 包..." && \
-        dpkg -i /tmp/anland-build/ubuntu2604/xwayland/*.deb || apt-get install -f -y && \
+        dpkg -i /tmp/anland-build/ubuntu2604/*.deb || apt-get install -f -y && \
         echo "--> [开启] 设置预编译 deb 包为 hold 模式，防止被 apt 更新覆盖..." && \
-        for f in /tmp/anland-build/ubuntu2604/kwin/*.deb /tmp/anland-build/ubuntu2604/xwayland/*.deb; do \
+        for f in /tmp/anland-build/ubuntu2604/*.deb; do \
             pkgname=$(dpkg-deb -f "$f" Package) && \
             apt-mark hold "$pkgname" && \
             echo "    hold: $pkgname"; \

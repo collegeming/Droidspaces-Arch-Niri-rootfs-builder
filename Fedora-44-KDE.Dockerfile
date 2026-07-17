@@ -27,8 +27,7 @@ RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf && \
     echo "defaultyes=True" >> /etc/dnf/dnf.conf
 
 # 复制本仓库内预编译的 anland_kde rpm 包
-COPY anland-build/Fedora44/kwin/*.rpm /tmp/anland-build/Fedora44/kwin/
-COPY anland-build/Fedora44/xwayland/*.rpm /tmp/anland-build/Fedora44/xwayland/
+COPY anland-build/Fedora44/*.rpm /tmp/anland-build/Fedora44/
 
 RUN dnf install -y --setopt=install_weak_deps=False \
     # 核心工具组件 
@@ -122,9 +121,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin rpm 包..." && \
-        dnf install -y /tmp/anland-build/Fedora44/kwin/*.rpm && \
-        echo "--> [开启] 正在安装预编译的 xwayland rpm 包..." && \
-        dnf install -y /tmp/anland-build/Fedora44/xwayland/*.rpm && \
+        dnf install -y /tmp/anland-build/Fedora44/*.rpm && \
         echo "--> [开启] 设置预编译 rpm 包为 exclude，防止被 dnf 更新覆盖..." && \
         echo "exclude=kwin* xorg-x11-server-Xwayland*" >> /etc/dnf/dnf.conf && \
         echo "--> [开启] 清理临时文件..." && \

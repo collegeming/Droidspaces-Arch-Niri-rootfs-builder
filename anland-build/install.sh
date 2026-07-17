@@ -88,8 +88,7 @@ check_architecture() {
 
 has_packages() {
     local base="$1"
-    compgen -G "$base/kwin/*.${PACKAGE_TYPE}" >/dev/null &&
-        compgen -G "$base/xwayland/*.${PACKAGE_TYPE}" >/dev/null
+    compgen -G "$base/*.${PACKAGE_TYPE}" >/dev/null
 }
 
 download_packages() {
@@ -129,7 +128,7 @@ install_deb_packages() {
 
     command -v apt-get >/dev/null 2>&1 || die "未找到 apt-get。" "apt-get was not found."
     command -v dpkg-deb >/dev/null 2>&1 || die "未找到 dpkg-deb。" "dpkg-deb was not found."
-    mapfile -t files < <(find "$PACKAGE_DIR/kwin" "$PACKAGE_DIR/xwayland" -maxdepth 1 -type f -name '*.deb' -print | sort)
+    mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.deb' -print | sort)
     ((${#files[@]} > 0)) || die "没有可安装的 deb 包。" "No installable deb packages were found."
 
     log "正在安装 ${#files[@]} 个 deb 包并自动处理依赖..." \
@@ -153,7 +152,7 @@ install_rpm_packages() {
 
     command -v dnf >/dev/null 2>&1 || die "未找到 dnf。" "dnf was not found."
     command -v rpm >/dev/null 2>&1 || die "未找到 rpm。" "rpm was not found."
-    mapfile -t files < <(find "$PACKAGE_DIR/kwin" "$PACKAGE_DIR/xwayland" -maxdepth 1 -type f -name '*.rpm' -print | sort)
+    mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.rpm' -print | sort)
     ((${#files[@]} > 0)) || die "没有可安装的 rpm 包。" "No installable rpm packages were found."
 
     log "正在安装 ${#files[@]} 个 rpm 包并自动处理依赖..." \

@@ -197,15 +197,15 @@ jobs:
           set -euo pipefail
 
           rm -rf "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
-          mkdir -p "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
+          mkdir -p "$DEST_DIR"
 
           # 按包格式收集产物
-          test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' ! -name 'kwin-dev_*' ! -name 'kwin-devel-*' -exec cp -v {} "$DEST_DIR/kwin/" \;
-          test -d "$OUTPUT_DIR/xwayland" && find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+          test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' ! -name 'kwin-dev_*' ! -name 'kwin-devel-*' -exec cp -v {} "$DEST_DIR/" \;
+          test -d "$OUTPUT_DIR/xwayland" && find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/" \;
 
           # Fedora 的 xwayland 包名不同，尝试备选目录
           if [ ! -d "$OUTPUT_DIR/xwayland" ] && [ -d "$OUTPUT_DIR/xorg-x11-server-Xwayland" ]; then
-            find "$OUTPUT_DIR/xorg-x11-server-Xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
+            find "$OUTPUT_DIR/xorg-x11-server-Xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/" \;
           fi
 
           pkg_count="$(find "$DEST_DIR" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) | wc -l)"
@@ -267,15 +267,8 @@ jobs:
 
             dest_dir="anland-build/$target"
             rm -rf "$dest_dir/kwin" "$dest_dir/xwayland"
-            mkdir -p "$dest_dir/kwin" "$dest_dir/xwayland"
-
-            if [ -d "$artifact_dir/kwin" ]; then
-              cp -a "$artifact_dir/kwin/." "$dest_dir/kwin/"
-              find "$dest_dir/kwin" -maxdepth 1 -type f \( -name 'kwin-dev_*' -o -name 'kwin-devel-*' \) -delete
-            fi
-            if [ -d "$artifact_dir/xwayland" ]; then
-              cp -a "$artifact_dir/xwayland/." "$dest_dir/xwayland/"
-            fi
+            mkdir -p "$dest_dir"
+            cp -a "$artifact_dir/." "$dest_dir/"
 
             pkg_count="$(find "$dest_dir" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) | wc -l)"
             if [ "$pkg_count" -eq 0 ]; then
