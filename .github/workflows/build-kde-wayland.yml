@@ -200,7 +200,7 @@ jobs:
           mkdir -p "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
 
           # 按包格式收集产物
-          test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/kwin/" \;
+          test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' ! -name 'kwin-dev_*' ! -name 'kwin-devel-*' -exec cp -v {} "$DEST_DIR/kwin/" \;
           test -d "$OUTPUT_DIR/xwayland" && find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/xwayland/" \;
 
           # Fedora 的 xwayland 包名不同，尝试备选目录
@@ -271,6 +271,7 @@ jobs:
 
             if [ -d "$artifact_dir/kwin" ]; then
               cp -a "$artifact_dir/kwin/." "$dest_dir/kwin/"
+              find "$dest_dir/kwin" -maxdepth 1 -type f \( -name 'kwin-dev_*' -o -name 'kwin-devel-*' \) -delete
             fi
             if [ -d "$artifact_dir/xwayland" ]; then
               cp -a "$artifact_dir/xwayland/." "$dest_dir/xwayland/"
