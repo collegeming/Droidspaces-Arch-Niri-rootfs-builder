@@ -15,7 +15,7 @@
 - [导入 Droidspaces](#导入-droidspaces)
 - [启动 KDE 桌面](#启动-kde-桌面)
 - [Wayland 和 Anland 配置](#wayland-和-anland-配置)
-- [DRI3 和 SELinux 问题处理](#dri3-和-selinux-问题处理)
+- [Droidspaces USB Manager](#droidspaces-usb-manager)
 - [账户、密码和用户名修改](#账户密码和用户名修改)
 - [本地构建](#本地构建)
 - [安装硬件固件](#安装硬件固件)
@@ -54,6 +54,7 @@
 - 压缩工具：可选安装 `zip`、`unzip`、`7z`、`xz`、`tar`、`gzip` 等工具。
 - Docker：可选在 RootFS 内安装 Docker 相关软件包。
 - Wayland/Anland：对 Debian 13、Ubuntu 26.04、Fedora 43 和 Fedora 44 提供稳定的 patched KWin 与 Xwayland 包。
+- USB 设备管理：全部发行版内置 Droidspaces USB Manager，支持 USB 存储、ADB 设备节点、挂载、卸载和系统托盘。
 - Release 自动发布：构建完成后会把 RootFS `.tar.xz` 和对应的音频启动脚本上传到 GitHub Release。
 
 ## 构建选项说明
@@ -257,64 +258,30 @@ startplasma-wayland
 
 如果选择 `mobile`，工作流会强制启用 Wayland，因为 Plasma Mobile 在本项目中按 Wayland 路径配置。
 
-## DRI3 和 SELinux 问题处理
+## Droidspaces USB Manager
 
-如果启动图形环境时出现 `DRI3` 相关错误，通常是 SELinux 拦截导致 Droidspaces 与图形后端之间的文件描述符传递失败。可以选择以下任意一种方案。
+全部 7 个发行版模板都会通过 `scripts/install-usb-manager.sh` 安装 [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager)。安装器会自动识别 Debian/Ubuntu、Fedora 或 Arch 系统，使用 APT、DNF 或 Pacman 安装对应的 PyQt5、ADB、udev、NTFS 和 exFAT 依赖，并修正上游代码中仅适用于 Debian 的命令路径。
 
-### 方案一：精确修补 SELinux 策略
-
-以 KernelSU 为例，在 Android 宿主机 Root 终端执行：
+导入 RootFS 时必须开启 Droidspaces 的硬件访问，否则容器内看不到 `/sys/bus/usb` 和 `/sys/bus/scsi` 设备。安装器会同时创建应用菜单入口和 `~/Desktop/usb-manager.desktop` 桌面快捷方式。进入 KDE 后，也可以运行：
 
 ```bash
-/data/adb/ksud sepolicy patch "allow untrusted_app_27 droidspacesd fd use"
+usb-manager
 ```
 
-这是推荐方案，影响范围较小。
-
-### 方案二：放行整个 `untrusted_app_27` 域
-
-先查看哪些应用属于 targetSdk 26 到 28：
+另外提供两个命令行入口：
 
 ```bash
-/system/bin/dumpsys package packages | /system/bin/awk '/^ *Package \[/ {pkg=$2} /targetSdk=(26|27|28)$/ {print "App: " pkg " -> " $1}'
+usb-passthrough
+usb-storage-passthrough
 ```
 
-确认风险可接受后执行：
+如果需要在已有系统中单独安装或更新，可在仓库根目录执行：
 
 ```bash
-/data/adb/ksud sepolicy patch "permissive untrusted_app_27"
+sudo ./scripts/install-usb-manager.sh --user "$USER"
 ```
 
-这个方案影响范围更大，只建议用于临时排障或明确知道风险的设备。
-
-### 方案三：使用宽容内核
-
-将设备 SELinux 状态切换为 Permissive。这个方案最简单，但安全边界最弱。
-
-### 方案四：修改 Droidspaces 模块策略文件
-
-编辑宿主机中的：
-
-```text
-/data/adb/modules/droidspaces/etc/droidspaces.te
-```
-
-找到：
-
-```text
-# Termux related
-# Only uncomment the line below if you encounter any problems about DRI3
-# allow untrusted_app_27 droidspacesd fd use
-```
-
-取消最后一行注释，改为：
-
-```text
-allow untrusted_app_27 droidspacesd fd use
-```
-
-保存后重启设备。
-
+与 `anland-build/install.sh` 一样，该脚本支持自动提权、中文/英文日志、本地源码优先和缺失时下载上游源码快照。省略 `--user` 时会依次尝试 `SUDO_USER`、当前登录用户和第一个普通用户。
 
 ## 本地构建
 
@@ -413,6 +380,7 @@ sudo download-firmware
 │   │   └── plasma-x11.service
 │   ├── bashrc.sh
 │   ├── download-firmware
+│   ├── install-usb-manager.sh
 │   ├── nosnap.sh
 │   ├── on_aaudio_socket.sh
 │   └── on_aaudio_tcp.sh
@@ -451,3 +419,4 @@ sudo download-firmware
 - [mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)：高通 Snapdragon GPU 驱动支持。
 - [TMOE](https://github.com/2moe/tmoe)：容器内管理工具。
 - [anland](https://github.com/superturtlee/anland)：Wayland 显示后端和 patched KDE 相关工作。
+- [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager)：适用于Droidspaces 的 USB 存储和 ADB 设备管理工具。

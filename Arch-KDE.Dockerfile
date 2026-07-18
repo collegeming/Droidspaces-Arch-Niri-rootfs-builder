@@ -17,6 +17,7 @@ ARG ENABLE_tmoe_ARG
 ARG USERNAME
 ######################################################
 
+COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 
 RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
@@ -106,6 +107,9 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     userdel -r alarm 2>/dev/null || true && \
     useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd && \
     systemctl enable sshd
+
+# 为所有 Arch RootFS 安装 Droidspaces USB Manager
+RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
 
 # 修复 Arch 登入shell没法读取 /etc/environment 环境变量的问题
 RUN echo 'session  required  pam_env.so' >> /etc/pam.d/su-l

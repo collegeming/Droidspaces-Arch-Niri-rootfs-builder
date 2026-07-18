@@ -21,6 +21,9 @@ ARG USERNAME
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# 通用 Droidspaces USB Manager 安装器
+COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
+
 # 加速下载
 RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf && \
     echo "fastestmirror=True" >> /etc/dnf/dnf.conf && \
@@ -155,6 +158,9 @@ RUN if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
     # 删除默认可能存在的用户并创建新用户
     (userdel -r debian 2>/dev/null || true) && \
     useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd 
+
+# 为所有 Fedora RootFS 安装 Droidspaces USB Manager
+RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment

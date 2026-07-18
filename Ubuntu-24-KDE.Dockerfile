@@ -35,6 +35,9 @@ COPY scripts/nosnap.sh /usr/local/sbin/nosnap
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
+# 通用 Droidspaces USB Manager 安装器
+COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
+
 # 赋予相关脚本可执行权限
 RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh
 
@@ -137,6 +140,9 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     deluser --remove-home ubuntu || true && \
     useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd && \
     systemctl enable ssh
+
+# 为所有 Ubuntu RootFS 安装 Droidspaces USB Manager
+RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment

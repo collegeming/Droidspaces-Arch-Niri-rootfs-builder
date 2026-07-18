@@ -15,7 +15,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - [Import into Droidspaces](#import-into-droidspaces)
 - [Start KDE Desktop](#start-kde-desktop)
 - [Wayland and Anland Setup](#wayland-and-anland-setup)
-- [DRI3 and SELinux Fixes](#dri3-and-selinux-fixes)
+- [Droidspaces USB Manager](#droidspaces-usb-manager)
 - [Account, Password, and Username Changes](#account-password-and-username-changes)
 - [Local Build](#local-build)
 - [Install Hardware Firmware](#install-hardware-firmware)
@@ -54,6 +54,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Optional compression utilities such as `zip`, `unzip`, `7z`, `xz`, `tar`, and `gzip`.
 - Optional Docker packages inside the RootFS.
 - Stable Wayland/Anland support for Debian 13, Ubuntu 26.04, Fedora 43, and Fedora 44 through patched KWin and Xwayland packages.
+- USB device management on every distribution through Droidspaces USB Manager, including USB storage, ADB device nodes, mounting, unmounting, and a system tray interface.
 - Automatic Release publishing with the RootFS `.tar.xz` files and matching audio startup scripts.
 
 ## Build Options
@@ -257,63 +258,30 @@ startplasma-wayland
 
 If `mobile` is selected, the workflow forces Wayland on because Plasma Mobile is configured through the Wayland path in this project.
 
-## DRI3 and SELinux Fixes
+## Droidspaces USB Manager
 
-If you see `DRI3` errors while starting the graphical environment, SELinux is likely blocking file descriptor passing between Droidspaces and the graphics backend. Choose one of the following fixes.
+All seven distribution templates install [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager) through `scripts/install-usb-manager.sh`. The installer detects Debian/Ubuntu, Fedora, or Arch, installs the matching PyQt5, ADB, udev, NTFS, and exFAT dependencies through APT, DNF, or Pacman, and fixes command paths that are Debian-specific in the upstream source.
 
-### Option 1: Patch SELinux Policy Precisely
-
-With KernelSU, run this in the Android host root shell:
+Hardware access must be enabled when importing the RootFS into Droidspaces. Without it, `/sys/bus/usb` and `/sys/bus/scsi` devices are not visible inside the container. The installer creates both an application-menu entry and a `~/Desktop/usb-manager.desktop` desktop shortcut. After entering KDE, you can also run:
 
 ```bash
-/data/adb/ksud sepolicy patch "allow untrusted_app_27 droidspacesd fd use"
+usb-manager
 ```
 
-This is the recommended option because it has a smaller scope.
-
-### Option 2: Make the Whole `untrusted_app_27` Domain Permissive
-
-First check which apps belong to targetSdk 26 through 28:
+Two command-line entry points are also installed:
 
 ```bash
-/system/bin/dumpsys package packages | /system/bin/awk '/^ *Package \[/ {pkg=$2} /targetSdk=(26|27|28)$/ {print "App: " pkg " -> " $1}'
+usb-passthrough
+usb-storage-passthrough
 ```
 
-If the risk is acceptable, run:
+To install or update the application separately on an existing system, run this from the repository root:
 
 ```bash
-/data/adb/ksud sepolicy patch "permissive untrusted_app_27"
+sudo ./scripts/install-usb-manager.sh --user "$USER"
 ```
 
-This has a broader impact and is better treated as a temporary debugging step unless you fully understand the security tradeoff.
-
-### Option 3: Use a Permissive Kernel
-
-Switch the device SELinux state to Permissive. This is simple, but weakens the security boundary the most.
-
-### Option 4: Modify the Droidspaces Module Policy File
-
-Edit this host-side file:
-
-```text
-/data/adb/modules/droidspaces/etc/droidspaces.te
-```
-
-Find:
-
-```text
-# Termux related
-# Only uncomment the line below if you encounter any problems about DRI3
-# allow untrusted_app_27 droidspacesd fd use
-```
-
-Uncomment the last line:
-
-```text
-allow untrusted_app_27 droidspacesd fd use
-```
-
-Save the file and reboot the device.
+Like `anland-build/install.sh`, this installer supports automatic privilege escalation, Chinese/English output, local-source preference, and an upstream source download fallback. If `--user` is omitted, it tries `SUDO_USER`, the logged-in user, and then the first regular user.
 
 ## Local Build
 
@@ -412,6 +380,7 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
 │   │   └── plasma-x11.service
 │   ├── bashrc.sh
 │   ├── download-firmware
+│   ├── install-usb-manager.sh
 │   ├── nosnap.sh
 │   ├── on_aaudio_socket.sh
 │   └── on_aaudio_tcp.sh
@@ -450,3 +419,4 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
 - [mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container): Snapdragon GPU driver support.
 - [TMOE](https://github.com/2moe/tmoe): convenient management tooling inside the container.
 - [anland](https://github.com/superturtlee/anland): Wayland display backend and patched KDE work.
+- [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager): USB storage and ADB device management for Droidspaces.

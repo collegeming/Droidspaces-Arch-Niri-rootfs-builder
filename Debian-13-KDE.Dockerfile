@@ -40,6 +40,9 @@ COPY scripts/download-firmware /usr/local/bin/
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
+# 通用 Droidspaces USB Manager 安装器
+COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
+
 # 复制本仓库内预编译的 anland_kde deb 包
 COPY anland-build/Debian13/*.deb /tmp/anland-build/Debian13/
 
@@ -165,6 +168,9 @@ RUN sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && \
     # 如果容器内存在默认的 debian 用户，则将其连同家目录一起删除
     deluser --remove-home debian || true && \
     useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd 
+
+# 为所有 Debian RootFS 安装 Droidspaces USB Manager
+RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
 
 # 添加环境变量
 RUN cat <<'EOF' > /etc/environment
