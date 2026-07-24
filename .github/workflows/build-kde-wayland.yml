@@ -196,8 +196,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          rm -rf "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
           mkdir -p "$DEST_DIR"
+
+          # 包名包含版本号；清理扁平目录中的旧包，避免新旧版本共存。
+          # 同时删除旧版目录布局，兼容目录扁平化前留下的产物。
+          find "$DEST_DIR" -maxdepth 1 -type f \
+            \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) -delete
+          rm -rf "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
 
           # 按包格式收集产物
           test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' ! -name 'kwin-dev_*' ! -name 'kwin-devel-*' ! -name 'kwin-doc-*' -exec cp -v {} "$DEST_DIR/" \;
@@ -266,8 +271,11 @@ jobs:
             esac
 
             dest_dir="anland-build/$target"
-            rm -rf "$dest_dir/kwin" "$dest_dir/xwayland"
             mkdir -p "$dest_dir"
+            # 构建产物文件名带版本号，复制前必须移除目标目录中的旧包。
+            find "$dest_dir" -maxdepth 1 -type f \
+              \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) -delete
+            rm -rf "$dest_dir/kwin" "$dest_dir/xwayland"
             cp -a "$artifact_dir/." "$dest_dir/"
 
             pkg_count="$(find "$dest_dir" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \) | wc -l)"
