@@ -166,19 +166,19 @@ install_dependencies() {
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
             apt-get install -y --no-install-recommends \
-                python3 python3-pyqt5 qtwayland5 udev util-linux sudo \
+                python3 python3-pyqt5 qtwayland5 libqt5svg5 udev util-linux sudo \
                 adb ntfs-3g exfatprogs desktop-file-utils \
                 xdg-utils ca-certificates curl wget tar
             ;;
         dnf)
             dnf install -y --setopt=install_weak_deps=False \
-                python3 python3-qt5 qt5-qtwayland systemd-udev util-linux sudo \
+                python3 python3-qt5 qt5-qtwayland qt5-qtsvg systemd-udev util-linux sudo \
                 android-tools ntfs-3g exfatprogs desktop-file-utils \
                 xdg-utils ca-certificates curl wget tar
             ;;
         pacman)
             pacman -Syu --noconfirm --needed \
-                python python-pyqt5 qt5-wayland systemd util-linux sudo \
+                python python-pyqt5 qt5-wayland qt5-svg systemd util-linux sudo \
                 android-tools ntfs-3g exfatprogs desktop-file-utils \
                 xdg-utils ca-certificates curl wget tar
             ;;
