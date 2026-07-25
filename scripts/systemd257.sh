@@ -144,7 +144,7 @@ install_build_dependencies() {
       ;;
     dnf)
       local -a packages=(
-        gcc gcc-c++ make ca-certificates git meson ninja-build pkgconf-pkg-config
+        gcc gcc-c++ make diffutils ca-certificates git meson ninja-build pkgconf-pkg-config
         gperf gettext m4 python3 python3-jinja2 libcap-devel libmount-devel libblkid-devel
         kmod-devel pam-devel libseccomp-devel libacl-devel lz4-devel
         libzstd-devel xz-devel libxcrypt-devel
@@ -203,6 +203,7 @@ install_build_dependencies
 command -v meson >/dev/null 2>&1 || die "meson 安装失败"
 command -v ninja >/dev/null 2>&1 || die "ninja 安装失败"
 command -v git >/dev/null 2>&1 || die "git 安装失败"
+command -v diff >/dev/null 2>&1 || die "diffutils 安装失败"
 
 log "cloning $SYSTEMD257_REPO ($SYSTEMD257_REF)"
 if ! git clone --depth=1 --branch "$SYSTEMD257_REF" "$SYSTEMD257_REPO" "$SOURCE_DIR"; then
