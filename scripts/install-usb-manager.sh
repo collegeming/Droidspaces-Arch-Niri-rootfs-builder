@@ -166,19 +166,19 @@ install_dependencies() {
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
             apt-get install -y --no-install-recommends \
-                python3 python3-pyqt5 qtwayland5 udev util-linux sudo \
+                python3 python3-pyqt5 qtwayland5 libqt5svg5 udev util-linux sudo \
                 adb ntfs-3g exfatprogs desktop-file-utils \
                 xdg-utils ca-certificates curl wget tar
             ;;
         dnf)
             dnf install -y --setopt=install_weak_deps=False \
-                python3 python3-qt5 qt5-qtwayland systemd-udev util-linux sudo \
+                python3 python3-qt5 qt5-qtwayland qt5-qtsvg systemd-udev util-linux sudo \
                 android-tools ntfs-3g exfatprogs desktop-file-utils \
                 xdg-utils ca-certificates curl wget tar
             ;;
         pacman)
             pacman -Syu --noconfirm --needed \
-                python python-pyqt5 qt5-wayland systemd util-linux sudo \
+                python python-pyqt5 qt5-wayland qt5-svg systemd util-linux sudo \
                 android-tools ntfs-3g exfatprogs desktop-file-utils \
                 xdg-utils ca-certificates curl wget tar
             ;;
@@ -261,12 +261,20 @@ install_program() {
     install -m 0644 "$SOURCE_DIR/src/usb-manager.py" "$INSTALL_DIR/usb-manager.py"
     install -m 0755 "$SOURCE_DIR/src/usb-passthrough.sh" "$INSTALL_DIR/usb-passthrough.sh"
     install -m 0755 "$SOURCE_DIR/src/usb-storage-passthrough.sh" "$INSTALL_DIR/usb-storage-passthrough.sh"
+    
+    # Install bundled icons
+    if [[ -d "$SOURCE_DIR/icons" ]]; then
+        install -d -m 0755 "$INSTALL_DIR/icons"
+        install -m 0644 "$SOURCE_DIR/icons/"*.svg "$INSTALL_DIR/icons/"
+        if [[ -f "$SOURCE_DIR/icons/LICENSE" ]]; then
+            install -m 0644 "$SOURCE_DIR/icons/LICENSE" "$INSTALL_DIR/icons/LICENSE"
+        fi
+    fi
 
     # Upstream currently assumes Debian's /usr/sbin path. /usr/bin is shared by
     # Debian/Ubuntu, Fedora, and Arch (including merged-/usr installations).
+    # Keep upstream's X11 (xcb) backend preference to avoid Wayland compatibility issues.
     sed -i \
-        -e "s|# 强制使用 X11 后端（避免 Wayland 问题）|# Wayland 会话使用原生后端；缺少 Wayland socket 时回退到 X11|g" \
-        -e "s|if os.environ.get('QT_QPA_PLATFORM') == 'wayland':|if os.environ.get('QT_QPA_PLATFORM') == 'wayland' and not os.environ.get('WAYLAND_DISPLAY'):|g" \
         -e 's|"/usr/sbin/blkid"|"/usr/bin/blkid"|g' \
         -e 's|"dolphin", path|"xdg-open", path|g' \
         -e 's|请运行: sudo apt install python3-pyqt5|请安装当前发行版的 PyQt5 软件包|g' \
@@ -298,14 +306,21 @@ exec /usr/bin/bash /usr/share/usb-manager/usb-storage-passthrough.sh "$@"
 EOF
     chmod 0755 /usr/bin/usb-storage-passthrough
 
-    cat > /usr/share/applications/usb-manager.desktop <<'EOF'
+    # Use bundled icon if available, otherwise fallback to system theme
+    local icon_path="${INSTALL_DIR}/icons/usb-manager.svg"
+    if [[ ! -f "$icon_path" ]]; then
+        icon_path="drive-removable-media-usb"
+        log "未找到打包图标，将使用系统主题图标。" "Bundled icons not found, falling back to system theme."
+    fi
+    
+    cat > /usr/share/applications/usb-manager.desktop <<EOF
 [Desktop Entry]
 Name=USB Manager
 Name[zh_CN]=USB 管理器
 Comment=Droidspaces USB Device Manager
 Comment[zh_CN]=Droidspaces USB 设备管理器
 Exec=/usr/bin/usb-manager
-Icon=drive-removable-media-usb
+Icon=${icon_path}
 Terminal=false
 Type=Application
 Categories=System;
@@ -319,8 +334,6 @@ EOF
 }
 
 validate_program() {
-    grep -Fq "and not os.environ.get('WAYLAND_DISPLAY')" "$INSTALL_DIR/usb-manager.py" || die \
-        "未能应用 Wayland 兼容补丁。" "The Wayland compatibility patch could not be applied."
     grep -Fq '"/usr/bin/blkid"' "$INSTALL_DIR/usb-manager.py" || die \
         "未能应用 blkid 路径补丁。" "The blkid path patch could not be applied."
     grep -Fq '"xdg-open", path' "$INSTALL_DIR/usb-manager.py" || die \
