@@ -16,6 +16,7 @@ ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_anland_kde_ARG
 ARG ENABLE_8gen2_wayland_ARG
+ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ######################################################
 
@@ -42,6 +43,7 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
 # 通用 Droidspaces USB Manager 安装器
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
+COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 
 # 复制本仓库内预编译的 anland_kde deb 包
 COPY anland-build/Debian13/*.deb /tmp/anland-build/Debian13/
@@ -460,6 +462,14 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
+
+# Debian 13 当前为 systemd 257，脚本会自动检测并跳过；保留统一选项便于未来版本。
+RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
+        bash /usr/local/sbin/systemd257; \
+    else \
+        echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
+    fi && \
+    rm -f /usr/local/sbin/systemd257
 
 # 最终清理 APT 包管理器缓存，尽可能缩减镜像层体积
 RUN apt-get clean && \

@@ -14,10 +14,12 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
+ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ######################################################
 
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
+COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 
 RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
@@ -343,6 +345,14 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
+
+# 可选：为 systemd 258+ 发行版构建 systemd 257 旧内核兼容运行时。
+RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
+        bash /usr/local/sbin/systemd257; \
+    else \
+        echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
+    fi && \
+    rm -f /usr/local/sbin/systemd257
 
 # 彻底清理 pacman 缓存
 RUN rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*

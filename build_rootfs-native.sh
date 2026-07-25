@@ -5,8 +5,9 @@ ENABLE_binfmt="false"
 BUILD_KDE_plus="false"
 ENABLE_nosnap="false"
 ENABLE_8gen2_wayland="false"
+ENABLE_systemd257="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:t:u:A:" opt; do
+while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; # -i 参数赋值给 DOCKERFILE 变量
     v) VERSION="$OPTARG" ;;    # -v 参数赋值给 VERSION 变量
@@ -23,10 +24,11 @@ while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:t:u:A:" opt; do
     h) ENABLE_srf="$OPTARG" ;; # 输入法 fcitx5
     j) ENABLE_tmoe="$OPTARG" ;; # tmoe
     n) ENABLE_nosnap="$OPTARG" ;; # Ubuntu nosnap
+    S) ENABLE_systemd257="$OPTARG" ;; # systemd 257 旧内核兼容
     t) ENABLE_8gen2_wayland="$OPTARG" ;; # 修复骁龙8 Gen 2 Wayland 花屏
     u) USERNAME="$OPTARG" ;; # 自定义用户名
     A) ENABLE_anland_kde="$OPTARG" ;; # anland_kde 支持
-    *) echo "用法: $0 -i <template.Dockerfile> [-v <version>]" ; exit 1 ;;
+    *) echo "用法: $0 -i <template.Dockerfile> [-v <version>] [-S <true|false>]" ; exit 1 ;;
   esac
 done
 
@@ -54,6 +56,7 @@ echo " 当前构建版本 : $VERSION"
 echo " 跨架构 : $ENABLE_binfmt"
 echo " 容器识别部分硬件和网络：$ENABLE_yj"
 echo " Ubuntu nosnap：$ENABLE_nosnap"
+echo " systemd 257 旧内核兼容：$ENABLE_systemd257"
 echo " 修复骁龙8 Gen 2 Wayland 花屏：$ENABLE_8gen2_wayland"
 echo "========================================================="
 
@@ -109,6 +112,7 @@ docker buildx build \
   --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
   --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
   --build-arg ENABLE_nosnap_ARG="$ENABLE_nosnap" \
+  --build-arg ENABLE_systemd257_ARG="$ENABLE_systemd257" \
   --build-arg ENABLE_anland_kde_ARG="$ENABLE_anland_kde" \
   --build-arg ENABLE_8gen2_wayland_ARG="$ENABLE_8gen2_wayland" \
   --build-arg USERNAME="$USERNAME" \

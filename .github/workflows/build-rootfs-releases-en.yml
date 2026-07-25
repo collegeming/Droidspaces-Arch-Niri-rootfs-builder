@@ -77,6 +77,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_systemd257:
+        description: 'Old-kernel compatibility: build and use systemd 257 when the distro ships a newer systemd'
+        required: true
+        type: boolean
+        default: false
       enable_srf:
         description: 'Enable input method fcitx5 support'
         required: true
@@ -321,6 +326,7 @@ jobs:
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
             -n "${{ inputs.nosnap }}" \
+            -S "${{ inputs.enable_systemd257 }}" \
             -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}"
@@ -384,6 +390,7 @@ jobs:
             - PulseAudio Audio Forwarding: ${{ needs.setup.outputs.pulseaudio_effective }}
             - anland audio note: Wayland mode uses the built-in anland app audio, so PulseAudio is not needed
             - nosnap: ${{ github.event.inputs.nosnap }}
+            - systemd 257 old-kernel compatibility: ${{ github.event.inputs.enable_systemd257 }}
             - Use Chinese as Primary Language: ${{ github.event.inputs.enable_zh_tz }}
             - Qualcomm Snapdragon GPU Support: ${{ github.event.inputs.enable_mesa }}
             - Fix Snapdragon 8 Gen 2 Wayland display corruption: ${{ github.event.inputs.enable_8gen2_wayland }}

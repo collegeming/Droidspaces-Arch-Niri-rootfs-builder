@@ -15,6 +15,7 @@ ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_nosnap_ARG
+ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ######################################################
 
@@ -31,6 +32,7 @@ RUN printf '%s\n' \
 # 优先复制自定义脚本
 COPY scripts/download-firmware /usr/local/bin/
 COPY scripts/nosnap.sh /usr/local/sbin/nosnap
+COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
@@ -379,6 +381,14 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
+
+# 仅在发行版 systemd 主版本高于 257 时执行实际构建。
+RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
+        bash /usr/local/sbin/systemd257; \
+    else \
+        echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
+    fi && \
+    rm -f /usr/local/sbin/systemd257
 
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*

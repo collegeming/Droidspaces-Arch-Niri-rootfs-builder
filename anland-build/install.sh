@@ -148,7 +148,8 @@ install_deb_packages() {
 
 install_rpm_packages() {
     local -a files packages
-    local exclude_line="exclude=kwin* xorg-x11-server-Xwayland*"
+    local -a exclude_patterns=("kwin*" "xorg-x11-server-Xwayland*")
+    local current_excludes exclude_key pattern
 
     command -v dnf >/dev/null 2>&1 || die "未找到 dnf。" "dnf was not found."
     command -v rpm >/dev/null 2>&1 || die "未找到 rpm。" "rpm was not found."
@@ -162,8 +163,28 @@ install_rpm_packages() {
     mapfile -t packages < <(rpm -qp --queryformat '%{NAME}\n' "${files[@]}" | sort -u)
     log "正在设置 DNF exclude（等效于 hold）..." "Applying DNF excludes (equivalent to hold)..."
     touch /etc/dnf/dnf.conf
-    if ! grep -Fqx "$exclude_line" /etc/dnf/dnf.conf; then
-        printf '\n# anland-build: hold patched KWin/Xwayland packages\n%s\n' "$exclude_line" >> /etc/dnf/dnf.conf
+    if grep -q '^exclude=' /etc/dnf/dnf.conf; then
+        exclude_key="exclude"
+    elif grep -q '^excludepkgs=' /etc/dnf/dnf.conf; then
+        exclude_key="excludepkgs"
+    else
+        exclude_key=""
+    fi
+
+    if [[ -n "$exclude_key" ]]; then
+        current_excludes="$(sed -n "s/^${exclude_key}=//p" /etc/dnf/dnf.conf | head -n1)"
+        for pattern in "${exclude_patterns[@]}"; do
+            case " $current_excludes " in
+                *" $pattern "*) ;;
+                *)
+                    sed -i "/^${exclude_key}=/{s|$| $pattern|;}" /etc/dnf/dnf.conf
+                    current_excludes="$current_excludes $pattern"
+                    ;;
+            esac
+        done
+    else
+        printf '\n# anland-build: hold patched KWin/Xwayland packages\nexclude=%s\n' \
+            "${exclude_patterns[*]}" >> /etc/dnf/dnf.conf
     fi
     printf '  hold: %s\n' "${packages[@]}"
 }

@@ -77,6 +77,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_systemd257:
+        description: '旧内核兼容：在 systemd 高于 257 时构建并使用 systemd 257'
+        required: true
+        type: boolean
+        default: false
       enable_srf:
         description: '开启 输入法 fcitx5 支持'
         required: true
@@ -321,6 +326,7 @@ jobs:
             -h "${{ inputs.enable_srf }}" \
             -j "${{ inputs.enable_tmoe }}" \
             -n "${{ inputs.nosnap }}" \
+            -S "${{ inputs.enable_systemd257 }}" \
             -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}"
@@ -384,6 +390,7 @@ jobs:
             - PulseAudio 音频转发: ${{ needs.setup.outputs.pulseaudio_effective }}
             - anland 音频说明: Wayland 模式下使用 anland app 自带音频，无需 PulseAudio
             - nosnap: ${{ github.event.inputs.nosnap }}
+            - systemd 257 旧内核兼容: ${{ github.event.inputs.enable_systemd257 }}
             - 使用中文作为主语言: ${{ github.event.inputs.enable_zh_tz }}
             - 高通骁龙 GPU 支持: ${{ github.event.inputs.enable_mesa }}
             - 修复 8Gen2 Wayland 花屏: ${{ github.event.inputs.enable_8gen2_wayland }}

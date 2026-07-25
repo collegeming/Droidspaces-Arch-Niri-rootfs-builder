@@ -53,6 +53,7 @@
 - 开发工具：可选安装编译器、CMake、Python 开发环境等。
 - 压缩工具：可选安装 `zip`、`unzip`、`7z`、`xz`、`tar`、`gzip` 等工具。
 - Docker：可选在 RootFS 内安装 Docker 相关软件包。
+- 旧内核 systemd 兼容：可选在 systemd 主版本高于 257 的 apt、dnf 或 pacman 发行版中构建并安装 `v257-stable`；Debian 13 等已是 257 或更低版本时会自动跳过。
 - Wayland/Anland：对 Debian 13、Ubuntu 26.04、Fedora 43 和 Fedora 44 提供稳定的 patched KWin 与 Xwayland 包。
 - USB 设备管理：全部发行版内置 Droidspaces USB Manager，支持 USB 存储、ADB 设备节点、挂载、卸载和系统托盘。
 - Release 自动发布：构建完成后会把 RootFS `.tar.xz` 和对应的音频启动脚本上传到 GitHub Release。
@@ -74,6 +75,7 @@ GitHub Actions 的主要输入项如下：
 | 修复 8Gen2 Wayland 花屏 (`enable_8gen2_wayland`) | `true`、`false` | `false` | 为 Debian 13、Ubuntu 26、Fedora 43/44 写入 `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` 到 `/etc/environment`。 |
 | 集成 TMOE (`enable_tmoe`) | `true`、`false` | `true` | 集成 TMOE。 |
 | 移除 Ubuntu Snap (`nosnap`) | `true`、`false` | `false` | 只对 Ubuntu 有意义，用于移除 Snap、snapd 和可能重新安装 snapd 的 APT 策略。 |
+| systemd 257 旧内核兼容 (`enable_systemd257`) | `true`、`false` | `false` | 启用后，在当前 systemd 主版本高于 257 时从 `v257-stable` 构建兼容运行时；systemd 257 及更低版本自动跳过。构建完成后会锁定 systemd 相关包，避免再次升级覆盖。 |
 | 输入法 Fcitx5 支持 (`enable_srf`) | `true`、`false` | `false` | 安装 Fcitx5 输入法。 |
 | 跨架构支持 (`enable_binfmt`) | `true`、`false` | `false` | 在 RootFS 内加入 binfmt 跨架构支持组件。Arch 当前不建议使用。 |
 | NAT 和硬件识别支持 (`enable_yj`) | `true`、`false` | `true` | 启用容器硬件和网络识别增强。 |
@@ -98,6 +100,16 @@ KDE 模式说明：
 | `socket` | 使用 Unix socket 转发 PulseAudio。通常延迟更低，推荐在 X11 模式下使用。 |
 | `tcp` | 使用 `127.0.0.1:4713` 转发 PulseAudio。兼容性较直观，但暴露面更大。 |
 | `none` | 不配置 PulseAudio。Anland 模式下会自动使用此模式，因为 Anland App 自带音频路径。 |
+
+### systemd 257 旧内核兼容
+
+开启 `enable_systemd257` 后，RootFS 会运行 `scripts/systemd257.sh`。脚本会先检测发行版现有的 systemd 主版本：
+
+- 257 或更低版本（例如 Debian 13、Ubuntu 24.04）直接跳过；
+- 高于 257 的 apt、dnf 和 pacman 系统从官方 `v257-stable` 构建 systemd 257；
+- 构建依赖会在完成后清理，并锁定 systemd 相关软件包，防止后续升级覆盖兼容版本。
+
+该选项主要面向旧 Android 内核，属于实验性兼容方案，会显著增加构建时间；建议先在目标内核上验证桌面、dbus、udev 和网络功能。
 
 ## 使用 GitHub Actions 构建
 
@@ -312,6 +324,7 @@ chmod +x build_rootfs-native.sh
   -h false \
   -j true \
   -n false \
+  -S false \
   -t false \
   -u Gold \
   -A false
@@ -337,6 +350,7 @@ chmod +x build_rootfs-qemu-aarch64.sh
   -h true \
   -j true \
   -n true \
+  -S false \
   -t false \
   -u Gold \
   -A true
@@ -382,6 +396,7 @@ sudo download-firmware
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── nosnap.sh
+│   ├── systemd257.sh
 │   ├── on_aaudio_socket.sh
 │   └── on_aaudio_tcp.sh
 ├── scripts/binfmt/

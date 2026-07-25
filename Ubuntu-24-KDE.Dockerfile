@@ -15,6 +15,7 @@ ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_nosnap_ARG
+ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ######################################################
 
@@ -31,6 +32,7 @@ RUN printf '%s\n' \
 # 优先复制自定义脚本
 COPY scripts/download-firmware /usr/local/bin/
 COPY scripts/nosnap.sh /usr/local/sbin/nosnap
+COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
@@ -401,6 +403,14 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
+
+# Ubuntu 24.04 的 systemd 低于 257，脚本会自动检测并跳过。
+RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
+        bash /usr/local/sbin/systemd257; \
+    else \
+        echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
+    fi && \
+    rm -f /usr/local/sbin/systemd257
 
 # 最终清理 APT 包管理器缓存，尽可能缩减镜像层体积
 RUN apt-get clean && \

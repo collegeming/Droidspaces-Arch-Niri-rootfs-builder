@@ -53,6 +53,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Optional development toolchain packages, including compilers, CMake, and Python development tooling.
 - Optional compression utilities such as `zip`, `unzip`, `7z`, `xz`, `tar`, and `gzip`.
 - Optional Docker packages inside the RootFS.
+- Optional old-kernel systemd compatibility: on apt, dnf, or pacman targets whose systemd major version is above 257, build and install `v257-stable`; Debian 13 and other 257-or-older systems are skipped automatically.
 - Stable Wayland/Anland support for Debian 13, Ubuntu 26.04, Fedora 43, and Fedora 44 through patched KWin and Xwayland packages.
 - USB device management on every distribution through Droidspaces USB Manager, including USB storage, ADB device nodes, mounting, unmounting, and a system tray interface.
 - Automatic Release publishing with the RootFS `.tar.xz` files and matching audio startup scripts.
@@ -74,6 +75,7 @@ The main GitHub Actions inputs are:
 | Fix Snapdragon 8 Gen 2 Wayland display corruption (`enable_8gen2_wayland`) | `true`, `false` | `false` | Writes `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` to `/etc/environment` for Debian 13, Ubuntu 26, and Fedora 43/44. |
 | Integrate TMOE (`enable_tmoe`) | `true`, `false` | `true` | Integrates TMOE. |
 | Remove Ubuntu Snap (`nosnap`) | `true`, `false` | `false` | Ubuntu-only option that removes Snap, snapd, and APT policy paths that may reinstall snapd. |
+| systemd 257 old-kernel compatibility (`enable_systemd257`) | `true`, `false` | `false` | When enabled, builds a `v257-stable` compatibility runtime if the current systemd major version is above 257; versions 257 and older are skipped. systemd-related packages are locked after the build to prevent replacement by upgrades. |
 | Fcitx5 input method support (`enable_srf`) | `true`, `false` | `false` | Installs Fcitx5 input method support. |
 | Cross-architecture support (`enable_binfmt`) | `true`, `false` | `false` | Adds binfmt cross-architecture components inside the RootFS. Not recommended for Arch in this project. |
 | NAT and hardware recognition (`enable_yj`) | `true`, `false` | `true` | Enables container hardware and network recognition improvements. |
@@ -98,6 +100,16 @@ Audio mode details:
 | `socket` | Uses a Unix socket for PulseAudio forwarding. This is usually lower latency and is recommended for X11 mode. |
 | `tcp` | Uses `127.0.0.1:4713` for PulseAudio forwarding. It is straightforward to debug, but exposes a wider interface. |
 | `none` | Does not configure PulseAudio. Anland mode automatically uses this value because the Anland app provides its own audio path. |
+
+### systemd 257 old-kernel compatibility
+
+When `enable_systemd257` is enabled, the build runs `scripts/systemd257.sh`. The script first detects the installed systemd major version:
+
+- systemd 257 or older (for example Debian 13 and Ubuntu 24.04) is skipped;
+- apt, dnf, and pacman systems above 257 build systemd 257 from the official `v257-stable` branch;
+- build dependencies are removed after the build, and systemd-related packages are locked so a later upgrade does not overwrite the compatibility runtime.
+
+This option targets old Android kernels and is experimental. It adds substantial build time; test the desktop, dbus, udev, and networking behavior on the target kernel before distributing the image.
 
 ## Build with GitHub Actions
 
@@ -312,6 +324,7 @@ chmod +x build_rootfs-native.sh
   -h false \
   -j true \
   -n false \
+  -S false \
   -t false \
   -u Gold \
   -A false
@@ -337,6 +350,7 @@ chmod +x build_rootfs-qemu-aarch64.sh
   -h true \
   -j true \
   -n true \
+  -S false \
   -t false \
   -u Gold \
   -A true
@@ -382,6 +396,7 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── nosnap.sh
+│   ├── systemd257.sh
 │   ├── on_aaudio_socket.sh
 │   └── on_aaudio_tcp.sh
 ├── scripts/binfmt/

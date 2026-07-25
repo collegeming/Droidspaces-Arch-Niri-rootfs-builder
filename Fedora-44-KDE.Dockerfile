@@ -16,6 +16,7 @@ ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_anland_kde_ARG
 ARG ENABLE_8gen2_wayland_ARG
+ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ######################################################
 
@@ -23,6 +24,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # 通用 Droidspaces USB Manager 安装器
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
+COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 
 # 加速下载
 RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf && \
@@ -435,6 +437,14 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     else \
         rm -f /usr/local/bin/qemu-binfmt-register.sh /etc/systemd/system/qemu-binfmt-register.service; \
     fi
+
+# 可选：为 systemd 258+ 发行版构建 systemd 257 旧内核兼容运行时。
+RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
+        bash /usr/local/sbin/systemd257; \
+    else \
+        echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
+    fi && \
+    rm -f /usr/local/sbin/systemd257
 
 # 最终清理 DNF 缓存以缩减镜像体积
 RUN dnf clean all && \
