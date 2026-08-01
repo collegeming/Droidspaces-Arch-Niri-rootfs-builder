@@ -8,6 +8,7 @@ BUILD_KDE_plus="false"
 ENABLE_nosnap="false"
 ENABLE_8gen2_wayland="false"
 ENABLE_systemd257="false"
+ENABLE_anland_kde="false"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
 while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:" opt; do
   case $opt in

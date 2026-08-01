@@ -114,7 +114,10 @@ RUN apt-get update && \
     if [ "$ENABLE_anland_kde_ARG" = "true" ] && [ "$BUILD_KDE" != "none" ]; then \
         echo "--> [开启] 正在安装 anland_kde..." && \
         echo "--> [开启] 正在安装预编译的 kwin deb 包..." && \
-        dpkg -i /tmp/anland-build/ubuntu2604/*.deb || apt-get install -f -y && \
+        if ! dpkg -i /tmp/anland-build/ubuntu2604/*.deb; then \
+            echo "--> [开启] dpkg 报告依赖缺失，尝试用 apt 修复..." && \
+            apt-get install -f -y; \
+        fi && \
         echo "--> [开启] 设置预编译 deb 包为 hold 模式，防止被 apt 更新覆盖..." && \
         for f in /tmp/anland-build/ubuntu2604/*.deb; do \
             pkgname=$(dpkg-deb -f "$f" Package) && \
@@ -203,9 +206,11 @@ RUN if [ "$ENABLE_anland_kde_ARG" != "true" ] ; then \
         echo "ANLAND=1" >> /etc/environment; \
         echo "ANLAND_SOCKET=/run/display.sock" >> /etc/environment; \
         echo "ANLAND_DRM_DEVICE=/dev/dri/renderD128" >> /etc/environment; \
-        echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
-        echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
-        echo "FD_FORCE_KGSL=1" >> /etc/environment; \
+        if [ "$ENABLE_mesa_ARG" = "true" ]; then \
+            echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
+            echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
+            echo "FD_FORCE_KGSL=1" >> /etc/environment; \
+        fi; \
     fi
 
 # 修复骁龙8 Gen 2 设备在 Wayland 下的花屏问题
@@ -269,7 +274,7 @@ EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
     # KDE X11 自启动
-    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "false" ] && [ "$BUILD_KDE" != "mobile" ] ; then
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" != "true" ] && [ "$BUILD_KDE" != "mobile" ] ; then
     install -Dm644 /tmp/droidspaces-start/plasma-x11.service /etc/systemd/system/plasma-x11.service
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-x11.service /etc/systemd/system/multi-user.target.wants/plasma-x11.service
