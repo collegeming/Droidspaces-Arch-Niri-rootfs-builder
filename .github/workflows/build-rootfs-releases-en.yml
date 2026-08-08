@@ -259,6 +259,7 @@ jobs:
             --method POST \
             "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/dispatches" \
             -f "ref=main" \
+            -f "inputs[build_target]=all" \
             -f "inputs[anland_ref]=main" \
             -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
             -f "inputs[request_id]=$REQUEST_ID"

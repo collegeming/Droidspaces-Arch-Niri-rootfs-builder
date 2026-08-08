@@ -417,7 +417,7 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
     └── build-rootfs-releases.yml
 ```
 
-KDE packages are published only as GitHub Release assets. On every run, `build-kde-wayland.yml` pins one Anland source commit and creates one complete immutable Release for Arch, Debian 13, Ubuntu 26, Fedora 43, and Fedora 44 with release notes and `SHA256SUMS`. It never commits packages, rewrites `main`, overwrites an older package Release, or deletes other Releases.
+KDE packages are published only as GitHub Release assets. When running `build-kde-wayland.yml` manually, `build_target=all` pins one Anland source commit and rebuilds all five platforms. Selecting one platform rebuilds only that package, reuses the other four archives from the previous complete Release, and still creates a new complete immutable Release with a new `SHA256SUMS`. It never commits packages, rewrites `main`, overwrites an older package Release, or deletes other Releases.
 
 ## Known Limitations
 

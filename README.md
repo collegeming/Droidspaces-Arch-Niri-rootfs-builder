@@ -417,7 +417,7 @@ sudo download-firmware
     └── build-rootfs-releases.yml
 ```
 
-KDE 包只作为 GitHub Release 资产发布。`build-kde-wayland.yml` 每次都会固定一个 Anland 源提交，并为 Arch、Debian 13、Ubuntu 26、Fedora 43 和 Fedora 44 创建一个完整的不可变 Release，附带发布说明和 `SHA256SUMS`。它不会提交包、改写 `main`、覆盖旧包 Release 或删除其他 Release。
+KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.yml` 时，`build_target=all` 会固定一个 Anland 源提交并重新生成五个平台；选择单个平台时只重新构建该平台，并从上一份完整 Release 沿用其余四个压缩包，最终仍创建完整的不可变 Release 和新的 `SHA256SUMS`。它不会提交包、改写 `main`、覆盖旧包 Release 或删除其他 Release。
 
 ## 已知限制
 

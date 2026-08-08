@@ -4,6 +4,18 @@ run-name: Anland KDE 软件包 ${{ inputs.request_id || github.run_number }}
 on:
   workflow_dispatch:
     inputs:
+      build_target:
+        description: 选择构建目标；all 会重建五个平台，单个平台会重建该包并复用其余资产
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - ubuntu2604
+          - Debian13
+          - Fedora43
+          - Fedora44
+          - Arch
       anland_ref:
         description: 要构建的 Anland 分支、标签或提交
         required: true
@@ -24,7 +36,7 @@ permissions:
   contents: write
 
 concurrency:
-  # 一次只发布一组完整的、不可变的五平台产物。
+  # 一次只发布一组不可变的包资产。
   group: anland-kde-package-release
   cancel-in-progress: false
 
@@ -34,7 +46,32 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       anland_commit: ${{ steps.resolve.outputs.anland_commit }}
+      targets: ${{ steps.targets.outputs.targets }}
     steps:
+      - name: 生成构建矩阵
+        id: targets
+        env:
+          BUILD_TARGET_INPUT: ${{ inputs.build_target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$BUILD_TARGET_INPUT" in
+            all)
+              targets='["ubuntu2604","Debian13","Fedora43","Fedora44","Arch"]'
+              ;;
+            ubuntu2604|Debian13|Fedora43|Fedora44|Arch)
+              targets="[\"$BUILD_TARGET_INPUT\"]"
+              ;;
+            *)
+              echo "不支持的构建目标：$BUILD_TARGET_INPUT" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+          echo "构建目标：$targets"
+
       - name: 要求从 main 分支触发
         shell: bash
         run: |
@@ -63,23 +100,13 @@ jobs:
           echo "已将 $ANLAND_REPO @ $ANLAND_REF 解析为 $anland_commit"
 
   build:
-    name: 构建 ${{ matrix.display_name }} 软件包
+    name: 构建 ${{ matrix.target }} 软件包
     needs: prepare
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: ubuntu2604
-            display_name: Ubuntu 26.04
-          - target: Debian13
-            display_name: Debian 13
-          - target: Fedora43
-            display_name: Fedora 43
-          - target: Fedora44
-            display_name: Fedora 44
-          - target: Arch
-            display_name: Arch Linux
+        target: ${{ fromJson(needs.prepare.outputs.targets) }}
 
     env:
       ANLAND_REPO: ${{ inputs.anland_repo }}
@@ -273,7 +300,7 @@ jobs:
           retention-days: 1
 
   release:
-    name: 发布不可变的五包 Release
+    name: 发布不可变的 Anland KDE 包 Release
     needs: [prepare, build]
     if: ${{ needs.prepare.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
@@ -297,6 +324,7 @@ jobs:
           ANLAND_REF: ${{ inputs.anland_ref }}
           ANLAND_COMMIT: ${{ needs.prepare.outputs.anland_commit }}
           REQUEST_ID: ${{ inputs.request_id }}
+          BUILD_TARGET_INPUT: ${{ inputs.build_target }}
         shell: bash
         run: |
           set -euo pipefail
@@ -309,6 +337,63 @@ jobs:
             anland-kde-fedora43-aarch64.tar.gz
             anland-kde-fedora44-aarch64.tar.gz
           )
+
+          case "$BUILD_TARGET_INPUT" in
+            all)
+              selected_asset=""
+              replacement_note='本次构建重新生成全部五个平台的软件包。'
+              ;;
+            ubuntu2604)
+              selected_asset=anland-kde-ubuntu2604-arm64.tar.gz
+              ;;
+            Debian13)
+              selected_asset=anland-kde-debian13-arm64.tar.gz
+              ;;
+            Fedora43)
+              selected_asset=anland-kde-fedora43-aarch64.tar.gz
+              ;;
+            Fedora44)
+              selected_asset=anland-kde-fedora44-aarch64.tar.gz
+              ;;
+            Arch)
+              selected_asset=anland-kde-arch-aarch64.tar.gz
+              ;;
+            *)
+              echo "不支持的构建目标：$BUILD_TARGET_INPUT" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ -n "$selected_asset" ]; then
+            previous_tag=""
+            for page in $(seq 1 10); do
+              previous_tag="$(gh api \
+                "repos/$GITHUB_REPOSITORY/releases?per_page=100&page=$page" \
+                --jq 'first(.[] | select((.draft == false) and (.tag_name | startswith("anland-kde-packages-"))) | .tag_name) // empty')"
+              if [ -n "$previous_tag" ]; then
+                break
+              fi
+            done
+            if [ -z "$previous_tag" ]; then
+              echo "没有找到完整的既有包 Release；首次发布必须选择 all。" >&2
+              exit 1
+            fi
+
+            replacement_note="本次只重新生成 ${BUILD_TARGET_INPUT}（${selected_asset}）；其余四个平台沿用完整 Release ${previous_tag}。"
+            previous_dir="$RUNNER_TEMP/anland-kde-previous-assets"
+            rm -rf "$previous_dir"
+            mkdir -p "$previous_dir"
+            for asset in "${expected_assets[@]}"; do
+              if [ "$asset" != "$selected_asset" ]; then
+                gh release download "$previous_tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --pattern "$asset" \
+                  --dir "$previous_dir"
+                cp "$previous_dir/$asset" "$release_dir/$asset"
+              fi
+            done
+          fi
+
           for asset in "${expected_assets[@]}"; do
             test -f "$release_dir/$asset"
           done
@@ -323,14 +408,13 @@ jobs:
           build_time="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           release_tag="anland-kde-packages-$(date -u +'%Y%m%d-%H%M%S')-${GITHUB_RUN_ID}"
           release_notes="$(printf '%s\n' \
-            '# Anland KDE Wayland 预编译包 / prebuilt packages' \
+            '# Anland KDE Wayland 预编译包' \
             '' \
-            '此 Release 是不可变的完整 ARM64/aarch64 包集，供 Droidspaces Wayland RootFS 使用。' \
-            'This Release is an immutable, complete ARM64/aarch64 package set for Droidspaces Wayland RootFS images.' \
+            '这是供 Droidspaces Wayland RootFS 使用的不可变 ARM64/aarch64 包 Release。' \
             '' \
-            '## 资产 / Assets' \
+            '## 发布资产' \
             '' \
-            '| Archive | Target |' \
+            '| 压缩包 | 目标系统 |' \
             '| --- | --- |' \
             '| `anland-kde-arch-aarch64.tar.gz` | Arch Linux |' \
             '| `anland-kde-debian13-arm64.tar.gz` | Debian 13 |' \
@@ -338,20 +422,25 @@ jobs:
             '| `anland-kde-fedora43-aarch64.tar.gz` | Fedora 43 |' \
             '| `anland-kde-fedora44-aarch64.tar.gz` | Fedora 44 |' \
             '' \
-            '## 构建详情 / Build details' \
+            '每个压缩包只包含对应系统的 patched KWin/Xwayland 包；安装脚本会自动选择目标系统并校验 `SHA256SUMS`。' \
             '' \
-            "- 构建时间 / Built: ${build_time}" \
+            '## 构建详情' \
+            '' \
+            "- 构建目标：${BUILD_TARGET_INPUT}" \
+            "- ${replacement_note}" \
+            "- 构建时间：${build_time}" \
             "- 软件包请求 ID / Package request ID: ${REQUEST_ID:-manual-${GITHUB_RUN_ID}}" \
-            "- 软件包工作流运行号 / Package workflow run: ${GITHUB_RUN_ID}" \
-            "- Anland 源码 / Anland source: \`${ANLAND_REPO}\` @ \`${ANLAND_COMMIT}\`（requested \`${ANLAND_REF}\`）" \
-            "- 工作流提交 / Workflow commit: \`${GITHUB_SHA}\`" \
-            '- 架构 / Architecture: ARM64/aarch64 only' \
-      
+            "- 软件包工作流运行号：${GITHUB_RUN_ID}" \
+            "- Anland 源码：\`${ANLAND_REPO}\` @ \`${ANLAND_COMMIT}\`（请求：\`${ANLAND_REF}\`）" \
+            "- 工作流提交：\`${GITHUB_SHA}\`" \
+            '- 架构：仅 ARM64/aarch64' \
+            '' \
+            '工作流不会向 `main` 提交二进制包、改写历史、覆盖已有 Release 或删除旧 Release。')"
           gh release create "$release_tag" "$release_dir"/* \
             --draft \
             --latest=false \
             --target "$GITHUB_SHA" \
-            --title 'Anland KDE Wayland 预编译包 / Prebuilt Packages' \
+            --title 'Anland KDE Wayland 预编译包' \
             --notes "$release_notes"
           gh release edit "$release_tag" --draft=false --latest=false
 
