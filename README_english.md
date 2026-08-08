@@ -417,8 +417,8 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
     └── build-rootfs-releases.yml
 ```
 
-KDE packages are published only as GitHub Release assets. When running `build-kde-wayland.yml` manually, `build_target=all` pins one Anland source commit and rebuilds all five platforms. Selecting one platform rebuilds only that package, reuses the other four archives from the previous complete Release, and still creates a new complete immutable Release with a new `SHA256SUMS`. It never commits packages, rewrites `main`, overwrites an older package Release, or deletes other Releases.
-The first versioned package Release must use `all`; single-platform replacement is available after that.
+KDE packages are published only as GitHub Release assets. When running `build-kde-wayland.yml` manually, `build_target=all` pins one Anland source commit and rebuilds all five platforms. If one platform fails, the workflow reuses that platform's archive from the previous complete Release, updates only the successful platforms, and creates a new complete immutable Release with a new `SHA256SUMS`. Such a partial update Release contains both newly built and reused archives, and its notes identify the source of each asset. Selecting one platform rebuilds only that package and reuses the other four archives from the previous complete Release. If no complete Release can be reused, or no new package succeeds, the workflow fails without publishing an incomplete or fully duplicated Release. It never commits packages, rewrites `main`, overwrites an older package Release, or deletes other Releases.
+Without a reusable complete Release, the first versioned package Release must use `all` and all five platforms must succeed. With a complete older Release, the workflow can migrate reused assets to versioned archive names after a partial build.
 
 ## Known Limitations
 

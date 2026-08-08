@@ -417,8 +417,8 @@ sudo download-firmware
     └── build-rootfs-releases.yml
 ```
 
-KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.yml` 时，`build_target=all` 会固定一个 Anland 源提交并重新生成五个平台；选择单个平台时只重新构建该平台，并从上一份完整 Release 沿用其余四个压缩包，最终仍创建完整的不可变 Release 和新的 `SHA256SUMS`。它不会提交包、改写 `main`、覆盖旧包 Release 或删除其他 Release。
-首次发布带版本号的包时必须选择 `all`；之后才可以选择单个平台替换。
+KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.yml` 时，`build_target=all` 会固定一个 Anland 源提交并重新生成五个平台；若其中某个平台构建失败，工作流会从上一份完整 Release 沿用该平台的旧包，只更新成功的平台，并生成完整的不可变 Release 和新的 `SHA256SUMS`。这种部分更新的 Release 会同时含有本次构建包和沿用旧包，发布说明会逐项标记资产来源。选择单个平台时只重新构建该平台，并从上一份完整 Release 沿用其余四个压缩包。若没有可复用的完整 Release，或本次没有任何新包成功生成，工作流会失败且不会发布不完整或完全重复的 Release。它不会提交包、改写 `main`、覆盖旧包 Release 或删除其他 Release。
+没有可复用旧 Release 时，首次发布带版本号的包必须选择 `all` 并让五个平台全部成功；已有完整旧 Release 时，工作流可在部分平台失败后迁移旧资产并发布新的版本化资产。
 
 ## 已知限制
 

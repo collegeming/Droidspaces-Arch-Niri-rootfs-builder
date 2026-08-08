@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       build_target:
-        description: 选择构建目标；all 会重建五个平台，单个平台会重建该包并复用其余资产
+        description: 选择构建目标；all 中失败的平台沿用上一份完整 Release，单个平台会重建该包并复用其余资产
         required: true
         type: choice
         default: all
@@ -103,6 +103,8 @@ jobs:
     name: 构建 ${{ matrix.target }} 软件包
     needs: prepare
     runs-on: ubuntu-24.04-arm
+    # 单个平台失败不阻止其余包和 Release 合并；Release 阶段会复用上一版该平台资产。
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -272,7 +274,7 @@ jobs:
                 Arch)
                   kwin_package="$(find /tmp/kde-packages -type f -name 'kwin-[0-9]*.pkg.tar.*' -print | sort | head -n1)"
                   [ -n "$kwin_package" ] || { echo "未找到 kwin Arch 包" >&2; exit 1; }
-                  kwin_version="$(pacman -Qp --print-format '%v' "$kwin_package")"
+                  kwin_version="$(pacman -Qp "$kwin_package" | awk 'NR == 1 { print $2 }')"
                   ;;
               esac
               # 去掉 epoch 和发行版/Arch 的 pkgrel，只保留 KWin 上游版本。
@@ -333,9 +335,12 @@ jobs:
           esac
           asset_name="${ASSET_PREFIX}${kwin_version}-${ASSET_ARCH}.tar.gz"
           asset_path="$asset_dir/$asset_name"
+          build_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          printf 'target=%s\nkwin_version=%s\nbuild_time=%s\n' \
+            "$ARCHIVE_TARGET" "$kwin_version" "$build_time" > "$package_dir/.anland-kde-build-info"
           tar -C "$RUNNER_TEMP" -czf "$asset_path" "anland-kde-packages/$ARCHIVE_TARGET"
           echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
-          echo "已将 $package_count 个文件打包进 $asset_name"
+          echo "已将 $package_count 个文件打包进 $asset_name（构建时间：$build_time）"
 
       - name: 上传 Release 资产
         uses: actions/upload-artifact@v4
@@ -348,7 +353,7 @@ jobs:
   release:
     name: 发布不可变的 Anland KDE 包 Release
     needs: [prepare, build]
-    if: ${{ needs.prepare.result == 'success' && needs.build.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: 检出安装脚本
@@ -357,6 +362,7 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: 下载软件包资产
+        if: ${{ always() }}
         uses: actions/download-artifact@v4
         with:
           pattern: anland-kde-package-*
@@ -376,8 +382,14 @@ jobs:
           set -euo pipefail
 
           release_dir="$GITHUB_WORKSPACE/release-assets"
+          mkdir -p "$release_dir"
           release_targets=(Arch Debian13 ubuntu2604 Fedora43 Fedora44)
           declare -A asset_by_target=()
+          declare -A asset_time_by_target=()
+          declare -A asset_source_by_target=()
+          updated_targets=()
+          reused_targets=()
+          build_time="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 
           asset_prefix_for_target() {
             case "$1" in
@@ -401,6 +413,36 @@ jobs:
             esac
           }
 
+          asset_arch_for_target() {
+            case "$1" in
+              Arch|Fedora43|Fedora44) printf '%s\n' 'aarch64' ;;
+              Debian13|ubuntu2604) printf '%s\n' 'arm64' ;;
+              *) echo "不支持的构建目标：$1" >&2; return 1 ;;
+            esac
+          }
+
+          archive_target_for_target() {
+            case "$1" in
+              Arch) printf '%s\n' 'arch' ;;
+              Debian13) printf '%s\n' 'debian13' ;;
+              ubuntu2604) printf '%s\n' 'ubuntu2604' ;;
+              Fedora43) printf '%s\n' 'fedora43' ;;
+              Fedora44) printf '%s\n' 'fedora44' ;;
+              *) echo "不支持的构建目标：$1" >&2; return 1 ;;
+            esac
+          }
+
+          legacy_asset_for_target() {
+            case "$1" in
+              Arch) printf '%s\n' 'anland-kde-arch-aarch64.tar.gz' ;;
+              Debian13) printf '%s\n' 'anland-kde-debian13-arm64.tar.gz' ;;
+              ubuntu2604) printf '%s\n' 'anland-kde-ubuntu2604-arm64.tar.gz' ;;
+              Fedora43) printf '%s\n' 'anland-kde-fedora43-aarch64.tar.gz' ;;
+              Fedora44) printf '%s\n' 'anland-kde-fedora44-aarch64.tar.gz' ;;
+              *) echo "不支持的构建目标：$1" >&2; return 1 ;;
+            esac
+          }
+
           local_asset_for_prefix() {
             local prefix="$1"
             local path
@@ -408,35 +450,161 @@ jobs:
             while IFS= read -r path; do
               candidates+=("${path##*/}")
             done < <(find "$release_dir" -maxdepth 1 -type f -name "${prefix}*.tar.gz" -print | sort)
-            if [ "${#candidates[@]}" -ne 1 ]; then
+            if [ "${#candidates[@]}" -gt 1 ]; then
               echo "资产前缀 ${prefix} 在本次构建中应匹配一个文件，实际为 ${#candidates[@]} 个。" >&2
+              return 2
+            elif [ "${#candidates[@]}" -eq 0 ]; then
               return 1
             fi
             printf '%s\n' "${candidates[0]}"
           }
 
-          release_asset_for_prefix() {
+          release_assets_tag=""
+          release_assets=""
+          load_release_assets() {
             local tag="$1"
-            local prefix="$2"
-            local name api_assets
+            if [ "$release_assets_tag" = "$tag" ]; then
+              return 0
+            fi
+            if ! release_assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[].name')"; then
+              return 1
+            fi
+            release_assets_tag="$tag"
+          }
+
+          release_asset_for_target() {
+            local tag="$1"
+            local target="$2"
+            local prefix legacy name
             local -a candidates=()
-            api_assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[].name')"
+            prefix="$(asset_prefix_for_target "$target")"
+            legacy="$(legacy_asset_for_target "$target")"
+            load_release_assets "$tag" || return 1
             while IFS= read -r name; do
               case "$name" in
                 "${prefix}"*.tar.gz) candidates+=("$name") ;;
               esac
-            done <<< "$api_assets"
-            if [ "${#candidates[@]}" -ne 1 ]; then
+            done <<< "$release_assets"
+            if [ "${#candidates[@]}" -gt 1 ]; then
               echo "Release ${tag} 中资产前缀 ${prefix} 应匹配一个文件，实际为 ${#candidates[@]} 个。" >&2
+              return 2
+            elif [ "${#candidates[@]}" -eq 1 ]; then
+              printf '%s\n' "${candidates[0]}"
+              return 0
+            fi
+            while IFS= read -r name; do
+              if [ "$name" = "$legacy" ]; then
+                printf '%s\n' "$legacy"
+                return 0
+              fi
+            done <<< "$release_assets"
+            return 1
+          }
+
+          archive_version_from_contents() {
+            local archive="$1"
+            local version
+            if ! version="$(tar -tzf "$archive" | \
+              sed -nE 's@.*kwin(-wayland)?[-_]([0-9]+\.[0-9]+\.[0-9]+).*@\2@p' | \
+              sed -n '1p')"; then
+              version=""
+            fi
+            [ -n "$version" ] || {
+              echo "无法从旧包资产 $(basename "$archive") 中解析 KWin 版本。" >&2
+              return 1
+            }
+            printf '%s\n' "$version"
+          }
+
+          archive_build_time() {
+            local archive="$1"
+            local target="$2"
+            local archive_target metadata build_timestamp
+            archive_target="$(archive_target_for_target "$target")"
+            if ! metadata="$(tar -xOzf "$archive" "anland-kde-packages/$archive_target/.anland-kde-build-info" 2>/dev/null)"; then
               return 1
             fi
-            printf '%s\n' "${candidates[0]}"
+            build_timestamp="$(printf '%s\n' "$metadata" | sed -n 's/^build_time=//p' | sed -n '1p')"
+            [ -n "$build_timestamp" ] || return 1
+            printf '%s\n' "$build_timestamp"
+          }
+
+          migrate_asset_name() {
+            local target="$1"
+            local source_path="$2"
+            local source_name="$3"
+            local prefix arch version destination archive_target temp_dir
+            prefix="$(asset_prefix_for_target "$target")"
+            case "$source_name" in
+              "${prefix}"*.tar.gz)
+                destination="$source_name"
+                cp "$source_path" "$release_dir/$destination"
+                ;;
+              *)
+                version="$(archive_version_from_contents "$source_path")"
+                arch="$(asset_arch_for_target "$target")"
+                destination="${prefix}${version}-${arch}.tar.gz"
+                archive_target="$(archive_target_for_target "$target")"
+                temp_dir="$(mktemp -d)"
+                if ! tar -xzf "$source_path" -C "$temp_dir"; then
+                  rm -rf "$temp_dir"
+                  return 1
+                fi
+                if [ ! -d "$temp_dir/anland-kde-packages/$archive_target" ]; then
+                  rm -rf "$temp_dir"
+                  echo "旧包资产 $(basename "$source_path") 缺少 $archive_target 包目录。" >&2
+                  return 1
+                fi
+                printf 'target=%s\nkwin_version=%s\nbuild_time=unknown\nlegacy_release_tag=%s\nlegacy_release_published_at=%s\n' \
+                  "$archive_target" "$version" "$previous_tag" "${previous_release_time:-unknown}" \
+                  > "$temp_dir/anland-kde-packages/$archive_target/.anland-kde-build-info"
+                if ! tar -C "$temp_dir" -czf "$release_dir/$destination" "anland-kde-packages/$archive_target"; then
+                  rm -rf "$temp_dir"
+                  return 1
+                fi
+                rm -rf "$temp_dir"
+                ;;
+            esac
+            printf '%s\n' "$destination"
+          }
+
+          previous_tag=""
+          previous_release_time=""
+          find_previous_release() {
+            local page candidate candidates target asset complete
+            for page in $(seq 1 10); do
+              if ! candidates="$(gh api \
+                "repos/$GITHUB_REPOSITORY/releases?per_page=100&page=$page" \
+                --jq '.[] | select((.draft == false) and (.prerelease == false) and (.tag_name | startswith("anland-kde-packages-"))) | .tag_name')"; then
+                return 1
+              fi
+              while IFS= read -r candidate; do
+                [ -n "$candidate" ] || continue
+                if ! load_release_assets "$candidate"; then
+                  return 1
+                fi
+                complete=true
+                for target in "${release_targets[@]}"; do
+                  if ! asset="$(release_asset_for_target "$candidate" "$target")"; then
+                    complete=false
+                    break
+                  fi
+                done
+                if [ "$complete" = true ]; then
+                  previous_tag="$candidate"
+                  if ! previous_release_time="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$candidate" --jq '.published_at // empty')"; then
+                    return 1
+                  fi
+                  return 0
+                fi
+              done <<< "$candidates"
+            done
+            return 1
           }
 
           case "$BUILD_TARGET_INPUT" in
             all)
               selected_prefix=""
-              replacement_note='本次构建重新生成全部五个平台的软件包。'
               ;;
             ubuntu2604)
               selected_prefix="$(asset_prefix_for_target ubuntu2604)"
@@ -459,44 +627,82 @@ jobs:
               ;;
           esac
 
+          missing_targets=()
+          for target in "${release_targets[@]}"; do
+            prefix="$(asset_prefix_for_target "$target")"
+            if asset="$(local_asset_for_prefix "$prefix")"; then
+              if ! asset_build_time="$(archive_build_time "$release_dir/$asset" "$target")"; then
+                echo "本次构建资产 $asset 缺少构建时间元数据。" >&2
+                exit 1
+              fi
+              asset_by_target["$target"]="$asset"
+              asset_time_by_target["$target"]="$asset_build_time"
+              asset_source_by_target["$target"]='本次构建'
+              updated_targets+=("$target")
+            else
+              asset_status=$?
+              [ "$asset_status" -eq 1 ] || exit "$asset_status"
+              missing_targets+=("$target")
+            fi
+          done
+
+          # 单平台选择失败时不发布一份完全重复的 Release；all 模式才允许用旧资产补齐。
           if [ -n "$selected_prefix" ]; then
-            selected_asset="$(local_asset_for_prefix "$selected_prefix")"
-            previous_tag=""
-            for page in $(seq 1 10); do
-              previous_tag="$(gh api \
-                "repos/$GITHUB_REPOSITORY/releases?per_page=100&page=$page" \
-                --jq 'first(.[] | select((.draft == false) and (.tag_name | startswith("anland-kde-packages-"))) | .tag_name) // empty')"
-              if [ -n "$previous_tag" ]; then
+            selected_target="$BUILD_TARGET_INPUT"
+            selected_missing=false
+            for target in "${missing_targets[@]}"; do
+              if [ "$target" = "$selected_target" ]; then
+                selected_missing=true
                 break
               fi
             done
-            if [ -z "$previous_tag" ]; then
-              echo "没有找到完整的既有包 Release；首次发布必须选择 all。" >&2
+            if [ "$selected_missing" = true ]; then
+              echo "选择的 ${selected_target} 构建没有生成新资产，本次不发布重复 Release。" >&2
+              exit 1
+            fi
+          fi
+
+          if [ "${#missing_targets[@]}" -gt 0 ]; then
+            if ! find_previous_release; then
+              echo "缺少以下平台的新资产：${missing_targets[*]}；没有可复用的完整旧 Release。首次发布时必须让 all 的五个平台全部成功。" >&2
               exit 1
             fi
 
-            replacement_note="本次只重新生成 ${BUILD_TARGET_INPUT}（${selected_asset}）；其余四个平台沿用完整 Release ${previous_tag}。"
             previous_dir="$RUNNER_TEMP/anland-kde-previous-assets"
             rm -rf "$previous_dir"
             mkdir -p "$previous_dir"
-            for target in "${release_targets[@]}"; do
-              prefix="$(asset_prefix_for_target "$target")"
-              [ "$prefix" = "$selected_prefix" ] && continue
-              asset="$(release_asset_for_prefix "$previous_tag" "$prefix")"
+            for target in "${missing_targets[@]}"; do
+              asset="$(release_asset_for_target "$previous_tag" "$target")"
               gh release download "$previous_tag" \
                 --repo "$GITHUB_REPOSITORY" \
                 --pattern "$asset" \
                 --dir "$previous_dir"
-              cp "$previous_dir/$asset" "$release_dir/$asset"
+              migrated_asset="$(migrate_asset_name "$target" "$previous_dir/$asset" "$asset")"
+              asset_by_target["$target"]="$migrated_asset"
+              if reused_build_time="$(archive_build_time "$release_dir/$migrated_asset" "$target")"; then
+                if [ "$reused_build_time" = unknown ]; then
+                  asset_time_by_target["$target"]="${previous_release_time:-未知}（旧包未记录构建时间）"
+                else
+                  asset_time_by_target["$target"]="$reused_build_time（沿用）"
+                fi
+              else
+                asset_time_by_target["$target"]="${previous_release_time:-未知}（沿用，未记录构建时间）"
+              fi
+              asset_source_by_target["$target"]="沿用 ${previous_tag}"
+              reused_targets+=("$target")
             done
+          fi
+
+          if [ "${#updated_targets[@]}" -eq 0 ]; then
+            echo "本次没有任何平台生成新资产，不发布重复 Release。" >&2
+            exit 1
           fi
 
           expected_assets=()
           for target in "${release_targets[@]}"; do
-            prefix="$(asset_prefix_for_target "$target")"
-            asset="$(local_asset_for_prefix "$prefix")"
+            asset="${asset_by_target[$target]}"
+            test -f "$release_dir/$asset"
             expected_assets+=("$asset")
-            asset_by_target["$target"]="$asset"
           done
 
           cp scripts/install-anland-kde.sh "$release_dir/install-anland-kde.sh"
@@ -506,13 +712,32 @@ jobs:
             sha256sum "${expected_assets[@]}" install-anland-kde.sh > SHA256SUMS
           )
 
-          build_time="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          format_target_list() {
+            local target text=""
+            for target in "$@"; do
+              text="${text}${text:+、}$(target_label "$target")"
+            done
+            printf '%s\n' "${text:-无}"
+          }
+
+          updated_target_list="$(format_target_list "${updated_targets[@]}")"
+          reused_target_list="$(format_target_list "${reused_targets[@]}")"
+          if [ "${#reused_targets[@]}" -eq 0 ]; then
+            replacement_note="本次构建重新生成全部五个平台的软件包。"
+          else
+            replacement_note="本次更新：${updated_target_list}；沿用上一份完整 Release ${previous_tag}：${reused_target_list}。"
+          fi
+
           release_tag="anland-kde-packages-$(date -u +'%Y%m%d-%H%M%S')-${GITHUB_RUN_ID}"
           release_asset_table="$(printf '%s\n' \
             '| 压缩包 | 目标系统 | 构建时间 |' \
             '| --- | --- | --- |')"
           for target in "${release_targets[@]}"; do
-            release_asset_table="${release_asset_table}"$'\n'"| \`${asset_by_target[$target]}\` | $(target_label "$target") | ${build_time} |"
+            release_asset_table="${release_asset_table}"$'\n'"| \`${asset_by_target[$target]}\` | $(target_label "$target") | ${asset_time_by_target[$target]} |"
+          done
+          release_source_list=""
+          for target in "${release_targets[@]}"; do
+            release_source_list="${release_source_list}"$'\n'"- $(target_label "$target")：${asset_source_by_target[$target]}"
           done
           release_notes="$(printf '%s\n' \
             '# Anland KDE Wayland 预编译包' \
@@ -531,12 +756,16 @@ jobs:
             '' \
             "- 构建目标：${BUILD_TARGET_INPUT}" \
             "- ${replacement_note}" \
-            "- 构建时间：${build_time}" \
+            "- Release 生成时间：${build_time}" \
+            '- 构建时间取自压缩包内的构建元数据；早期旧包未记录时显示其旧 Release 发布时间。' \
             "- 软件包请求 ID / Package request ID: ${REQUEST_ID:-manual-${GITHUB_RUN_ID}}" \
             "- 软件包工作流运行号：${GITHUB_RUN_ID}" \
-            "- Anland 源码：\`${ANLAND_REPO}\` @ \`${ANLAND_COMMIT}\`（请求：\`${ANLAND_REF}\`）" \
+            "- 本次构建源码（仅更新资产）：\`${ANLAND_REPO}\` @ \`${ANLAND_COMMIT}\`（请求：\`${ANLAND_REF}\`）" \
             "- 工作流提交：\`${GITHUB_SHA}\`" \
             '- 架构：仅 ARM64/aarch64' \
+            '' \
+            '## 资产来源' \
+            "$release_source_list" \
             '')"
           gh release create "$release_tag" "$release_dir"/* \
             --draft \
