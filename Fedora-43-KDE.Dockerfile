@@ -18,6 +18,9 @@ ARG ENABLE_anland_kde_ARG
 ARG ENABLE_8gen2_wayland_ARG
 ARG ENABLE_systemd257_ARG
 ARG USERNAME
+ARG ANLAND_KDE_RELEASE_REPOSITORY=Goldzxcbug/Droidspaces-rootfs-KDE-builder
+ARG ANLAND_KDE_RELEASE_TAG
+ARG ANLAND_KDE_PACKAGE_REVISION=unknown
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -25,16 +28,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 通用 Droidspaces USB Manager 安装器
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
+COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 
 # 加速下载
 RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf && \
     echo "fastestmirror=True" >> /etc/dnf/dnf.conf && \
     echo "defaultyes=True" >> /etc/dnf/dnf.conf
 
-# 复制本仓库内预编译的 anland_kde rpm 包
-COPY anland-build/Fedora43/*.rpm /tmp/anland-build/Fedora43/
-
-RUN dnf install -y --setopt=install_weak_deps=False \
+RUN chmod +x /usr/local/sbin/install-anland-kde && \
+    dnf install -y --setopt=install_weak_deps=False \
     # 核心工具组件 
     bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion systemd-udev dbus-daemon systemd systemd-pam systemd-resolved fastfetch \
     # 用户请求的基础开发/编辑工具
@@ -44,7 +46,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     # 用于系统监控的 procps 进程工具
     procps-ng \
     # 核心内核模块支持及语言包
-    kmod tzdata glibc-locale-source glibc-langpack-en glibc-langpack-zh && \
+    kmod tzdata tar glibc-locale-source glibc-langpack-en glibc-langpack-zh && \
     ############################################## KDE支持 ################################################
     # 最小化KDE
     echo "%_install_langs all" > /etc/rpm/macros.image-language-conf && \
@@ -124,16 +126,16 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 
 ############################################## anland_kde(wayland) 支持 ################################################
 RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
+        if [ -z "$ANLAND_KDE_RELEASE_TAG" ]; then \
+            echo "错误：Docker 构建必须传入不可变的 ANLAND_KDE_RELEASE_TAG。" >&2; \
+            exit 1; \
+        fi && \
         echo "--> [开启] 正在安装 anland_kde..." && \
-        echo "--> [开启] 正在安装预编译的 kwin rpm 包..." && \
-        dnf install -y /tmp/anland-build/Fedora43/*.rpm && \
-        echo "--> [开启] 设置预编译 rpm 包为 exclude，防止被 dnf 更新覆盖..." && \
-        echo "exclude=kwin* xorg-x11-server-Xwayland*" >> /etc/dnf/dnf.conf && \
-        echo "--> [开启] 清理临时文件..." && \
-        rm -rf /tmp/anland-build && \
+        echo "--> [开启] 从不可变 Release 下载预编译包 (${ANLAND_KDE_PACKAGE_REVISION})..." && \
+        ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
+        ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
+        /usr/local/sbin/install-anland-kde && \
         echo "--> [开启] anland_kde 支持已安装"; \
-    else \
-        rm -rf /tmp/anland-build; \
     fi
 
 # 强制配置使用 iptables-legacy（兼容 Android 内核的硬性要求）

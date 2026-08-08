@@ -1,43 +1,21 @@
-name: 构建并发布 KDE Wayland 预编译包(anland)
-run-name: KDE Wayland ${{ inputs.build_target }} ${{ inputs.request_id }}
+name: 构建并发布 Anland KDE Wayland 软件包
+run-name: Anland KDE 软件包 ${{ inputs.request_id || github.run_number }}
 
 on:
   workflow_dispatch:
     inputs:
-      build_target:
-        description: '选择要更新的预编译包版本'
-        required: true
-        type: choice
-        default: 'ubuntu2604'
-        options:
-          - 'ubuntu2604'
-          - 'Debian13'
-          - 'Fedora43'
-          - 'Fedora44'
-          - 'Arch'
-          - 'all'
       anland_ref:
-        description: 'anland 仓库分支、标签或 commit'
+        description: 要构建的 Anland 分支、标签或提交
         required: true
         type: string
-        default: 'main'
+        default: main
       anland_repo:
-        description: 'anland 仓库地址（默认上游；'
-        required: false
+        description: Anland 仓库地址
+        required: true
         type: string
-        default: 'https://github.com/superturtlee/anland.git'
-      commit_changes:
-        description: '构建成功后提交更新到本仓库'
-        required: true
-        type: boolean
-        default: true
-      create_release:
-        description: '发布预编译包为 GitHub Release（滚动更新）'
-        required: true
-        type: boolean
-        default: true
+        default: https://github.com/superturtlee/anland.git
       request_id:
-        description: '调用方传入的请求 ID，用于等待对应 workflow run'
+        description: 可选的调用方请求 ID
         required: false
         type: string
         default: ''
@@ -46,110 +24,133 @@ permissions:
   contents: write
 
 concurrency:
-  group: build-kde-wayland-${{ github.ref }}-${{ inputs.build_target }}
+  # 一次只发布一组完整的、不可变的五平台产物。
+  group: anland-kde-package-release
   cancel-in-progress: false
 
 jobs:
-  setup:
-    name: 解析构建目标
+  prepare:
+    name: 解析 Anland 源码版本
     runs-on: ubuntu-latest
     outputs:
-      targets: ${{ steps.targets.outputs.targets }}
+      anland_commit: ${{ steps.resolve.outputs.anland_commit }}
     steps:
-      - name: 生成构建矩阵
-        id: targets
+      - name: 要求从 main 分支触发
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_NAME" != main ]; then
+            echo "此工作流必须从 main 分支触发。" >&2
+            exit 1
+          fi
+
+      - name: 将请求的源解析为单个提交
+        id: resolve
+        env:
+          ANLAND_REPO: ${{ inputs.anland_repo }}
+          ANLAND_REF: ${{ inputs.anland_ref }}
+        shell: bash
         run: |
           set -euo pipefail
 
-          case "${{ inputs.build_target }}" in
-            all)
-              targets='["ubuntu2604","Debian13","Fedora43","Fedora44","Arch"]'
-              ;;
-            ubuntu2604|Debian13|Fedora43|Fedora44|Arch)
-              targets='["${{ inputs.build_target }}"]'
-              ;;
-            *)
-              echo "不支持的构建目标: ${{ inputs.build_target }}" >&2
-              exit 1
-              ;;
-          esac
-
-          echo "targets=$targets" >> "$GITHUB_OUTPUT"
-          echo "构建目标: $targets"
+          source_dir="$(mktemp -d)/anland"
+          trap 'rm -rf "${source_dir%/anland}"' EXIT
+          git init --quiet "$source_dir"
+          git -C "$source_dir" remote add origin "$ANLAND_REPO"
+          git -C "$source_dir" fetch --quiet --depth=1 origin "$ANLAND_REF"
+          anland_commit="$(git -C "$source_dir" rev-parse FETCH_HEAD)"
+          git -C "$source_dir" cat-file -e "${anland_commit}^{commit}"
+          echo "anland_commit=$anland_commit" >> "$GITHUB_OUTPUT"
+          echo "已将 $ANLAND_REPO @ $ANLAND_REF 解析为 $anland_commit"
 
   build:
-    name: Build ${{ matrix.target }}
-    needs: setup
+    name: 构建 ${{ matrix.display_name }} 软件包
+    needs: prepare
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJson(needs.setup.outputs.targets) }}
+        include:
+          - target: ubuntu2604
+            display_name: Ubuntu 26.04
+          - target: Debian13
+            display_name: Debian 13
+          - target: Fedora43
+            display_name: Fedora 43
+          - target: Fedora44
+            display_name: Fedora 44
+          - target: Arch
+            display_name: Arch Linux
 
     env:
       ANLAND_REPO: ${{ inputs.anland_repo }}
-      ANLAND_REF: ${{ inputs.anland_ref }}
+      ANLAND_COMMIT: ${{ needs.prepare.outputs.anland_commit }}
       BUILD_TARGET: ${{ matrix.target }}
 
     steps:
-      - name: 检出本仓库
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
       - name: 解析构建目标
         id: target
+        shell: bash
         run: |
           set -euo pipefail
 
           case "$BUILD_TARGET" in
             ubuntu2604)
-              echo "image=ubuntu:26.04" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/ubuntu2604_v5/build.sh" >> "$GITHUB_OUTPUT"
-              echo "dest=anland-build/ubuntu2604" >> "$GITHUB_OUTPUT"
-              echo "pkg_pattern=*.deb" >> "$GITHUB_OUTPUT"
-              echo "display_name=Ubuntu 26.04" >> "$GITHUB_OUTPUT"
+              image=ubuntu:26.04
+              script=producers/kde/ubuntu2604_v5/build.sh
+              package_pattern='*.deb'
+              asset_name=anland-kde-ubuntu2604-arm64.tar.gz
+              archive_target=ubuntu2604
               ;;
             Debian13)
-              echo "image=debian:trixie" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/Debian13_v5/build.sh" >> "$GITHUB_OUTPUT"
-              echo "dest=anland-build/Debian13" >> "$GITHUB_OUTPUT"
-              echo "pkg_pattern=*.deb" >> "$GITHUB_OUTPUT"
-              echo "display_name=Debian 13 (Trixie)" >> "$GITHUB_OUTPUT"
+              image=debian:trixie
+              script=producers/kde/Debian13_v5/build.sh
+              package_pattern='*.deb'
+              asset_name=anland-kde-debian13-arm64.tar.gz
+              archive_target=debian13
               ;;
             Fedora43)
-              echo "image=fedora:43" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/Fedora43_v5/build.sh" >> "$GITHUB_OUTPUT"
-              echo "dest=anland-build/Fedora43" >> "$GITHUB_OUTPUT"
-              echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
-              echo "display_name=Fedora 43" >> "$GITHUB_OUTPUT"
+              image=fedora:43
+              script=producers/kde/Fedora43_v5/build.sh
+              package_pattern='*.rpm'
+              asset_name=anland-kde-fedora43-aarch64.tar.gz
+              archive_target=fedora43
               ;;
             Fedora44)
-              echo "image=fedora:44" >> "$GITHUB_OUTPUT"
-              # Fedora 44 复用 Fedora 43 的构建脚本
-              echo "script=producers/kde/Fedora43_v5/build.sh" >> "$GITHUB_OUTPUT"
-              echo "dest=anland-build/Fedora44" >> "$GITHUB_OUTPUT"
-              echo "pkg_pattern=*.rpm" >> "$GITHUB_OUTPUT"
-              echo "display_name=Fedora 44" >> "$GITHUB_OUTPUT"
+              image=fedora:44
+              # Fedora 44 使用 Fedora 43 的构建脚本，配 Fedora 44 基础镜像。
+              script=producers/kde/Fedora43_v5/build.sh
+              package_pattern='*.rpm'
+              asset_name=anland-kde-fedora44-aarch64.tar.gz
+              archive_target=fedora44
               ;;
             Arch)
-              echo "image=ogarcia/archlinux:latest" >> "$GITHUB_OUTPUT"
-              echo "script=producers/kde/Arch_v5/build.sh" >> "$GITHUB_OUTPUT"
-              echo "dest=anland-build/Arch" >> "$GITHUB_OUTPUT"
-              echo "pkg_pattern=*.pkg.tar.*" >> "$GITHUB_OUTPUT"
+              image=ogarcia/archlinux:latest
+              script=producers/kde/Arch_v5/build.sh
+              package_pattern='*.pkg.tar.*'
+              asset_name=anland-kde-arch-aarch64.tar.gz
+              archive_target=arch
               ;;
             *)
-              echo "不支持的构建目标: $BUILD_TARGET" >&2
+              echo "不支持的构建目标：$BUILD_TARGET" >&2
               exit 1
               ;;
           esac
 
-      - name: 在对应发行版中编译包
+          {
+            echo "image=$image"
+            echo "script=$script"
+            echo "package_pattern=$package_pattern"
+            echo "asset_name=$asset_name"
+            echo "archive_target=$archive_target"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 在对应的发行版中构建软件包
         env:
           DISTRO_IMAGE: ${{ steps.target.outputs.image }}
           BUILD_SCRIPT: ${{ steps.target.outputs.script }}
-          PKG_PATTERN: ${{ steps.target.outputs.pkg_pattern }}
-          OUTPUT_DIR: .anland-build/${{ matrix.target }}
+          PKG_PATTERN: ${{ steps.target.outputs.package_pattern }}
+          OUTPUT_DIR: .kde-package-build/${{ matrix.target }}
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -159,17 +160,16 @@ jobs:
           docker run --rm \
             --platform linux/arm64 \
             -e ANLAND_REPO \
-            -e ANLAND_REF \
+            -e ANLAND_COMMIT \
             -e BUILD_SCRIPT \
             -e BUILD_TARGET \
             -e PKG_PATTERN \
-            -v "$PWD/$OUTPUT_DIR:/root/anland-build" \
-            -v "$PWD/$OUTPUT_DIR:/tmp/anland-build" \
+            -v "$PWD/$OUTPUT_DIR:/root/kde-packages" \
+            -v "$PWD/$OUTPUT_DIR:/tmp/kde-packages" \
             "$DISTRO_IMAGE" \
             bash -lc '
               set -euo pipefail
 
-              # 按发行版安装基础工具
               case "$BUILD_TARGET" in
                 Debian13|ubuntu2604)
                   apt-get update
@@ -191,220 +191,168 @@ jobs:
                   if grep -q "^#PACMAN_AUTH=()" /etc/makepkg.conf; then
                     sed -i "s/^#PACMAN_AUTH=().*/PACMAN_AUTH=(sudo)/" /etc/makepkg.conf
                   else
-                    printf "\\nPACMAN_AUTH=(sudo)\\n" >> /etc/makepkg.conf
+                    printf "\nPACMAN_AUTH=(sudo)\n" >> /etc/makepkg.conf
                   fi
-                  chown -R anland:anland /tmp/anland-build
+                  chown -R anland:anland /tmp/kde-packages
                   ;;
               esac
 
-              if ! git clone --depth=1 --branch "$ANLAND_REF" "$ANLAND_REPO" /tmp/anland; then
-                git clone --depth=1 "$ANLAND_REPO" /tmp/anland
-                git -C /tmp/anland fetch --depth=1 origin "$ANLAND_REF"
-                git -C /tmp/anland checkout --detach FETCH_HEAD
-              fi
+              git init --quiet /tmp/anland
+              git -C /tmp/anland remote add origin "$ANLAND_REPO"
+              git -C /tmp/anland fetch --quiet --depth=1 origin "$ANLAND_COMMIT"
+              git -C /tmp/anland checkout --quiet --detach FETCH_HEAD
 
-              # Debian 13 (Trixie) 使用 DEB822 格式的 .sources 文件，
-              # build.sh 自带的 deb-src 启用逻辑不兼容此格式，需手动修复
-              if [ "$BUILD_TARGET" = "Debian13" ]; then
-                if [ -f /etc/apt/sources.list.d/debian.sources ]; then
-                  sed -i "s/^Types: deb\$/Types: deb deb-src/" /etc/apt/sources.list.d/debian.sources
-                fi
+              # Debian 13 使用 DEB822 源；上游构建脚本要求 deb-src。
+              if [ "$BUILD_TARGET" = Debian13 ] && [ -f /etc/apt/sources.list.d/debian.sources ]; then
+                sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/debian.sources
                 apt-get update
               fi
 
               test -f "/tmp/anland/$BUILD_SCRIPT"
               chmod +x "/tmp/anland/$BUILD_SCRIPT"
 
-              cd "/tmp/anland/$(dirname "$BUILD_SCRIPT")"
-
-              if [ "$BUILD_TARGET" = "Arch" ]; then
-                su -s /bin/bash anland -c "cd /tmp/anland/$(dirname "$BUILD_SCRIPT") && WORKDIR=/tmp/anland-build ./$(basename "$BUILD_SCRIPT") --noconfirm"
-                chmod -R a+rwX /tmp/anland-build
+              if [ "$BUILD_TARGET" = Arch ]; then
+                su -s /bin/bash anland -c "cd /tmp/anland/$(dirname "$BUILD_SCRIPT") && WORKDIR=/tmp/kde-packages ./$(basename "$BUILD_SCRIPT") --noconfirm"
+                chmod -R a+rwX /tmp/kde-packages
               else
-                WORKDIR=/root/anland-build sudo -E "./$(basename "$BUILD_SCRIPT")"
+                cd "/tmp/anland/$(dirname "$BUILD_SCRIPT")"
+                WORKDIR=/root/kde-packages sudo -E "./$(basename "$BUILD_SCRIPT")"
               fi
             '
 
-      - name: 更新本仓库预编译包目录
+      - name: 打包 Release 资产
+        id: package
         env:
-          DEST_DIR: ${{ steps.target.outputs.dest }}
-          PKG_PATTERN: ${{ steps.target.outputs.pkg_pattern }}
-          OUTPUT_DIR: .anland-build/${{ matrix.target }}
+          PKG_PATTERN: ${{ steps.target.outputs.package_pattern }}
+          ASSET_NAME: ${{ steps.target.outputs.asset_name }}
+          ARCHIVE_TARGET: ${{ steps.target.outputs.archive_target }}
+          OUTPUT_DIR: .kde-package-build/${{ matrix.target }}
+        shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p "$DEST_DIR"
+          package_dir="$RUNNER_TEMP/anland-kde-packages/$ARCHIVE_TARGET"
+          asset_dir="$GITHUB_WORKSPACE/.release-assets/$BUILD_TARGET"
+          rm -rf "$package_dir" "$asset_dir"
+          mkdir -p "$package_dir" "$asset_dir"
 
-          # 包名包含版本号；清理扁平目录中的旧包，避免新旧版本共存。
-          # 同时删除旧版目录布局，兼容目录扁平化前留下的产物。
-          find "$DEST_DIR" -maxdepth 1 -type f \
-            \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' \) -delete
-          rm -rf "$DEST_DIR/kwin" "$DEST_DIR/xwayland"
+          copy_packages() {
+            local source_dir="$1"
+            [ -d "$source_dir" ] || return 0
+            find "$source_dir" -type f -name "$PKG_PATTERN" \
+              ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' \
+              ! -name 'kwin-dev_*' ! -name 'kwin-devel-*' ! -name 'kwin-doc-*' \
+              ! -name 'xorg-x11-server-Xwayland-devel-*' -exec cp -v {} "$package_dir/" \;
+          }
 
-          # 按包格式收集产物
-          if [ "$BUILD_TARGET" = "Arch" ]; then
-            find "$OUTPUT_DIR" -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*.src.*' -exec cp -v {} "$DEST_DIR/" \;
+          if [ "$BUILD_TARGET" = Arch ]; then
+            copy_packages "$OUTPUT_DIR"
           else
-            test -d "$OUTPUT_DIR/kwin" && find "$OUTPUT_DIR/kwin" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' ! -name 'kwin-dev_*' ! -name 'kwin-devel-*' ! -name 'kwin-doc-*' -exec cp -v {} "$DEST_DIR/" \;
-            test -d "$OUTPUT_DIR/xwayland" && find "$OUTPUT_DIR/xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*debug*' ! -name '*dbgsym*' ! -name '*.src.*' ! -name 'xorg-x11-server-Xwayland-devel-*' -exec cp -v {} "$DEST_DIR/" \;
-
-            # Fedora 的 xwayland 包名不同，尝试备选目录
-            if [ ! -d "$OUTPUT_DIR/xwayland" ] && [ -d "$OUTPUT_DIR/xorg-x11-server-Xwayland" ]; then
-              find "$OUTPUT_DIR/xorg-x11-server-Xwayland" -maxdepth 1 -type f -name "$PKG_PATTERN" ! -name '*.src.*' ! -name 'xorg-x11-server-Xwayland-devel-*' -exec cp -v {} "$DEST_DIR/" \;
-            fi
+            copy_packages "$OUTPUT_DIR/kwin"
+            copy_packages "$OUTPUT_DIR/xwayland"
+            copy_packages "$OUTPUT_DIR/xorg-x11-server-Xwayland"
           fi
 
-          pkg_count="$(find "$DEST_DIR" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' \) | wc -l)"
-          if [ "$pkg_count" -eq 0 ]; then
-            echo "没有找到生成的包" >&2
+          package_count="$(find "$package_dir" -maxdepth 1 -type f -name "$PKG_PATTERN" | wc -l)"
+          if [ "$package_count" -eq 0 ]; then
+            echo "未为 $BUILD_TARGET 收集到任何可安装的软件包" >&2
             exit 1
           fi
 
-          echo "共收集到 ${pkg_count} 个预编译包:"
-          find "$DEST_DIR" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' \) -print | sort
+          asset_path="$asset_dir/$ASSET_NAME"
+          tar -C "$RUNNER_TEMP" -czf "$asset_path" "anland-kde-packages/$ARCHIVE_TARGET"
+          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+          echo "已将 $package_count 个文件打包进 $ASSET_NAME"
 
-      - name: 上传构建产物 (Artifact)
+      - name: 上传 Release 资产
         uses: actions/upload-artifact@v4
         with:
-          name: anland-pkgs-${{ matrix.target }}
-          path: ${{ steps.target.outputs.dest }}
+          name: anland-kde-package-${{ matrix.target }}
+          path: ${{ steps.package.outputs.asset_path }}
           if-no-files-found: error
-
-  commit:
-    name: 提交更新
-    needs: [setup, build]
-    if: ${{ github.event.inputs.commit_changes == 'true' && needs.build.result == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: 检出本仓库
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: 下载构建产物
-        uses: actions/download-artifact@v4
-        with:
-          path: .anland-artifacts
-          pattern: anland-pkgs-*
-          merge-multiple: false
-
-      - name: 提交更新
-        run: |
-          set -euo pipefail
-
-          shopt -s nullglob
-          artifact_dirs=(.anland-artifacts/anland-pkgs-*)
-          if [ "${#artifact_dirs[@]}" -eq 0 ]; then
-            echo "没有下载到构建产物" >&2
-            exit 1
-          fi
-
-          changed_paths=()
-          for artifact_dir in "${artifact_dirs[@]}"; do
-            target="${artifact_dir##*/anland-pkgs-}"
-            case "$target" in
-              ubuntu2604|Debian13|Fedora43|Fedora44|Arch)
-                ;;
-              *)
-                echo "不支持的构建产物目标: $target" >&2
-                exit 1
-                ;;
-            esac
-
-            dest_dir="anland-build/$target"
-            mkdir -p "$dest_dir"
-            # 构建产物文件名带版本号，复制前必须移除目标目录中的旧包。
-            find "$dest_dir" -maxdepth 1 -type f \
-              \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' \) -delete
-            rm -rf "$dest_dir/kwin" "$dest_dir/xwayland"
-            cp -a "$artifact_dir/." "$dest_dir/"
-
-            pkg_count="$(find "$dest_dir" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.*' \) | wc -l)"
-            if [ "$pkg_count" -eq 0 ]; then
-              echo "没有找到 $target 的构建包" >&2
-              exit 1
-            fi
-
-            changed_paths+=("$dest_dir")
-          done
-
-          if [ -z "$(git status --porcelain -- "${changed_paths[@]}")" ]; then
-            echo "预编译包没有变化，无需提交"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A "${changed_paths[@]}"
-          git commit -m "Update anland KDE Wayland packages (${{ inputs.build_target }})"
-          git pull --rebase --autostash origin "${{ github.ref_name }}" || true
-          git push
+          retention-days: 1
 
   release:
-    name: 发布 Release
-    needs: [setup, build]
-    if: ${{ github.event.inputs.create_release == 'true' && needs.build.result == 'success' }}
+    name: 发布不可变的五包 Release
+    needs: [prepare, build]
+    if: ${{ needs.prepare.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: 检出仓库（gh release 需要 git 上下文）
+      - name: 检出安装脚本
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
 
-      - name: 下载构建产物
+      - name: 下载软件包资产
         uses: actions/download-artifact@v4
         with:
-          path: .anland-artifacts
-          pattern: anland-pkgs-*
-          merge-multiple: false
+          pattern: anland-kde-package-*
+          path: release-assets
+          merge-multiple: true
 
-      - name: 为每个构建目标发布 Release
+      - name: 创建 Release 与校验和清单
         env:
           GH_TOKEN: ${{ github.token }}
-          ANLAND_REF: ${{ inputs.anland_ref }}
           ANLAND_REPO: ${{ inputs.anland_repo }}
+          ANLAND_REF: ${{ inputs.anland_ref }}
+          ANLAND_COMMIT: ${{ needs.prepare.outputs.anland_commit }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        shell: bash
         run: |
           set -euo pipefail
 
-          shopt -s nullglob
-          artifact_dirs=(.anland-artifacts/anland-pkgs-*)
-          if [ "${#artifact_dirs[@]}" -eq 0 ]; then
-            echo "没有下载到构建产物" >&2
-            exit 1
-          fi
-
-          BUILD_TIME="$(date +'%Y-%m-%d %H:%M:%S')"
-
-          for artifact_dir in "${artifact_dirs[@]}"; do
-            target="${artifact_dir##*/anland-pkgs-}"
-            case "$target" in
-              ubuntu2604)     display_name="Ubuntu 26.04";;
-              Debian13)       display_name="Debian 13 (Trixie)";;
-              Fedora43)       display_name="Fedora 43";;
-              Fedora44)       display_name="Fedora 44";;
-              Arch)           display_name="Arch Linux";;
-              *)
-                echo "不支持的构建产物目标: $target" >&2
-                exit 1
-                ;;
-            esac
-
-            release_tag="anland-pkgs-${target}"
-            echo "--- 发布 ${display_name} (${target}) ---"
-
-            # 打包为 anland-build/<target>/ 结构（与 install.sh 预期一致）
-            bundle="/tmp/anland-pkgs-${target}.tar.gz"
-            rm -rf /tmp/anland-pkg
-            pkg_dir="/tmp/anland-pkg/anland-build/${target}"
-            mkdir -p "$pkg_dir"
-            cp "$artifact_dir"/*.deb "$artifact_dir"/*.rpm "$artifact_dir"/*.pkg.tar.* "$pkg_dir/" 2>/dev/null || true
-            tar -czf "$bundle" -C "/tmp/anland-pkg" .
-
-            # 创建 release（只发一个 tar.gz 压缩包）
-            gh release delete "$release_tag" --cleanup-tag -y 2>/dev/null || true
-            sleep 2
-            gh release create "$release_tag" \
-              --title "KDE Wayland 预编译包 - ${display_name}" \
-              --notes "构建时间: ${BUILD_TIME} | anland: ${ANLAND_REF}" \
-              "$bundle"
-
-            echo "已发布: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${release_tag}"
+          release_dir="$GITHUB_WORKSPACE/release-assets"
+          expected_assets=(
+            anland-kde-arch-aarch64.tar.gz
+            anland-kde-debian13-arm64.tar.gz
+            anland-kde-ubuntu2604-arm64.tar.gz
+            anland-kde-fedora43-aarch64.tar.gz
+            anland-kde-fedora44-aarch64.tar.gz
+          )
+          for asset in "${expected_assets[@]}"; do
+            test -f "$release_dir/$asset"
           done
+
+          cp scripts/install-anland-kde.sh "$release_dir/install-anland-kde.sh"
+          chmod +x "$release_dir/install-anland-kde.sh"
+          (
+            cd "$release_dir"
+            sha256sum "${expected_assets[@]}" install-anland-kde.sh > SHA256SUMS
+          )
+
+          build_time="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          release_tag="anland-kde-packages-$(date -u +'%Y%m%d-%H%M%S')-${GITHUB_RUN_ID}"
+          release_notes="$(printf '%s\n' \
+            '# Anland KDE Wayland 预编译包 / prebuilt packages' \
+            '' \
+            '此 Release 是不可变的完整 ARM64/aarch64 包集，供 Droidspaces Wayland RootFS 使用。' \
+            'This Release is an immutable, complete ARM64/aarch64 package set for Droidspaces Wayland RootFS images.' \
+            '' \
+            '## 资产 / Assets' \
+            '' \
+            '| Archive | Target |' \
+            '| --- | --- |' \
+            '| `anland-kde-arch-aarch64.tar.gz` | Arch Linux |' \
+            '| `anland-kde-debian13-arm64.tar.gz` | Debian 13 |' \
+            '| `anland-kde-ubuntu2604-arm64.tar.gz` | Ubuntu 26.04 |' \
+            '| `anland-kde-fedora43-aarch64.tar.gz` | Fedora 43 |' \
+            '| `anland-kde-fedora44-aarch64.tar.gz` | Fedora 44 |' \
+            '' \
+            '## 构建详情 / Build details' \
+            '' \
+            "- 构建时间 / Built: ${build_time}" \
+            "- 软件包请求 ID / Package request ID: ${REQUEST_ID:-manual-${GITHUB_RUN_ID}}" \
+            "- 软件包工作流运行号 / Package workflow run: ${GITHUB_RUN_ID}" \
+            "- Anland 源码 / Anland source: \`${ANLAND_REPO}\` @ \`${ANLAND_COMMIT}\`（requested \`${ANLAND_REF}\`）" \
+            "- 工作流提交 / Workflow commit: \`${GITHUB_SHA}\`" \
+            '- 架构 / Architecture: ARM64/aarch64 only' \
+      
+          gh release create "$release_tag" "$release_dir"/* \
+            --draft \
+            --latest=false \
+            --target "$GITHUB_SHA" \
+            --title 'Anland KDE Wayland 预编译包 / Prebuilt Packages' \
+            --notes "$release_notes"
+          gh release edit "$release_tag" --draft=false --latest=false
+
+          echo "已发布 $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$release_tag"

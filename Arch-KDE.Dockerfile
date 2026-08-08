@@ -18,13 +18,17 @@ ARG ENABLE_srf_ARG
 ARG ENABLE_tmoe_ARG
 ARG ENABLE_systemd257_ARG
 ARG USERNAME
+ARG ANLAND_KDE_RELEASE_REPOSITORY=Goldzxcbug/Droidspaces-rootfs-KDE-builder
+ARG ANLAND_KDE_RELEASE_TAG
+ARG ANLAND_KDE_PACKAGE_REVISION=unknown
 ######################################################
 
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
-COPY anland-build/Arch/ /tmp/anland-build/Arch/
+COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 
-RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
+RUN chmod +x /usr/local/sbin/install-anland-kde && \
+    sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
     sed -i '/NoExtract.*i18n/d' /etc/pacman.conf && \
     pacman -Sy --noconfirm archlinux-keyring glibc && \
@@ -39,7 +43,7 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     # 用于系统监控的 procps 进程工具
     procps-ng \
     # 核心内核模块支持
-    kmod tzdata && \
+    kmod tzdata tar && \
     ############################################## KDE支持 ################################################
     # 最小化KDE
     if [ "$BUILD_KDE" = "min" ]; then \
@@ -90,25 +94,17 @@ RUN sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi 
 
-# 启用 Anland 时使用针对 ARM64 Droidspaces 的 patched KWin/Xwayland。
-# LocalFileSigLevel 只用于本地构建产物，不能放宽仓库包的签名校验。
+# 启用 Anland 时从不可变 GitHub Release 安装 ARM64 patched KWin/Xwayland。
 RUN if [ "$ENABLE_anland_kde_ARG" = "true" ]; then \
-        set -- /tmp/anland-build/Arch/*.pkg.tar.*; \
-        if [ ! -f "$1" ]; then \
-            echo "ENABLE_anland_kde_ARG=true requires packages in anland-build/Arch" >&2; \
+        if [ -z "$ANLAND_KDE_RELEASE_TAG" ]; then \
+            echo "An immutable ANLAND_KDE_RELEASE_TAG is required for Docker builds." >&2; \
             exit 1; \
-        fi; \
-        cp /etc/pacman.conf /tmp/pacman-anland.conf; \
-        if grep -q '^#LocalFileSigLevel = Optional$' /tmp/pacman-anland.conf; then \
-            sed -i 's/^#LocalFileSigLevel = Optional$/LocalFileSigLevel = Optional/' /tmp/pacman-anland.conf; \
-        else \
-            printf '\n[options]\nLocalFileSigLevel = Optional\n' >> /tmp/pacman-anland.conf; \
-        fi; \
-        pacman --config /tmp/pacman-anland.conf -U --noconfirm "$@"; \
-        if ! grep -q '^IgnorePkg.*kwin' /etc/pacman.conf; then \
-            sed -i '/^\[options\]$/a IgnorePkg = kwin xorg-xwayland' /etc/pacman.conf; \
-        fi; \
-        rm -f /tmp/pacman-anland.conf /tmp/anland-build/Arch/*.pkg.tar.*; \
+        fi && \
+        echo "--> [enabled] Installing Anland KDE packages (${ANLAND_KDE_PACKAGE_REVISION})..." && \
+        ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
+        ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
+        /usr/local/sbin/install-anland-kde && \
+        echo "--> [enabled] Anland KDE support installed"; \
     fi
 
 # 配置 Locale 与 SSH

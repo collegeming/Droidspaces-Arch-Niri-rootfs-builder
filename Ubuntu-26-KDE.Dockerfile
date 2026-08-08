@@ -19,6 +19,9 @@ ARG ENABLE_8gen2_wayland_ARG
 ARG ENABLE_nosnap_ARG
 ARG ENABLE_systemd257_ARG
 ARG USERNAME
+ARG ANLAND_KDE_RELEASE_REPOSITORY=Goldzxcbug/Droidspaces-rootfs-KDE-builder
+ARG ANLAND_KDE_RELEASE_TAG
+ARG ANLAND_KDE_PACKAGE_REVISION=unknown
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -41,12 +44,10 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
 # 通用 Droidspaces USB Manager 安装器
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
-
-# 复制本仓库内预编译的 anland_kde deb 包
-COPY anland-build/ubuntu2604/*.deb /tmp/anland-build/ubuntu2604/
+COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh
+RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-kde
 
 RUN sed -i 's/Components: main/Components: main restricted universe multiverse/g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
     sed -i 's/main/main restricted universe multiverse/g' /etc/apt/sources.list 2>/dev/null && \
@@ -73,7 +74,7 @@ RUN apt-get update && \
     # 用于系统监控的 procps 进程工具
     procps \
     # 核心内核模块支持
-    kmod tzdata && \
+    kmod tzdata tar && \
     ############################################## KDE支持 ################################################
     # 最小化KDE
     # 解除底层系统对中文等翻译文件(.mo)的剔除规则，防止安装桌面时丢包
@@ -112,23 +113,16 @@ RUN apt-get update && \
     fi && \
     ############################################## anland_kde(wayland) 支持 ################################################
     if [ "$ENABLE_anland_kde_ARG" = "true" ] && [ "$BUILD_KDE" != "none" ]; then \
-        echo "--> [开启] 正在安装 anland_kde..." && \
-        echo "--> [开启] 正在安装预编译的 kwin deb 包..." && \
-        if ! dpkg -i /tmp/anland-build/ubuntu2604/*.deb; then \
-            echo "--> [开启] dpkg 报告依赖缺失，尝试用 apt 修复..." && \
-            apt-get install -f -y; \
+        if [ -z "$ANLAND_KDE_RELEASE_TAG" ]; then \
+            echo "错误：Docker 构建必须传入不可变的 ANLAND_KDE_RELEASE_TAG。" >&2; \
+            exit 1; \
         fi && \
-        echo "--> [开启] 设置预编译 deb 包为 hold 模式，防止被 apt 更新覆盖..." && \
-        for f in /tmp/anland-build/ubuntu2604/*.deb; do \
-            pkgname=$(dpkg-deb -f "$f" Package) && \
-            apt-mark hold "$pkgname" && \
-            echo "    hold: $pkgname"; \
-        done && \
-        echo "--> [开启] 清理临时文件..." && \
-        rm -rf /tmp/anland-build && \
+        echo "--> [开启] 正在安装 anland_kde..." && \
+        echo "--> [开启] 从不可变 Release 下载预编译包 (${ANLAND_KDE_PACKAGE_REVISION})..." && \
+        ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
+        ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
+        /usr/local/sbin/install-anland-kde && \
         echo "--> [开启] anland_kde 支持已安装"; \
-    else \
-        rm -rf /tmp/anland-build; \
     fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)

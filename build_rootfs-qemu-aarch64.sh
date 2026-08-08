@@ -36,6 +36,47 @@ while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:" opt; do
 done
 
 : "${USERNAME:=Gold}"
+: "${ANLAND_KDE_RELEASE_REPOSITORY:=Goldzxcbug/Droidspaces-rootfs-KDE-builder}"
+: "${ANLAND_KDE_RELEASE_TAG:=}"
+: "${ANLAND_KDE_PACKAGE_REVISION:=}"
+
+resolve_anland_kde_release_tag() {
+  local page response candidate
+
+  case "$ANLAND_KDE_RELEASE_TAG" in
+    anland-kde-packages-[0-9]*) return 0 ;;
+    '') ;;
+    *)
+      echo "错误：ANLAND_KDE_RELEASE_TAG 必须是 anland-kde-packages-*。" >&2
+      return 1
+      ;;
+  esac
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "错误：无法自动解析 Anland KDE Release，需要 curl。" >&2
+    return 1
+  fi
+
+  page=1
+  while [ "$page" -le 10 ]; do
+    if ! response="$(curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 \
+      "https://api.github.com/repos/${ANLAND_KDE_RELEASE_REPOSITORY}/releases?per_page=100&page=${page}")"; then
+      echo "错误：无法查询 anland KDE 包 Release 列表。" >&2
+      return 1
+    fi
+    candidate="$(printf '%s\n' "$response" | tr '{,}' '\n' | \
+      sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' | \
+      sed -n '/^anland-kde-packages-[0-9]/ { p; q; }')"
+    if [ -n "$candidate" ]; then
+      ANLAND_KDE_RELEASE_TAG="$candidate"
+      return 0
+    fi
+    page=$((page + 1))
+  done
+
+  echo "错误：未找到可用的 anland KDE 包 Release。" >&2
+  return 1
+}
 
 # 校验：检查是否传递了 Dockerfile 模板文件
 if [ -z "$DOCKERFILE" ]; then
@@ -63,6 +104,30 @@ echo " Ubuntu nosnap：$ENABLE_nosnap"
 echo " systemd 257 旧内核兼容：$ENABLE_systemd257"
 echo " 修复骁龙8 Gen 2 Wayland 花屏：$ENABLE_8gen2_wayland"
 echo "========================================================="
+
+if [ "$ENABLE_anland_kde" = "true" ]; then
+  resolve_anland_kde_release_tag
+  if [ -z "$ANLAND_KDE_PACKAGE_REVISION" ]; then
+    if ! command -v curl >/dev/null 2>&1; then
+      echo "错误：启用 anland_kde 时需要 curl 校验 KDE 包 Release。"
+      exit 1
+    fi
+    if ! RELEASE_CHECKSUMS="$(curl -fsSL --retry 3 --connect-timeout 20 \
+      "https://github.com/${ANLAND_KDE_RELEASE_REPOSITORY}/releases/download/${ANLAND_KDE_RELEASE_TAG}/SHA256SUMS")"; then
+      echo "错误：无法下载 anland KDE 包 Release 校验清单。"
+      exit 1
+    fi
+    ANLAND_KDE_PACKAGE_REVISION="$(printf '%s' "$RELEASE_CHECKSUMS" | sha256sum | awk '{print $1}')"
+  fi
+
+  if [ -z "$ANLAND_KDE_PACKAGE_REVISION" ]; then
+    echo "错误：无法获取 anland KDE 包 Release 校验清单。"
+    exit 1
+  fi
+  echo " Anland KDE 包 Release：$ANLAND_KDE_RELEASE_REPOSITORY @ $ANLAND_KDE_RELEASE_TAG"
+else
+  ANLAND_KDE_PACKAGE_REVISION="${ANLAND_KDE_PACKAGE_REVISION:-disabled}"
+fi
 
 # 1. 环境初始化（跨架构 QEMU 模式）
 echo "正在初始化 QEMU/binfmt 跨架构支持..."
@@ -116,6 +181,9 @@ docker buildx build \
   --build-arg ENABLE_systemd257_ARG="$ENABLE_systemd257" \
   --build-arg ENABLE_anland_kde_ARG="$ENABLE_anland_kde" \
   --build-arg ENABLE_8gen2_wayland_ARG="$ENABLE_8gen2_wayland" \
+  --build-arg ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
+  --build-arg ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
+  --build-arg ANLAND_KDE_PACKAGE_REVISION="$ANLAND_KDE_PACKAGE_REVISION" \
   --build-arg USERNAME="$USERNAME" \
   -f "$DOCKERFILE" \
   .

@@ -64,6 +64,13 @@ jobs:
             INDEX=0
 
             while read ID TAG; do
+              case "$TAG" in
+                anland-kde-packages-*)
+                  echo "保留 Anland KDE 预编译包 Release: $TAG"
+                  continue
+                  ;;
+              esac
+
               INDEX=$((INDEX + 1))
 
               if [ "$INDEX" -le "$KEEP_RELEASES" ]; then

@@ -234,6 +234,8 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    outputs:
+      release_tag: ${{ steps.package_release.outputs.release_tag }}
     permissions:
       actions: write
       checks: read
@@ -244,6 +246,7 @@ jobs:
         run: echo "未启用 KDE Wayland 预编译包工作流触发。"
 
       - name: 触发并等待 KDE Wayland 预编译包工作流
+        id: package_release
         if: ${{ github.event.inputs.build_wayland_packages == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -255,14 +258,12 @@ jobs:
           gh api \
             --method POST \
             "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/dispatches" \
-            -f "ref=${{ github.ref_name }}" \
-            -f "inputs[build_target]=$WAYLAND_PACKAGE_TARGET" \
+            -f "ref=main" \
             -f "inputs[anland_ref]=main" \
             -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
-            -f "inputs[commit_changes]=true" \
             -f "inputs[request_id]=$REQUEST_ID"
 
-          echo "已触发 build-kde-wayland.yml，build_target=$WAYLAND_PACKAGE_TARGET request_id=$REQUEST_ID"
+          echo "已触发 build-kde-wayland.yml，发布完整五平台 Release，request_id=$REQUEST_ID"
 
           run_id=""
           for attempt in {1..60}; do
@@ -270,7 +271,7 @@ jobs:
               --method GET \
               "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/runs" \
               -f event=workflow_dispatch \
-              -f branch="${{ github.ref_name }}" \
+              -f branch=main \
               -f per_page=20 \
               --jq "first(.workflow_runs[] | select(.display_title | contains(\"$REQUEST_ID\")) | .id) // \"\"")"
 
@@ -290,6 +291,16 @@ jobs:
           echo "等待 build-kde-wayland.yml run $run_id 完成..."
           gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status --interval 60
 
+          release_tag="$(gh api \
+            "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq ".[] | select((.body // \"\") | contains(\"Package request ID: $REQUEST_ID\")) | .tag_name" | sed -n '1p')"
+          if [ -z "$release_tag" ]; then
+            echo "错误: 未找到本次 KDE Wayland 包构建发布的 Release tag" >&2
+            exit 1
+          fi
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "KDE Wayland 包 Release: $release_tag"
+
   # --------------------------------------------------------
   # 阶段 2: build (常规 Linux 发行版 RootFS 的构建)
   # --------------------------------------------------------
@@ -297,6 +308,9 @@ jobs:
     needs: [setup, build-wayland-packages]
     if: ${{ needs.setup.outputs.templates != '[]' }}
     runs-on: ubuntu-24.04-arm
+    env:
+      ANLAND_KDE_RELEASE_REPOSITORY: ${{ github.repository }}
+      ANLAND_KDE_RELEASE_TAG: ${{ needs.build-wayland-packages.outputs.release_tag }}
     strategy:
       fail-fast: false
       matrix:

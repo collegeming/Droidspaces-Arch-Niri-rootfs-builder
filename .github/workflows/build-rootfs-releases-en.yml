@@ -234,6 +234,8 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    outputs:
+      release_tag: ${{ steps.package_release.outputs.release_tag }}
     permissions:
       actions: write
       checks: read
@@ -244,6 +246,7 @@ jobs:
         run: echo "KDE Wayland package workflow trigger is disabled."
 
       - name: Trigger and wait for KDE Wayland precompiled package workflow
+        id: package_release
         if: ${{ github.event.inputs.build_wayland_packages == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -255,14 +258,12 @@ jobs:
           gh api \
             --method POST \
             "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/dispatches" \
-            -f "ref=${{ github.ref_name }}" \
-            -f "inputs[build_target]=$WAYLAND_PACKAGE_TARGET" \
+            -f "ref=main" \
             -f "inputs[anland_ref]=main" \
             -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
-            -f "inputs[commit_changes]=true" \
             -f "inputs[request_id]=$REQUEST_ID"
 
-          echo "Triggered build-kde-wayland.yml with build_target=$WAYLAND_PACKAGE_TARGET request_id=$REQUEST_ID"
+          echo "Triggered build-kde-wayland.yml to publish the complete five-platform Release, request_id=$REQUEST_ID"
 
           run_id=""
           for attempt in {1..60}; do
@@ -270,7 +271,7 @@ jobs:
               --method GET \
               "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/runs" \
               -f event=workflow_dispatch \
-              -f branch="${{ github.ref_name }}" \
+              -f branch=main \
               -f per_page=20 \
               --jq "first(.workflow_runs[] | select(.display_title | contains(\"$REQUEST_ID\")) | .id) // \"\"")"
 
@@ -290,6 +291,16 @@ jobs:
           echo "Waiting for build-kde-wayland.yml run $run_id to complete..."
           gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status --interval 60
 
+          release_tag="$(gh api \
+            "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq ".[] | select((.body // \"\") | contains(\"Package request ID: $REQUEST_ID\")) | .tag_name" | sed -n '1p')"
+          if [ -z "$release_tag" ]; then
+            echo "Error: could not find the Release tag published by this KDE Wayland package build" >&2
+            exit 1
+          fi
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "KDE Wayland package Release: $release_tag"
+
   # --------------------------------------------------------
   # Phase 2: build (Build of regular Linux distribution RootFS)
   # --------------------------------------------------------
@@ -297,6 +308,9 @@ jobs:
     needs: [setup, build-wayland-packages]
     if: ${{ needs.setup.outputs.templates != '[]' }}
     runs-on: ubuntu-24.04-arm
+    env:
+      ANLAND_KDE_RELEASE_REPOSITORY: ${{ github.repository }}
+      ANLAND_KDE_RELEASE_TAG: ${{ needs.build-wayland-packages.outputs.release_tag }}
     strategy:
       fail-fast: false
       matrix:
