@@ -12,6 +12,7 @@ WORK_DIR=""
 UI_LANG="en"
 TARGET=""
 PACKAGE_TYPE=""
+ARCHIVE_PREFIX=""
 ARCHIVE_NAME=""
 ARCHIVE_TARGET=""
 PACKAGE_DIR=""
@@ -75,7 +76,7 @@ detect_target() {
         arch|archarm)
             TARGET="Arch Linux"
             PACKAGE_TYPE="pkg.tar.*"
-            ARCHIVE_NAME="anland-kde-arch-aarch64.tar.gz"
+            ARCHIVE_PREFIX="anland-kde-arch-kwin-"
             ARCHIVE_TARGET="arch"
             ;;
         *)
@@ -84,25 +85,25 @@ detect_target() {
                 debian:13*)
                     TARGET="Debian 13"
                     PACKAGE_TYPE="deb"
-                    ARCHIVE_NAME="anland-kde-debian13-arm64.tar.gz"
+                    ARCHIVE_PREFIX="anland-kde-debian13-kwin-"
                     ARCHIVE_TARGET="debian13"
                     ;;
                 ubuntu:26.04*)
                     TARGET="Ubuntu 26.04"
                     PACKAGE_TYPE="deb"
-                    ARCHIVE_NAME="anland-kde-ubuntu2604-arm64.tar.gz"
+                    ARCHIVE_PREFIX="anland-kde-ubuntu2604-kwin-"
                     ARCHIVE_TARGET="ubuntu2604"
                     ;;
                 fedora:43*)
                     TARGET="Fedora 43"
                     PACKAGE_TYPE="rpm"
-                    ARCHIVE_NAME="anland-kde-fedora43-aarch64.tar.gz"
+                    ARCHIVE_PREFIX="anland-kde-fedora43-kwin-"
                     ARCHIVE_TARGET="fedora43"
                     ;;
                 fedora:44*)
                     TARGET="Fedora 44"
                     PACKAGE_TYPE="rpm"
-                    ARCHIVE_NAME="anland-kde-fedora44-aarch64.tar.gz"
+                    ARCHIVE_PREFIX="anland-kde-fedora44-kwin-"
                     ARCHIVE_TARGET="fedora44"
                     ;;
                 *)
@@ -191,6 +192,32 @@ resolve_release_tag() {
     die "未找到可用的 Anland KDE 包 Release。" "No usable Anland KDE package Release was found."
 }
 
+resolve_archive_name() {
+    local api_url response name
+    local -a candidates=()
+
+    api_url="https://api.github.com/repos/${RELEASE_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+    if ! response="$(download_stdout "$api_url")"; then
+        die "无法读取 Release ${RELEASE_TAG} 的资产列表。" \
+            "Unable to read the asset list for Release ${RELEASE_TAG}."
+    fi
+
+    # GitHub API 可能返回格式化 JSON，也可能返回单行 JSON；按字段切分后只匹配当前目标前缀。
+    while IFS= read -r name; do
+        case "$name" in
+            "${ARCHIVE_PREFIX}"*.tar.gz) candidates+=("$name") ;;
+        esac
+    done < <(printf '%s\n' "$response" | tr '{,}' '\n' | \
+        sed -nE 's/^[[:space:]]*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')
+
+    if [[ "${#candidates[@]}" -ne 1 ]]; then
+        die "Release ${RELEASE_TAG} 中没有唯一的 ${TARGET} KWin 版本包（找到 ${#candidates[@]} 个）。" \
+            "Release ${RELEASE_TAG} does not contain exactly one ${TARGET} KWin version archive (found ${#candidates[@]})."
+    fi
+    ARCHIVE_NAME="${candidates[0]}"
+    log "已选择 ${ARCHIVE_NAME}" "Selected ${ARCHIVE_NAME}"
+}
+
 release_download_base() {
     printf 'https://github.com/%s/releases/download/%s' "$RELEASE_REPOSITORY" "$RELEASE_TAG"
 }
@@ -199,6 +226,7 @@ download_packages() {
     local base_url checksum_file archive_file expected_checksum
     WORK_DIR="$(mktemp -d -t anland-kde.XXXXXXXX)"
     resolve_release_tag
+    resolve_archive_name
     base_url="$(release_download_base)"
     checksum_file="$WORK_DIR/SHA256SUMS"
     archive_file="$WORK_DIR/$ARCHIVE_NAME"

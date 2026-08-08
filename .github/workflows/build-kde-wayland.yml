@@ -125,21 +125,24 @@ jobs:
               image=ubuntu:26.04
               script=producers/kde/ubuntu2604_v5/build.sh
               package_pattern='*.deb'
-              asset_name=anland-kde-ubuntu2604-arm64.tar.gz
+              asset_prefix=anland-kde-ubuntu2604-kwin-
+              asset_arch=arm64
               archive_target=ubuntu2604
               ;;
             Debian13)
               image=debian:trixie
               script=producers/kde/Debian13_v5/build.sh
               package_pattern='*.deb'
-              asset_name=anland-kde-debian13-arm64.tar.gz
+              asset_prefix=anland-kde-debian13-kwin-
+              asset_arch=arm64
               archive_target=debian13
               ;;
             Fedora43)
               image=fedora:43
               script=producers/kde/Fedora43_v5/build.sh
               package_pattern='*.rpm'
-              asset_name=anland-kde-fedora43-aarch64.tar.gz
+              asset_prefix=anland-kde-fedora43-kwin-
+              asset_arch=aarch64
               archive_target=fedora43
               ;;
             Fedora44)
@@ -147,14 +150,16 @@ jobs:
               # Fedora 44 使用 Fedora 43 的构建脚本，配 Fedora 44 基础镜像。
               script=producers/kde/Fedora43_v5/build.sh
               package_pattern='*.rpm'
-              asset_name=anland-kde-fedora44-aarch64.tar.gz
+              asset_prefix=anland-kde-fedora44-kwin-
+              asset_arch=aarch64
               archive_target=fedora44
               ;;
             Arch)
               image=ogarcia/archlinux:latest
               script=producers/kde/Arch_v5/build.sh
               package_pattern='*.pkg.tar.*'
-              asset_name=anland-kde-arch-aarch64.tar.gz
+              asset_prefix=anland-kde-arch-kwin-
+              asset_arch=aarch64
               archive_target=arch
               ;;
             *)
@@ -167,7 +172,8 @@ jobs:
             echo "image=$image"
             echo "script=$script"
             echo "package_pattern=$package_pattern"
-            echo "asset_name=$asset_name"
+            echo "asset_prefix=$asset_prefix"
+            echo "asset_arch=$asset_arch"
             echo "archive_target=$archive_target"
           } >> "$GITHUB_OUTPUT"
 
@@ -245,13 +251,45 @@ jobs:
                 cd "/tmp/anland/$(dirname "$BUILD_SCRIPT")"
                 WORKDIR=/root/kde-packages sudo -E "./$(basename "$BUILD_SCRIPT")"
               fi
+
+              # 从主 kwin 包读取上游版本；不要把发行版打包修订号放进资产名。
+              kwin_package=""
+              kwin_version=""
+              case "$BUILD_TARGET" in
+                Debian13|ubuntu2604)
+                  kwin_package="$(find /tmp/kde-packages -type f -name 'kwin-wayland_*.deb' -print | sort | head -n1)"
+                  if [ -z "$kwin_package" ]; then
+                    kwin_package="$(find /tmp/kde-packages -type f -name 'kwin-x11_*.deb' -print | sort | head -n1)"
+                  fi
+                  [ -n "$kwin_package" ] || { echo "未找到 kwin deb 包" >&2; exit 1; }
+                  kwin_version="$(dpkg-deb -f "$kwin_package" Version)"
+                  ;;
+                Fedora43|Fedora44)
+                  kwin_package="$(find /tmp/kde-packages -type f -name 'kwin-[0-9]*.rpm' -print | sort | head -n1)"
+                  [ -n "$kwin_package" ] || { echo "未找到 kwin rpm 包" >&2; exit 1; }
+                  kwin_version="$(rpm -qp --queryformat '%{VERSION}' "$kwin_package")"
+                  ;;
+                Arch)
+                  kwin_package="$(find /tmp/kde-packages -type f -name 'kwin-[0-9]*.pkg.tar.*' -print | sort | head -n1)"
+                  [ -n "$kwin_package" ] || { echo "未找到 kwin Arch 包" >&2; exit 1; }
+                  kwin_version="$(pacman -Qp --print-format '%v' "$kwin_package")"
+                  ;;
+              esac
+              # 去掉 epoch 和发行版/Arch 的 pkgrel，只保留 KWin 上游版本。
+              kwin_version="${kwin_version#*:}"
+              case "$BUILD_TARGET" in
+                Debian13|ubuntu2604|Arch) kwin_version="${kwin_version%-*}" ;;
+              esac
+              [ -n "$kwin_version" ] || { echo "无法解析 KWin 版本" >&2; exit 1; }
+              printf '%s\n' "$kwin_version" > /tmp/kde-packages/.kwin-version
             '
 
       - name: 打包 Release 资产
         id: package
         env:
           PKG_PATTERN: ${{ steps.target.outputs.package_pattern }}
-          ASSET_NAME: ${{ steps.target.outputs.asset_name }}
+          ASSET_PREFIX: ${{ steps.target.outputs.asset_prefix }}
+          ASSET_ARCH: ${{ steps.target.outputs.asset_arch }}
           ARCHIVE_TARGET: ${{ steps.target.outputs.archive_target }}
           OUTPUT_DIR: .kde-package-build/${{ matrix.target }}
         shell: bash
@@ -286,10 +324,18 @@ jobs:
             exit 1
           fi
 
-          asset_path="$asset_dir/$ASSET_NAME"
+          kwin_version="$(tr -d '[:space:]' < "$OUTPUT_DIR/.kwin-version")"
+          case "$kwin_version" in
+            ''|*[!A-Za-z0-9.+~_-]*)
+              echo "KWin 版本包含不支持用于文件名的字符：$kwin_version" >&2
+              exit 1
+              ;;
+          esac
+          asset_name="${ASSET_PREFIX}${kwin_version}-${ASSET_ARCH}.tar.gz"
+          asset_path="$asset_dir/$asset_name"
           tar -C "$RUNNER_TEMP" -czf "$asset_path" "anland-kde-packages/$ARCHIVE_TARGET"
           echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
-          echo "已将 $package_count 个文件打包进 $ASSET_NAME"
+          echo "已将 $package_count 个文件打包进 $asset_name"
 
       - name: 上传 Release 资产
         uses: actions/upload-artifact@v4
@@ -330,33 +376,82 @@ jobs:
           set -euo pipefail
 
           release_dir="$GITHUB_WORKSPACE/release-assets"
-          expected_assets=(
-            anland-kde-arch-aarch64.tar.gz
-            anland-kde-debian13-arm64.tar.gz
-            anland-kde-ubuntu2604-arm64.tar.gz
-            anland-kde-fedora43-aarch64.tar.gz
-            anland-kde-fedora44-aarch64.tar.gz
-          )
+          release_targets=(Arch Debian13 ubuntu2604 Fedora43 Fedora44)
+          declare -A asset_by_target=()
+
+          asset_prefix_for_target() {
+            case "$1" in
+              Arch) printf '%s\n' 'anland-kde-arch-kwin-' ;;
+              Debian13) printf '%s\n' 'anland-kde-debian13-kwin-' ;;
+              ubuntu2604) printf '%s\n' 'anland-kde-ubuntu2604-kwin-' ;;
+              Fedora43) printf '%s\n' 'anland-kde-fedora43-kwin-' ;;
+              Fedora44) printf '%s\n' 'anland-kde-fedora44-kwin-' ;;
+              *) echo "不支持的构建目标：$1" >&2; return 1 ;;
+            esac
+          }
+
+          target_label() {
+            case "$1" in
+              Arch) printf '%s\n' 'Arch Linux' ;;
+              Debian13) printf '%s\n' 'Debian 13' ;;
+              ubuntu2604) printf '%s\n' 'Ubuntu 26.04' ;;
+              Fedora43) printf '%s\n' 'Fedora 43' ;;
+              Fedora44) printf '%s\n' 'Fedora 44' ;;
+              *) echo "不支持的构建目标：$1" >&2; return 1 ;;
+            esac
+          }
+
+          local_asset_for_prefix() {
+            local prefix="$1"
+            local path
+            local -a candidates=()
+            while IFS= read -r path; do
+              candidates+=("${path##*/}")
+            done < <(find "$release_dir" -maxdepth 1 -type f -name "${prefix}*.tar.gz" -print | sort)
+            if [ "${#candidates[@]}" -ne 1 ]; then
+              echo "资产前缀 ${prefix} 在本次构建中应匹配一个文件，实际为 ${#candidates[@]} 个。" >&2
+              return 1
+            fi
+            printf '%s\n' "${candidates[0]}"
+          }
+
+          release_asset_for_prefix() {
+            local tag="$1"
+            local prefix="$2"
+            local name api_assets
+            local -a candidates=()
+            api_assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[].name')"
+            while IFS= read -r name; do
+              case "$name" in
+                "${prefix}"*.tar.gz) candidates+=("$name") ;;
+              esac
+            done <<< "$api_assets"
+            if [ "${#candidates[@]}" -ne 1 ]; then
+              echo "Release ${tag} 中资产前缀 ${prefix} 应匹配一个文件，实际为 ${#candidates[@]} 个。" >&2
+              return 1
+            fi
+            printf '%s\n' "${candidates[0]}"
+          }
 
           case "$BUILD_TARGET_INPUT" in
             all)
-              selected_asset=""
+              selected_prefix=""
               replacement_note='本次构建重新生成全部五个平台的软件包。'
               ;;
             ubuntu2604)
-              selected_asset=anland-kde-ubuntu2604-arm64.tar.gz
+              selected_prefix="$(asset_prefix_for_target ubuntu2604)"
               ;;
             Debian13)
-              selected_asset=anland-kde-debian13-arm64.tar.gz
+              selected_prefix="$(asset_prefix_for_target Debian13)"
               ;;
             Fedora43)
-              selected_asset=anland-kde-fedora43-aarch64.tar.gz
+              selected_prefix="$(asset_prefix_for_target Fedora43)"
               ;;
             Fedora44)
-              selected_asset=anland-kde-fedora44-aarch64.tar.gz
+              selected_prefix="$(asset_prefix_for_target Fedora44)"
               ;;
             Arch)
-              selected_asset=anland-kde-arch-aarch64.tar.gz
+              selected_prefix="$(asset_prefix_for_target Arch)"
               ;;
             *)
               echo "不支持的构建目标：$BUILD_TARGET_INPUT" >&2
@@ -364,7 +459,8 @@ jobs:
               ;;
           esac
 
-          if [ -n "$selected_asset" ]; then
+          if [ -n "$selected_prefix" ]; then
+            selected_asset="$(local_asset_for_prefix "$selected_prefix")"
             previous_tag=""
             for page in $(seq 1 10); do
               previous_tag="$(gh api \
@@ -383,19 +479,24 @@ jobs:
             previous_dir="$RUNNER_TEMP/anland-kde-previous-assets"
             rm -rf "$previous_dir"
             mkdir -p "$previous_dir"
-            for asset in "${expected_assets[@]}"; do
-              if [ "$asset" != "$selected_asset" ]; then
-                gh release download "$previous_tag" \
-                  --repo "$GITHUB_REPOSITORY" \
-                  --pattern "$asset" \
-                  --dir "$previous_dir"
-                cp "$previous_dir/$asset" "$release_dir/$asset"
-              fi
+            for target in "${release_targets[@]}"; do
+              prefix="$(asset_prefix_for_target "$target")"
+              [ "$prefix" = "$selected_prefix" ] && continue
+              asset="$(release_asset_for_prefix "$previous_tag" "$prefix")"
+              gh release download "$previous_tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                --pattern "$asset" \
+                --dir "$previous_dir"
+              cp "$previous_dir/$asset" "$release_dir/$asset"
             done
           fi
 
-          for asset in "${expected_assets[@]}"; do
-            test -f "$release_dir/$asset"
+          expected_assets=()
+          for target in "${release_targets[@]}"; do
+            prefix="$(asset_prefix_for_target "$target")"
+            asset="$(local_asset_for_prefix "$prefix")"
+            expected_assets+=("$asset")
+            asset_by_target["$target"]="$asset"
           done
 
           cp scripts/install-anland-kde.sh "$release_dir/install-anland-kde.sh"
@@ -407,6 +508,12 @@ jobs:
 
           build_time="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           release_tag="anland-kde-packages-$(date -u +'%Y%m%d-%H%M%S')-${GITHUB_RUN_ID}"
+          release_asset_table="$(printf '%s\n' \
+            '| 压缩包 | 目标系统 | 构建时间 |' \
+            '| --- | --- | --- |')"
+          for target in "${release_targets[@]}"; do
+            release_asset_table="${release_asset_table}"$'\n'"| \`${asset_by_target[$target]}\` | $(target_label "$target") | ${build_time} |"
+          done
           release_notes="$(printf '%s\n' \
             '# Anland KDE Wayland 预编译包' \
             '' \
@@ -414,13 +521,9 @@ jobs:
             '' \
             '## 发布资产' \
             '' \
-            '| 压缩包 | 目标系统 |' \
-            '| --- | --- |' \
-            '| `anland-kde-arch-aarch64.tar.gz` | Arch Linux |' \
-            '| `anland-kde-debian13-arm64.tar.gz` | Debian 13 |' \
-            '| `anland-kde-ubuntu2604-arm64.tar.gz` | Ubuntu 26.04 |' \
-            '| `anland-kde-fedora43-aarch64.tar.gz` | Fedora 43 |' \
-            '| `anland-kde-fedora44-aarch64.tar.gz` | Fedora 44 |' \
+            "$release_asset_table" \
+            '' \
+            '压缩包文件名中的 `kwin-版本` 来自该发行版实际生成的 KWin 包；不同发行版的版本可以不同。' \
             '' \
             '每个压缩包只包含对应系统的 patched KWin/Xwayland 包；安装脚本会自动选择目标系统并校验 `SHA256SUMS`。' \
             '' \
@@ -434,8 +537,7 @@ jobs:
             "- Anland 源码：\`${ANLAND_REPO}\` @ \`${ANLAND_COMMIT}\`（请求：\`${ANLAND_REF}\`）" \
             "- 工作流提交：\`${GITHUB_SHA}\`" \
             '- 架构：仅 ARM64/aarch64' \
-            '' \
-            '工作流不会向 `main` 提交二进制包、改写历史、覆盖已有 Release 或删除旧 Release。')"
+            '')"
           gh release create "$release_tag" "$release_dir"/* \
             --draft \
             --latest=false \

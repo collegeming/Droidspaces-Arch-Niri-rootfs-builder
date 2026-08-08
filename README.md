@@ -227,7 +227,7 @@ Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 和 GitHub
 
 ### 一键安装 Anland KDE Release 包
 
-`scripts/install-anland-kde.sh` 会自动识别当前发行版，选择最新的不可变 Anland KDE 包 Release，下载并校验对应的 patched KWin/Xwayland 包，然后防止系统更新将它们覆盖。二进制包不会再加入 Git 历史；每个包 Release 都包含 Arch、Debian 13、Ubuntu 26、Fedora 43 和 Fedora 44 的五个独立压缩包及 `SHA256SUMS`。
+`scripts/install-anland-kde.sh` 会自动识别当前发行版，选择最新的不可变 Anland KDE 包 Release，按压缩包中的 KWin 版本下载并校验对应的 patched KWin/Xwayland 包，然后防止系统更新将它们覆盖。二进制包不会再加入 Git 历史；每个包 Release 都包含 Arch、Debian 13、Ubuntu 26、Fedora 43 和 Fedora 44 的五个独立压缩包，文件名形如 `anland-kde-ubuntu2604-kwin-6.7.3-arm64.tar.gz`，并附带 `SHA256SUMS`。
 脚本会按 `LC_ALL`、`LC_MESSAGES`、`LANG` 的优先级读取系统语言：中文 locale 输出中文，其他 locale 输出英文。
 
 支持 Debian 13、Ubuntu 26.04、Fedora 43/44 和 Arch Linux，仅支持 ARM64/aarch64。Debian/Ubuntu 使用 `apt-mark hold`，Fedora 通过 `/etc/dnf/dnf.conf` 的 `exclude`，Arch 通过 pacman 的 `IgnorePkg` 实现等效锁定。
@@ -418,6 +418,7 @@ sudo download-firmware
 ```
 
 KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.yml` 时，`build_target=all` 会固定一个 Anland 源提交并重新生成五个平台；选择单个平台时只重新构建该平台，并从上一份完整 Release 沿用其余四个压缩包，最终仍创建完整的不可变 Release 和新的 `SHA256SUMS`。它不会提交包、改写 `main`、覆盖旧包 Release 或删除其他 Release。
+首次发布带版本号的包时必须选择 `all`；之后才可以选择单个平台替换。
 
 ## 已知限制
 
