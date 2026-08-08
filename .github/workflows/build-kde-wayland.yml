@@ -733,7 +733,9 @@ jobs:
             '| 压缩包 | 目标系统 | 构建时间 |' \
             '| --- | --- | --- |')"
           for target in "${release_targets[@]}"; do
-            release_asset_table="${release_asset_table}"$'\n'"| \`${asset_by_target[$target]}\` | $(target_label "$target") | ${asset_time_by_target[$target]} |"
+            asset="${asset_by_target[$target]}"
+            asset_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${release_tag}/${asset}"
+            release_asset_table="${release_asset_table}"$'\n'"| [\`${asset}\`](${asset_url}) | $(target_label "$target") | ${asset_time_by_target[$target]} |"
           done
           release_source_list=""
           for target in "${release_targets[@]}"; do
