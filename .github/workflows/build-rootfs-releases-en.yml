@@ -259,12 +259,12 @@ jobs:
             --method POST \
             "repos/${{ github.repository }}/actions/workflows/build-kde-wayland.yml/dispatches" \
             -f "ref=main" \
-            -f "inputs[build_target]=all" \
+            -f "inputs[build_target]=$WAYLAND_PACKAGE_TARGET" \
             -f "inputs[anland_ref]=main" \
             -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
             -f "inputs[request_id]=$REQUEST_ID"
 
-          echo "Triggered build-kde-wayland.yml to update the fixed rolling five-platform Release, request_id=$REQUEST_ID"
+          echo "Triggered build-kde-wayland.yml for target=$WAYLAND_PACKAGE_TARGET, request_id=$REQUEST_ID"
 
           run_id=""
           for attempt in {1..60}; do

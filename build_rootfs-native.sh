@@ -40,52 +40,17 @@ done
 ANLAND_KDE_ROLLING_RELEASE_TAG="anland-kde-packages"
 
 resolve_anland_kde_release_tag() {
-  local page response candidate
-
   case "$ANLAND_KDE_RELEASE_TAG" in
-    anland-kde-packages|anland-kde-packages-[0-9]*) return 0 ;;
-    '') ;;
+    anland-kde-packages) return 0 ;;
+    '')
+      ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_ROLLING_RELEASE_TAG"
+      return 0
+      ;;
     *)
-      echo "错误：ANLAND_KDE_RELEASE_TAG 必须是 anland-kde-packages 或旧版 anland-kde-packages-*。" >&2
+      echo "错误：ANLAND_KDE_RELEASE_TAG 必须是固定标签 anland-kde-packages。" >&2
       return 1
       ;;
   esac
-
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "错误：无法自动解析 Anland KDE Release，需要 curl。" >&2
-    return 1
-  fi
-
-  if response="$(curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 \
-    "https://api.github.com/repos/${ANLAND_KDE_RELEASE_REPOSITORY}/releases/tags/${ANLAND_KDE_ROLLING_RELEASE_TAG}")"; then
-    candidate="$(printf '%s\n' "$response" | tr '{,}' '\n' | \
-      sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' | \
-      sed -n "/^${ANLAND_KDE_ROLLING_RELEASE_TAG}$/ { p; q; }")"
-    if [ "$candidate" = "$ANLAND_KDE_ROLLING_RELEASE_TAG" ]; then
-      ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_ROLLING_RELEASE_TAG"
-      return 0
-    fi
-  fi
-
-  page=1
-  while [ "$page" -le 10 ]; do
-    if ! response="$(curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 \
-      "https://api.github.com/repos/${ANLAND_KDE_RELEASE_REPOSITORY}/releases?per_page=100&page=${page}")"; then
-      echo "错误：无法查询 anland KDE 包 Release 列表。" >&2
-      return 1
-    fi
-    candidate="$(printf '%s\n' "$response" | tr '{,}' '\n' | \
-      sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' | \
-      sed -n '/^anland-kde-packages-[0-9]/ { p; q; }')"
-    if [ -n "$candidate" ]; then
-      ANLAND_KDE_RELEASE_TAG="$candidate"
-      return 0
-    fi
-    page=$((page + 1))
-  done
-
-  echo "错误：未找到可用的 anland KDE 包 Release。" >&2
-  return 1
 }
 
 # 校验：检查是否传递了 Dockerfile 模板文件
@@ -115,22 +80,32 @@ echo " 修复骁龙8 Gen 2 Wayland 花屏：$ENABLE_8gen2_wayland"
 echo "========================================================="
 
 if [ "$ENABLE_anland_kde" = "true" ]; then
-  resolve_anland_kde_release_tag
+  if ! resolve_anland_kde_release_tag; then
+    exit 1
+  fi
   if [ -z "$ANLAND_KDE_PACKAGE_REVISION" ]; then
     if ! command -v curl >/dev/null 2>&1; then
-      echo "错误：启用 anland_kde 时需要 curl 校验 KDE 包 Release。"
+      echo "错误：启用 anland_kde 时需要 curl 读取 KDE 包 Release 清单。"
       exit 1
     fi
-    if ! RELEASE_CHECKSUMS="$(curl -fsSL --retry 3 --connect-timeout 20 \
-      "https://github.com/${ANLAND_KDE_RELEASE_REPOSITORY}/releases/download/${ANLAND_KDE_RELEASE_TAG}/SHA256SUMS")"; then
-      echo "错误：无法下载 anland KDE 包 Release 校验清单。"
+    if ! RELEASE_MANIFEST="$(curl -fsSL --retry 3 --connect-timeout 20 \
+      "https://github.com/${ANLAND_KDE_RELEASE_REPOSITORY}/releases/download/${ANLAND_KDE_RELEASE_TAG}/anland-kde-manifest")"; then
+      echo "错误：无法下载 anland KDE 包 Release 清单。"
       exit 1
     fi
-    ANLAND_KDE_PACKAGE_REVISION="$(printf '%s' "$RELEASE_CHECKSUMS" | sha256sum | awk '{print $1}')"
+    ANLAND_KDE_PACKAGE_REVISION="$(printf '%s\n' "$RELEASE_MANIFEST" | awk -F= '
+      $1 == "format" { format = substr($0, index($0, "=") + 1) }
+      $1 == "revision" { revision = substr($0, index($0, "=") + 1); revisions++ }
+      END {
+        if (format == "1" && revisions == 1 && revision ~ /^[A-Za-z0-9._-]+$/) {
+          print revision
+        }
+      }
+    ')"
   fi
 
   if [ -z "$ANLAND_KDE_PACKAGE_REVISION" ]; then
-    echo "错误：无法获取 anland KDE 包 Release 校验清单。"
+    echo "错误：Release 清单缺少有效 revision。"
     exit 1
   fi
   echo " Anland KDE 包 Release：$ANLAND_KDE_RELEASE_REPOSITORY @ $ANLAND_KDE_RELEASE_TAG"

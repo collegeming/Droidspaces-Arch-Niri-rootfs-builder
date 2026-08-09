@@ -227,10 +227,10 @@ Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 和 GitHub
 
 ### 一键安装 Anland KDE Release 包
 
-`scripts/install-anland-kde.sh` 会自动识别当前发行版，从固定滚动 Release `anland-kde-packages` 选择对应的压缩包，按 KWin 版本下载并校验 patched KWin/Xwayland 包，然后防止系统更新将它们覆盖。二进制包不会再加入 Git 历史；这个 Release 包含 Arch、Debian 13、Ubuntu 26、Fedora 43 和 Fedora 44 的五个独立压缩包，文件名形如 `anland-kde-ubuntu2604-kwin-6.7.3-arm64.tar.gz`，并附带 `SHA256SUMS`。
+`scripts/install-anland-kde.sh` 会自动识别当前发行版，从固定滚动 Release `anland-kde-packages` 的 `anland-kde-manifest` 精确选择对应的压缩包，按 KWin 版本下载 patched KWin/Xwayland 包，然后防止系统更新将它们覆盖。二进制包不会再加入 Git 历史；这个 Release 包含 Arch、Debian 13、Ubuntu 26、Fedora 43 和 Fedora 44 的五个独立压缩包，文件名形如 `anland-kde-ubuntu2604-kwin-6.7.3-arm64.tar.gz`。
 脚本会按 `LC_ALL`、`LC_MESSAGES`、`LANG` 的优先级读取系统语言：中文 locale 输出中文，其他 locale 输出英文。
 
-支持 Debian 13、Ubuntu 26.04、Fedora 43/44 和 Arch Linux，仅支持 ARM64/aarch64。Debian/Ubuntu 使用 `apt-mark hold`，Fedora 通过 `/etc/dnf/dnf.conf` 的 `exclude`，Arch 通过 pacman 的 `IgnorePkg` 实现等效锁定。
+支持 Debian 13、Ubuntu 26.04、Fedora 43/44 和 Arch Linux，仅支持 ARM64/aarch64。安装器在普通用户权限下下载、预检和解包，再仅以 root 权限执行安装。Debian/Ubuntu 使用受脚本记录管理的 `apt-mark hold`，Fedora 通过 `/etc/dnf/dnf.conf` 的托管 `excludepkgs` 块，Arch 通过 pacman 的 `IgnorePkg` 实现等效锁定。
 
 从仓库根目录运行：
 
@@ -417,8 +417,8 @@ sudo download-firmware
     └── build-rootfs-releases.yml
 ```
 
-KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.yml` 时，`build_target=all` 会固定一个 Anland 源提交并重新生成五个平台；若其中某个平台构建失败，工作流会从固定滚动 Release 或旧版完整 Release 沿用该平台的旧包，只更新成功的平台，并重写同一个 `anland-kde-packages` Release 的全部资产和 `SHA256SUMS`。选择单个平台时只重新构建并替换该平台，其他四个压缩包保持不变。若没有可复用的完整 Release，或本次没有任何新包成功生成，工作流会失败且不会更新 Release。它不会提交包或改写 `main`；旧的时间戳包 Release 可由 `clear.yml` 清理，固定滚动 Release 会被保留。
-没有可复用旧 Release 时，首次创建固定滚动 Release 必须选择 `all` 并让五个平台全部成功；已有完整旧 Release 时，工作流可在部分平台失败后迁移旧资产并更新固定 Release。
+KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.yml` 时，`build_target=all` 会固定一个 Anland 源提交并重新生成五个平台；若其中某个平台构建失败，工作流会从固定滚动 Release 沿用该平台的现有包，只更新成功的平台，并重写同一个 `anland-kde-packages` Release 的全部资产和 `anland-kde-manifest`。选择单个平台时只重新构建并替换该平台，其他四个压缩包保持不变。若固定 Release 不能提供完整的五平台资产，或本次没有任何新包成功生成，工作流会失败且不会更新 Release。它不会提交包或改写 `main`；固定滚动 Release 会被保留。
+首次创建固定滚动 Release 必须选择 `all` 并让五个平台全部成功；创建后，部分构建只会从该固定 Release 复用未替换的平台资产。
 
 ## 已知限制
 

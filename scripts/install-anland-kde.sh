@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The package archives are deliberately kept out of Git. Override these when
-# installing packages published by a fork or when pinning an older Release.
+# The package archives are deliberately kept out of Git. Override the
+# repository when installing packages published by a fork.
 readonly DEFAULT_REPOSITORY="Goldzxcbug/Droidspaces-rootfs-KDE-builder"
 readonly RELEASE_REPOSITORY="${ANLAND_KDE_RELEASE_REPOSITORY:-$DEFAULT_REPOSITORY}"
 RELEASE_TAG="${ANLAND_KDE_RELEASE_TAG:-}"
 readonly ROLLING_RELEASE_TAG="anland-kde-packages"
-readonly RELEASE_TAG_PREFIX="anland-kde-packages-"
+readonly MANIFEST_NAME="anland-kde-manifest"
+readonly MAX_ARCHIVE_BYTES=$((512 * 1024 * 1024))
+readonly MAX_EXTRACTED_BYTES=$((2 * 1024 * 1024 * 1024))
+readonly APT_HOLD_STATE="/var/lib/anland-kde/apt-holds"
+readonly DNF_MANAGED_BEGIN="# BEGIN anland-kde package holds"
+readonly DNF_MANAGED_END="# END anland-kde package holds"
 
 WORK_DIR=""
+PREPARED_WORK_DIR="${ANLAND_KDE_WORK_DIR:-}"
+PREPARED_PACKAGE_DIR="${ANLAND_KDE_PACKAGE_DIR:-}"
 UI_LANG="en"
 TARGET=""
 PACKAGE_TYPE=""
 ARCHIVE_PREFIX=""
-LEGACY_ARCHIVE_NAME=""
+ARCHIVE_SUFFIX=""
 ARCHIVE_NAME=""
 ARCHIVE_TARGET=""
 PACKAGE_DIR=""
@@ -58,10 +65,21 @@ require_root() {
 
     command -v sudo >/dev/null 2>&1 || die "请使用 root 账户运行此脚本。" "Please run this script as root."
     log "正在通过 sudo 重新运行安装程序..." "Restarting the installer with sudo..."
-    exec sudo env \
+    local script_path="${BASH_SOURCE[0]}"
+    [[ "$script_path" = /* ]] || script_path="$PWD/$script_path"
+    local status
+    if sudo env \
         "ANLAND_KDE_RELEASE_REPOSITORY=$RELEASE_REPOSITORY" \
         "ANLAND_KDE_RELEASE_TAG=$RELEASE_TAG" \
-        "${BASH_SOURCE[0]}" "$@"
+        "ANLAND_KDE_WORK_DIR=$WORK_DIR" \
+        "ANLAND_KDE_PACKAGE_DIR=$PACKAGE_DIR" \
+        bash "$script_path" "$@"; then
+        status=0
+    else
+        status=$?
+    fi
+    cleanup
+    exit "$status"
 }
 
 detect_target() {
@@ -79,7 +97,7 @@ detect_target() {
             TARGET="Arch Linux"
             PACKAGE_TYPE="pkg.tar.*"
             ARCHIVE_PREFIX="anland-kde-arch-kwin-"
-            LEGACY_ARCHIVE_NAME="anland-kde-arch-aarch64.tar.gz"
+            ARCHIVE_SUFFIX="-aarch64.tar.gz"
             ARCHIVE_TARGET="arch"
             ;;
         *)
@@ -89,28 +107,28 @@ detect_target() {
                     TARGET="Debian 13"
                     PACKAGE_TYPE="deb"
                     ARCHIVE_PREFIX="anland-kde-debian13-kwin-"
-                    LEGACY_ARCHIVE_NAME="anland-kde-debian13-arm64.tar.gz"
+                    ARCHIVE_SUFFIX="-arm64.tar.gz"
                     ARCHIVE_TARGET="debian13"
                     ;;
                 ubuntu:26.04*)
                     TARGET="Ubuntu 26.04"
                     PACKAGE_TYPE="deb"
                     ARCHIVE_PREFIX="anland-kde-ubuntu2604-kwin-"
-                    LEGACY_ARCHIVE_NAME="anland-kde-ubuntu2604-arm64.tar.gz"
+                    ARCHIVE_SUFFIX="-arm64.tar.gz"
                     ARCHIVE_TARGET="ubuntu2604"
                     ;;
                 fedora:43*)
                     TARGET="Fedora 43"
                     PACKAGE_TYPE="rpm"
                     ARCHIVE_PREFIX="anland-kde-fedora43-kwin-"
-                    LEGACY_ARCHIVE_NAME="anland-kde-fedora43-aarch64.tar.gz"
+                    ARCHIVE_SUFFIX="-aarch64.tar.gz"
                     ARCHIVE_TARGET="fedora43"
                     ;;
                 fedora:44*)
                     TARGET="Fedora 44"
                     PACKAGE_TYPE="rpm"
                     ARCHIVE_PREFIX="anland-kde-fedora44-kwin-"
-                    LEGACY_ARCHIVE_NAME="anland-kde-fedora44-aarch64.tar.gz"
+                    ARCHIVE_SUFFIX="-aarch64.tar.gz"
                     ARCHIVE_TARGET="fedora44"
                     ;;
                 *)
@@ -139,156 +157,276 @@ download_file() {
     local destination="$2"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fL --retry 3 --retry-all-errors --connect-timeout 20 "$url" -o "$destination"
+        curl -fL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 "$url" -o "$destination"
     elif command -v wget >/dev/null 2>&1; then
-        wget -O "$destination" "$url"
+        wget --tries=3 --timeout=20 --waitretry=3 --retry-connrefused -O "$destination" "$url"
     else
         die "未找到 curl 或 wget，无法下载安装包。" "Neither curl nor wget was found; packages cannot be downloaded."
     fi
 }
 
-download_stdout() {
-    local url="$1"
-
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 "$url"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO- "$url"
-    else
-        die "未找到 curl 或 wget，无法查询 Release。" "Neither curl nor wget was found; Releases cannot be queried."
-    fi
-}
-
 validate_release_tag() {
     case "$RELEASE_TAG" in
-        "$ROLLING_RELEASE_TAG"|"${RELEASE_TAG_PREFIX}"[0-9]*) ;;
+        "$ROLLING_RELEASE_TAG") ;;
         *)
-            die "Release tag 必须是 ${ROLLING_RELEASE_TAG}，或以 ${RELEASE_TAG_PREFIX} 开头的旧版本标签。" \
-                "The Release tag must be ${ROLLING_RELEASE_TAG} or a legacy tag starting with ${RELEASE_TAG_PREFIX}."
+            die "Release tag 只能是 ${ROLLING_RELEASE_TAG}。" \
+                "The Release tag must be ${ROLLING_RELEASE_TAG}."
             ;;
     esac
 }
 
+validate_repository() {
+    if [[ ! "$RELEASE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+        die "Release 仓库必须是 owner/repository 格式。" \
+            "The Release repository must use the owner/repository format."
+    fi
+}
+
 resolve_release_tag() {
-    local api_url page response candidate
-
-    if [[ -n "$RELEASE_TAG" ]]; then
-        validate_release_tag
-        return
+    validate_repository
+    if [[ -z "$RELEASE_TAG" ]]; then
+        RELEASE_TAG="$ROLLING_RELEASE_TAG"
     fi
-
-    # 固定滚动 Release 优先；旧的时间戳 Release 只作为迁移期间的回退。
-    api_url="https://api.github.com/repos/${RELEASE_REPOSITORY}/releases/tags/${ROLLING_RELEASE_TAG}"
-    if response="$(download_stdout "$api_url" 2>/dev/null)"; then
-        candidate="$(printf '%s\n' "$response" | tr '{,}' '\n' | \
-            sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' | \
-            sed -n "/^${ROLLING_RELEASE_TAG}$/ { p; q; }")"
-        if [[ "$candidate" == "$ROLLING_RELEASE_TAG" ]]; then
-            RELEASE_TAG="$ROLLING_RELEASE_TAG"
-            log "已选择固定滚动 Release: ${RELEASE_TAG}" "Selected rolling Release: ${RELEASE_TAG}"
-            return
-        fi
-    fi
-
-    api_url="https://api.github.com/repos/${RELEASE_REPOSITORY}/releases?per_page=100"
-    page=1
-    while (( page <= 10 )); do
-        if ! response="$(download_stdout "${api_url}&page=${page}")"; then
-            die "无法查询 GitHub Release 列表。" "Unable to query the GitHub Release list."
-        fi
-
-        candidate="$(printf '%s\n' "$response" | tr '{,}' '\n' | \
-            sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' | \
-            sed -n "/^${RELEASE_TAG_PREFIX}[0-9]/ { p; q; }")"
-        if [[ -n "$candidate" ]]; then
-            RELEASE_TAG="$candidate"
-            log "固定 Release 尚未创建，兼容使用旧版 Release: ${RELEASE_TAG}" \
-                "The rolling Release is not available; using legacy Release: ${RELEASE_TAG}"
-            return
-        fi
-
-        ((page += 1))
-    done
-
-    die "未找到可用的 Anland KDE 包 Release。" "No usable Anland KDE package Release was found."
+    validate_release_tag
+    log "使用固定滚动 Release: ${RELEASE_TAG}" "Using rolling Release: ${RELEASE_TAG}"
 }
 
 resolve_archive_name() {
-    local api_url response name
-    local -a candidates=()
+    local manifest_file="$1"
+    local manifest_format manifest_release_tag selected_name
 
-    api_url="https://api.github.com/repos/${RELEASE_REPOSITORY}/releases/tags/${RELEASE_TAG}"
-    if ! response="$(download_stdout "$api_url")"; then
-        die "无法读取 Release ${RELEASE_TAG} 的资产列表。" \
-            "Unable to read the asset list for Release ${RELEASE_TAG}."
+    manifest_format="$(awk -F= '$1 == "format" { print substr($0, index($0, "=") + 1) }' "$manifest_file")"
+    manifest_release_tag="$(awk -F= '$1 == "release_tag" { print substr($0, index($0, "=") + 1) }' "$manifest_file")"
+    [[ "$manifest_format" == "1" && "$manifest_release_tag" == "$RELEASE_TAG" ]] || {
+        log "Release 清单格式无效。" "The Release manifest format is invalid."
+        return 1
+    }
+
+    selected_name="$(awk -F= -v key="$ARCHIVE_TARGET" '$1 == key { print substr($0, index($0, "=") + 1) }' "$manifest_file")"
+    case "$selected_name" in
+        "${ARCHIVE_PREFIX}"*"${ARCHIVE_SUFFIX}") ;;
+        *)
+            log "Release 清单没有 ${TARGET} 的匹配 ARM64 包。" \
+                "The Release manifest has no matching ARM64 archive for ${TARGET}."
+            return 1
+            ;;
+    esac
+    if [[ ! "$selected_name" =~ ^[A-Za-z0-9._+~_-]+$ || "$selected_name" == *..* ]]; then
+        log "Release 清单中的包名无效。" "The archive name in the Release manifest is invalid."
+        return 1
     fi
 
-    # GitHub API 可能返回格式化 JSON，也可能返回单行 JSON；按字段切分后只匹配当前目标前缀。
-    while IFS= read -r name; do
-        case "$name" in
-            "${ARCHIVE_PREFIX}"*.tar.gz) candidates+=("$name") ;;
-        esac
-    done < <(printf '%s\n' "$response" | tr '{,}' '\n' | \
-        sed -nE 's/^[[:space:]]*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')
-
-    if [[ "${#candidates[@]}" -gt 1 ]]; then
-        die "Release ${RELEASE_TAG} 中 ${TARGET} 的 KWin 版本包不唯一（找到 ${#candidates[@]} 个）。" \
-            "Release ${RELEASE_TAG} contains multiple ${TARGET} KWin version archives (found ${#candidates[@]})."
-    fi
-    if [[ "${#candidates[@]}" -eq 1 ]]; then
-        ARCHIVE_NAME="${candidates[0]}"
-        log "已选择 ${ARCHIVE_NAME}" "Selected ${ARCHIVE_NAME}"
-        return
-    fi
-
-    # 迁移期间兼容旧 Release 中不带 KWin 版本的固定资产名。
-    while IFS= read -r name; do
-        if [[ "$name" == "$LEGACY_ARCHIVE_NAME" ]]; then
-            ARCHIVE_NAME="$name"
-            log "已选择旧版资产 ${ARCHIVE_NAME}" "Selected legacy asset ${ARCHIVE_NAME}"
-            return
-        fi
-    done < <(printf '%s\n' "$response" | tr '{,}' '\n' | \
-        sed -nE 's/^[[:space:]]*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')
-
-    die "Release ${RELEASE_TAG} 中没有 ${TARGET} 的可用包（未找到版本化或旧版资产）。" \
-        "Release ${RELEASE_TAG} contains no usable ${TARGET} package (neither a versioned nor a legacy asset was found)."
+    ARCHIVE_NAME="$selected_name"
+    log "已选择 ${ARCHIVE_NAME}" "Selected ${ARCHIVE_NAME}"
 }
 
 release_download_base() {
     printf 'https://github.com/%s/releases/download/%s' "$RELEASE_REPOSITORY" "$RELEASE_TAG"
 }
 
-download_packages() {
-    local base_url checksum_file archive_file expected_checksum
-    WORK_DIR="$(mktemp -d -t anland-kde.XXXXXXXX)"
-    resolve_release_tag
-    resolve_archive_name
-    base_url="$(release_download_base)"
-    checksum_file="$WORK_DIR/SHA256SUMS"
-    archive_file="$WORK_DIR/$ARCHIVE_NAME"
-    expected_checksum="$WORK_DIR/$ARCHIVE_NAME.sha256"
-
-    log "正在从 GitHub Release 下载 ${TARGET} 预编译包..." \
-        "Downloading ${TARGET} prebuilt packages from GitHub Release..."
-    download_file "$base_url/$ARCHIVE_NAME" "$archive_file"
-    download_file "$base_url/SHA256SUMS" "$checksum_file"
-
-    grep -F "  $ARCHIVE_NAME" "$checksum_file" > "$expected_checksum" || \
-        die "Release 校验文件中缺少 ${ARCHIVE_NAME}。" "The Release checksum file does not contain ${ARCHIVE_NAME}."
-    (
-        cd "$WORK_DIR"
-        sha256sum -c "$(basename "$expected_checksum")"
-    ) || die "Release 包校验失败。" "Release package checksum verification failed."
-
-    tar -xzf "$archive_file" -C "$WORK_DIR"
-    PACKAGE_DIR="$WORK_DIR/anland-kde-packages/$ARCHIVE_TARGET"
-    has_packages "$PACKAGE_DIR" || die "未能获取 ${TARGET} 的安装包。" "Could not obtain packages for ${TARGET}."
-}
-
 has_packages() {
     local directory="$1"
     compgen -G "$directory/*.${PACKAGE_TYPE}" >/dev/null
+}
+
+require_runtime_dependencies() {
+    local command_name
+    for command_name in awk du find mktemp realpath sort stat tar; do
+        command -v "$command_name" >/dev/null 2>&1 || \
+            die "缺少运行安装器所需的命令：${command_name}。" \
+                "The installer requires the missing command: ${command_name}."
+    done
+
+    case "$PACKAGE_TYPE" in
+        deb) command -v dpkg-deb >/dev/null 2>&1 || die "未找到 dpkg-deb。" "dpkg-deb was not found." ;;
+        rpm) command -v rpm >/dev/null 2>&1 || die "未找到 rpm。" "rpm was not found." ;;
+        pkg.tar.*) command -v pacman >/dev/null 2>&1 || die "未找到 pacman。" "pacman was not found." ;;
+    esac
+}
+
+validate_archive_contents() {
+    local archive_file="$1"
+    local archive_size members entry
+
+    if ! archive_size="$(stat -c '%s' "$archive_file")" || ! [[ "$archive_size" =~ ^[0-9]+$ ]]; then
+        log "无法读取下载包的大小。" "Unable to read the downloaded archive size."
+        return 1
+    fi
+    if (( archive_size > MAX_ARCHIVE_BYTES )); then
+        log "下载包超过允许的大小。" "The downloaded archive exceeds the allowed size."
+        return 1
+    fi
+    if ! members="$(tar -tzf "$archive_file")" || [[ -z "$members" ]]; then
+        log "下载包不是有效的非空 tar.gz 文件。" "The downloaded archive is not a valid non-empty tar.gz file."
+        return 1
+    fi
+    while IFS= read -r entry; do
+        case "$entry" in
+            /*|.|./*|..|../*|*/.|*/./*|*/..|*/../*)
+                log "下载包包含不安全路径。" "The downloaded archive contains an unsafe path."
+                return 1
+                ;;
+            "anland-kde-packages/${ARCHIVE_TARGET}/"*) ;;
+            *)
+                log "下载包包含目标系统目录以外的文件。" \
+                    "The downloaded archive contains files outside the target system directory."
+                return 1
+                ;;
+        esac
+    done <<< "$members"
+
+    if ! LC_ALL=C tar -tvzf "$archive_file" | awk -v maximum="$MAX_EXTRACTED_BYTES" '
+        {
+            entry_type = substr($1, 1, 1)
+            if (entry_type !~ /^[-d]$/ || $3 !~ /^[0-9]+$/) {
+                exit 1
+            }
+            total += $3
+            if (total > maximum) {
+                exit 1
+            }
+        }
+    '; then
+        log "下载包包含不允许的条目，或解压后会超过大小限制。" \
+            "The downloaded archive has a disallowed entry or exceeds the extraction size limit."
+        return 1
+    fi
+}
+
+validate_package_architecture() {
+    local -a files=()
+    local file package_arch
+
+    case "$PACKAGE_TYPE" in
+        deb)
+            mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.deb' -print | sort)
+            for file in "${files[@]}"; do
+                package_arch="$(dpkg-deb -f "$file" Architecture)"
+                case "$package_arch" in arm64|all) ;; *) return 1 ;; esac
+            done
+            ;;
+        rpm)
+            mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.rpm' -print | sort)
+            for file in "${files[@]}"; do
+                package_arch="$(rpm -qp --queryformat '%{ARCH}' "$file")"
+                case "$package_arch" in aarch64|noarch) ;; *) return 1 ;; esac
+            done
+            ;;
+        pkg.tar.*)
+            mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.pkg.tar.*' -print | sort)
+            for file in "${files[@]}"; do
+                package_arch="$(pacman -Qp --qf '%a' "$file")"
+                case "$package_arch" in aarch64|any) ;; *) return 1 ;; esac
+            done
+            ;;
+    esac
+
+    ((${#files[@]} > 0))
+}
+
+download_packages_once() {
+    local base_url manifest_file archive_file extracted_size
+
+    base_url="$(release_download_base)"
+    manifest_file="$WORK_DIR/$MANIFEST_NAME"
+
+    log "正在从 GitHub Release 下载 ${TARGET} 预编译包..." \
+        "Downloading ${TARGET} prebuilt packages from GitHub Release..."
+    download_file "$base_url/$MANIFEST_NAME" "$manifest_file" || return 1
+    resolve_archive_name "$manifest_file" || return 1
+
+    archive_file="$WORK_DIR/$ARCHIVE_NAME"
+    download_file "$base_url/$ARCHIVE_NAME" "$archive_file" || return 1
+    validate_archive_contents "$archive_file" || return 1
+    if ! tar --no-same-owner --no-same-permissions -xzf "$archive_file" -C "$WORK_DIR"; then
+        log "无法安全解压下载包。" "Unable to safely extract the downloaded archive."
+        return 1
+    fi
+
+    PACKAGE_DIR="$WORK_DIR/anland-kde-packages/$ARCHIVE_TARGET"
+    has_packages "$PACKAGE_DIR" || {
+        log "未能获取 ${TARGET} 的安装包。" "Could not obtain packages for ${TARGET}."
+        return 1
+    }
+    if ! extracted_size="$(du -sb "$PACKAGE_DIR" | awk '{print $1}')" || ! [[ "$extracted_size" =~ ^[0-9]+$ ]] || (( extracted_size > MAX_EXTRACTED_BYTES )); then
+        log "解压后的软件包大小无效或超过限制。" \
+            "The extracted package size is invalid or exceeds the limit."
+        return 1
+    fi
+    if ! validate_package_architecture; then
+        log "下载包中的软件包架构与当前系统不匹配。" \
+            "The package architecture in the archive does not match this system."
+        return 1
+    fi
+}
+
+download_packages() {
+    local attempt
+    WORK_DIR="$(mktemp -d -t anland-kde.XXXXXXXX)"
+
+    for ((attempt = 1; attempt <= 3; attempt++)); do
+        if (( attempt > 1 )); then
+            rm -rf -- "$WORK_DIR"
+            mkdir -m 700 -- "$WORK_DIR"
+        fi
+        if download_packages_once; then
+            return
+        fi
+        if (( attempt < 3 )); then
+            log "Release 正在更新或网络暂时失败，准备重新获取（第 ${attempt} 次）。" \
+                "The Release is being updated or the network failed; retrying after attempt ${attempt}."
+            sleep "$attempt"
+        fi
+    done
+
+    die "无法稳定获取 Release 包，请稍后重试。" \
+        "Unable to consistently download the Release package; please retry later."
+}
+
+use_prepared_packages() {
+    local prepared_work_dir prepared_package_dir
+
+    prepared_work_dir="$(realpath -e "$PREPARED_WORK_DIR")" || \
+        die "预下载目录无效。" "The pre-downloaded package directory is invalid."
+    prepared_package_dir="$(realpath -e "$PREPARED_PACKAGE_DIR")" || \
+        die "预下载包目录无效。" "The pre-downloaded package directory is invalid."
+    [[ "$prepared_work_dir" =~ ^/tmp/anland-kde\.[A-Za-z0-9]+$ ]] || \
+        die "预下载目录无效。" "The pre-downloaded package directory is invalid."
+    [[ "$prepared_package_dir" == "$prepared_work_dir/anland-kde-packages/$ARCHIVE_TARGET" ]] || \
+        die "预下载包的目标系统不匹配。" "The pre-downloaded package target does not match this system."
+    [[ -d "$prepared_work_dir" && -d "$prepared_package_dir" ]] || \
+        die "预下载包已不存在。" "The pre-downloaded package directory no longer exists."
+
+    WORK_DIR="$prepared_work_dir"
+    PACKAGE_DIR="$prepared_package_dir"
+    has_packages "$PACKAGE_DIR" || die "预下载目录中没有可安装的软件包。" "The pre-downloaded directory has no installable packages."
+    validate_package_architecture || \
+        die "预下载包中的软件包架构与当前系统不匹配。" "The pre-downloaded package architecture does not match this system."
+}
+
+clear_stale_apt_holds() {
+    local -a current_packages=("$@") previous_packages=()
+    local previous current keep
+
+    [[ -r "$APT_HOLD_STATE" ]] || return
+    mapfile -t previous_packages < <(sed -nE 's/^([a-z0-9][a-z0-9+.-]*)$/\1/p' "$APT_HOLD_STATE" | sort -u)
+    for previous in "${previous_packages[@]}"; do
+        keep=false
+        for current in "${current_packages[@]}"; do
+            if [[ "$previous" == "$current" ]]; then
+                keep=true
+                break
+            fi
+        done
+        if [[ "$keep" == false ]]; then
+            apt-mark unhold "$previous" >/dev/null 2>&1 || true
+        fi
+    done
+}
+
+write_apt_hold_state() {
+    install -d -m 0755 "$(dirname "$APT_HOLD_STATE")"
+    printf '%s\n' "$@" | sort -u > "$APT_HOLD_STATE"
 }
 
 install_deb_packages() {
@@ -311,15 +449,154 @@ install_deb_packages() {
     mapfile -t packages < <(printf '%s\n' "${packages[@]}" | sort -u)
     ((${#packages[@]} > 0)) || die "无法读取 deb 包名。" "Could not determine the deb package names."
 
+    clear_stale_apt_holds "${packages[@]}"
     log "正在设置 APT hold..." "Applying APT holds..."
     apt-mark hold "${packages[@]}"
+    write_apt_hold_state "${packages[@]}"
     printf '  hold: %s\n' "${packages[@]}"
+}
+
+validate_managed_dnf_block() {
+    local dnf_conf="$1"
+
+    awk -v begin="$DNF_MANAGED_BEGIN" -v end="$DNF_MANAGED_END" '
+        $0 == begin {
+            if (inside) {
+                invalid = 1
+            }
+            begins++
+            inside = 1
+        }
+        $0 == end {
+            if (!inside) {
+                invalid = 1
+            }
+            ends++
+            inside = 0
+        }
+        END { exit (!invalid && !inside && begins == ends && begins <= 1) ? 0 : 1 }
+    ' "$dnf_conf"
+}
+
+rewrite_dnf_config_without_managed_block() {
+    local dnf_conf="$1"
+    local output_file="$2"
+
+    validate_managed_dnf_block "$dnf_conf" || return 1
+
+    awk -v begin="$DNF_MANAGED_BEGIN" -v end="$DNF_MANAGED_END" \
+        -v legacy_begin="# anland-kde: hold patched KWin/Xwayland packages" '
+        $0 == begin { managed = 1; next }
+        $0 == end { managed = 0; next }
+        managed { next }
+        legacy_pending {
+            if ($0 ~ /^[[:space:]]*exclude[[:space:]]*=[[:space:]]*kwin\*[[:space:]]+xorg-x11-server-Xwayland\*[[:space:]]*$/) {
+                legacy_pending = 0
+                next
+            }
+            print legacy_begin
+            legacy_pending = 0
+        }
+        $0 == legacy_begin {
+            legacy_pending = 1
+            next
+        }
+        { print }
+        END {
+            if (legacy_pending) {
+                print legacy_begin
+            }
+        }
+    ' "$dnf_conf" > "$output_file"
+}
+
+remove_managed_dnf_excludes() {
+    local dnf_conf="$1"
+    local temporary_conf
+
+    temporary_conf="$(mktemp -t anland-kde-dnf.XXXXXXXX)"
+    if ! rewrite_dnf_config_without_managed_block "$dnf_conf" "$temporary_conf"; then
+        rm -f -- "$temporary_conf"
+        return 1
+    fi
+    if ! install -m 0644 "$temporary_conf" "$dnf_conf"; then
+        rm -f -- "$temporary_conf"
+        return 1
+    fi
+    rm -f -- "$temporary_conf"
+}
+
+write_dnf_config_with_managed_block() {
+    local dnf_conf="$1"
+    local output_file="$2"
+    local stripped_conf
+
+    stripped_conf="$(mktemp -t anland-kde-dnf.XXXXXXXX)"
+    if ! rewrite_dnf_config_without_managed_block "$dnf_conf" "$stripped_conf"; then
+        rm -f -- "$stripped_conf"
+        return 1
+    fi
+    if ! awk -v begin="$DNF_MANAGED_BEGIN" -v end="$DNF_MANAGED_END" '
+        function write_block() {
+            print ""
+            print begin
+            print "excludepkgs=kwin*,xorg-x11-server-Xwayland*"
+            print end
+        }
+        /^\[main\][[:space:]]*$/ {
+            in_main = 1
+            saw_main = 1
+            print
+            next
+        }
+        /^\[[^]]+\][[:space:]]*$/ {
+            if (in_main && !wrote_block) {
+                write_block()
+                wrote_block = 1
+            }
+            in_main = 0
+            print
+            next
+        }
+        { print }
+        END {
+            if (in_main && !wrote_block) {
+                write_block()
+                wrote_block = 1
+            }
+            if (!saw_main) {
+                print "[main]"
+                write_block()
+            }
+        }
+    ' "$stripped_conf" > "$output_file"; then
+        rm -f -- "$stripped_conf"
+        return 1
+    fi
+    rm -f -- "$stripped_conf"
+}
+
+configure_dnf_excludes() {
+    local dnf_conf="/etc/dnf/dnf.conf"
+    local temporary_conf
+
+    touch "$dnf_conf"
+    temporary_conf="$(mktemp -t anland-kde-dnf.XXXXXXXX)"
+    if ! write_dnf_config_with_managed_block "$dnf_conf" "$temporary_conf"; then
+        rm -f -- "$temporary_conf"
+        return 1
+    fi
+    if ! install -m 0644 "$temporary_conf" "$dnf_conf"; then
+        rm -f -- "$temporary_conf"
+        return 1
+    fi
+    rm -f -- "$temporary_conf"
 }
 
 install_rpm_packages() {
     local -a files packages
-    local -a exclude_patterns=("kwin*" "xorg-x11-server-Xwayland*")
-    local current_excludes exclude_key pattern
+    local dnf_conf="/etc/dnf/dnf.conf"
+    local dnf_backup
 
     command -v dnf >/dev/null 2>&1 || die "未找到 dnf。" "dnf was not found."
     command -v rpm >/dev/null 2>&1 || die "未找到 rpm。" "rpm was not found."
@@ -328,40 +605,30 @@ install_rpm_packages() {
 
     log "正在安装 ${#files[@]} 个 rpm 包并自动处理依赖..." \
         "Installing ${#files[@]} rpm packages and resolving dependencies..."
-    dnf install -y "${files[@]}"
+    touch "$dnf_conf"
+    dnf_backup="$(mktemp -t anland-kde-dnf-backup.XXXXXXXX)"
+    cp -p "$dnf_conf" "$dnf_backup"
+    if ! remove_managed_dnf_excludes "$dnf_conf" || ! dnf install -y "${files[@]}"; then
+        install -m 0644 "$dnf_backup" "$dnf_conf" || true
+        rm -f -- "$dnf_backup"
+        die "rpm 软件包安装失败。" "RPM package installation failed."
+    fi
 
     mapfile -t packages < <(rpm -qp --queryformat '%{NAME}\n' "${files[@]}" | sort -u)
+    ((${#packages[@]} > 0)) || die "无法读取 rpm 包名。" "Could not determine the rpm package names."
     log "正在设置 DNF exclude（等效于 hold）..." "Applying DNF excludes (equivalent to hold)..."
-    touch /etc/dnf/dnf.conf
-    if grep -q '^exclude=' /etc/dnf/dnf.conf; then
-        exclude_key="exclude"
-    elif grep -q '^excludepkgs=' /etc/dnf/dnf.conf; then
-        exclude_key="excludepkgs"
-    else
-        exclude_key=""
+    if ! configure_dnf_excludes; then
+        install -m 0644 "$dnf_backup" "$dnf_conf" || true
+        rm -f -- "$dnf_backup"
+        die "无法更新 DNF 锁定配置。" "Unable to update the DNF hold configuration."
     fi
-
-    if [[ -n "$exclude_key" ]]; then
-        current_excludes="$(sed -n "s/^${exclude_key}=//p" /etc/dnf/dnf.conf | head -n1)"
-        for pattern in "${exclude_patterns[@]}"; do
-            case " $current_excludes " in
-                *" $pattern "*) ;;
-                *)
-                    sed -i "/^${exclude_key}=/{s|$| $pattern|;}" /etc/dnf/dnf.conf
-                    current_excludes="$current_excludes $pattern"
-                    ;;
-            esac
-        done
-    else
-        printf '\n# anland-kde: hold patched KWin/Xwayland packages\nexclude=%s\n' \
-            "${exclude_patterns[*]}" >> /etc/dnf/dnf.conf
-    fi
+    rm -f -- "$dnf_backup"
     printf '  hold: %s\n' "${packages[@]}"
 }
 
 install_arch_packages() {
     local -a files packages
-    local pacman_conf
+    local pacman_conf package
 
     command -v pacman >/dev/null 2>&1 || die "未找到 pacman。" "pacman was not found."
     mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.pkg.tar.*' -print | sort)
@@ -370,27 +637,57 @@ install_arch_packages() {
     log "正在安装 ${#files[@]} 个 Arch 包..." "Installing ${#files[@]} Arch packages..."
     pacman_conf="$(mktemp -t anland-kde-pacman.XXXXXXXX)"
     cp /etc/pacman.conf "$pacman_conf"
-    if grep -q '^#LocalFileSigLevel = Optional$' "$pacman_conf"; then
-        sed -i 's/^#LocalFileSigLevel = Optional$/LocalFileSigLevel = Optional/' "$pacman_conf"
+    if grep -Eq '^[[:space:]]*#?[[:space:]]*LocalFileSigLevel[[:space:]]*=' "$pacman_conf"; then
+        sed -i -E 's/^[[:space:]]*#?[[:space:]]*LocalFileSigLevel[[:space:]]*=.*/LocalFileSigLevel = Optional/' "$pacman_conf"
+    elif grep -qE '^\[options\][[:space:]]*$' "$pacman_conf"; then
+        sed -i '/^\[options\][[:space:]]*$/a LocalFileSigLevel = Optional' "$pacman_conf"
     else
-        printf '\n[options]\nLocalFileSigLevel = Optional\n' >> "$pacman_conf"
+        rm -f -- "$pacman_conf"
+        die "pacman.conf 缺少 [options] 段。" "pacman.conf has no [options] section."
     fi
-    pacman --config "$pacman_conf" -U --noconfirm "${files[@]}"
+    if ! pacman --config "$pacman_conf" -U --noconfirm "${files[@]}"; then
+        rm -f -- "$pacman_conf"
+        die "Arch 软件包安装失败。" "Arch package installation failed."
+    fi
     rm -f -- "$pacman_conf"
 
-    if ! grep -q '^IgnorePkg.*kwin' /etc/pacman.conf; then
-        sed -i '/^\[options\]$/a IgnorePkg = kwin xorg-xwayland' /etc/pacman.conf
-    fi
+    for package in kwin xorg-xwayland; do
+        if ! awk -v package="$package" '
+            $1 == "IgnorePkg" {
+                for (i = 3; i <= NF; i++) {
+                    if ($i == package) {
+                        found = 1
+                    }
+                }
+            }
+            END { exit found ? 0 : 1 }
+        ' /etc/pacman.conf; then
+            if grep -qE '^[[:space:]]*IgnorePkg[[:space:]]*=' /etc/pacman.conf; then
+                sed -i -E "0,/^[[:space:]]*IgnorePkg[[:space:]]*=/{s/$/ ${package}/}" /etc/pacman.conf
+            elif grep -qE '^\[options\][[:space:]]*$' /etc/pacman.conf; then
+                sed -i "/^\[options\][[:space:]]*$/a IgnorePkg = ${package}" /etc/pacman.conf
+            else
+                die "pacman.conf 缺少 [options] 段。" "pacman.conf has no [options] section."
+            fi
+        fi
+    done
     mapfile -t packages < <(pacman -Qq -p "${files[@]}" | sort -u)
+    ((${#packages[@]} > 0)) || die "无法读取 Arch 包名。" "Could not determine the Arch package names."
     printf '  hold: %s\n' "${packages[@]}"
 }
 
 main() {
     detect_language
-    require_root "$@"
     detect_target
     check_architecture
-    download_packages
+    require_runtime_dependencies
+    resolve_release_tag
+    if [[ -n "$PREPARED_WORK_DIR" || -n "$PREPARED_PACKAGE_DIR" ]]; then
+        use_prepared_packages
+    else
+        download_packages
+    fi
+    require_root "$@"
 
     case "$PACKAGE_TYPE" in
         deb) install_deb_packages ;;

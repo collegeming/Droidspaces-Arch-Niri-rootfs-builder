@@ -369,7 +369,7 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: 创建 Release 与校验和清单
+      - name: 创建固定 Release 与软件包清单
         env:
           GH_TOKEN: ${{ github.token }}
           ANLAND_REPO: ${{ inputs.anland_repo }}
@@ -433,24 +433,16 @@ jobs:
             esac
           }
 
-          legacy_asset_for_target() {
-            case "$1" in
-              Arch) printf '%s\n' 'anland-kde-arch-aarch64.tar.gz' ;;
-              Debian13) printf '%s\n' 'anland-kde-debian13-arm64.tar.gz' ;;
-              ubuntu2604) printf '%s\n' 'anland-kde-ubuntu2604-arm64.tar.gz' ;;
-              Fedora43) printf '%s\n' 'anland-kde-fedora43-aarch64.tar.gz' ;;
-              Fedora44) printf '%s\n' 'anland-kde-fedora44-aarch64.tar.gz' ;;
-              *) echo "不支持的构建目标：$1" >&2; return 1 ;;
-            esac
-          }
-
-          local_asset_for_prefix() {
-            local prefix="$1"
+          local_asset_for_target() {
+            local target="$1"
+            local prefix arch
             local path
             local -a candidates=()
+            prefix="$(asset_prefix_for_target "$target")"
+            arch="$(asset_arch_for_target "$target")"
             while IFS= read -r path; do
               candidates+=("${path##*/}")
-            done < <(find "$release_dir" -maxdepth 1 -type f -name "${prefix}*.tar.gz" -print | sort)
+            done < <(find "$release_dir" -maxdepth 1 -type f -name "${prefix}*-${arch}.tar.gz" -print | sort)
             if [ "${#candidates[@]}" -gt 1 ]; then
               echo "资产前缀 ${prefix} 在本次构建中应匹配一个文件，实际为 ${#candidates[@]} 个。" >&2
               return 2
@@ -476,14 +468,14 @@ jobs:
           release_asset_for_target() {
             local tag="$1"
             local target="$2"
-            local prefix legacy name
+            local prefix arch name
             local -a candidates=()
             prefix="$(asset_prefix_for_target "$target")"
-            legacy="$(legacy_asset_for_target "$target")"
+            arch="$(asset_arch_for_target "$target")"
             load_release_assets "$tag" || return 1
             while IFS= read -r name; do
               case "$name" in
-                "${prefix}"*.tar.gz) candidates+=("$name") ;;
+                "${prefix}"*"-${arch}.tar.gz") candidates+=("$name") ;;
               esac
             done <<< "$release_assets"
             if [ "${#candidates[@]}" -gt 1 ]; then
@@ -493,28 +485,7 @@ jobs:
               printf '%s\n' "${candidates[0]}"
               return 0
             fi
-            while IFS= read -r name; do
-              if [ "$name" = "$legacy" ]; then
-                printf '%s\n' "$legacy"
-                return 0
-              fi
-            done <<< "$release_assets"
             return 1
-          }
-
-          archive_version_from_contents() {
-            local archive="$1"
-            local version
-            if ! version="$(tar -tzf "$archive" | \
-              sed -nE 's@.*kwin(-wayland)?[-_]([0-9]+\.[0-9]+\.[0-9]+).*@\2@p' | \
-              sed -n '1p')"; then
-              version=""
-            fi
-            [ -n "$version" ] || {
-              echo "无法从旧包资产 $(basename "$archive") 中解析 KWin 版本。" >&2
-              return 1
-            }
-            printf '%s\n' "$version"
           }
 
           archive_build_time() {
@@ -530,103 +501,30 @@ jobs:
             printf '%s\n' "$build_timestamp"
           }
 
-          migrate_asset_name() {
-            local target="$1"
-            local source_path="$2"
-            local source_name="$3"
-            local prefix arch version destination archive_target temp_dir
-            prefix="$(asset_prefix_for_target "$target")"
-            case "$source_name" in
-              "${prefix}"*.tar.gz)
-                destination="$source_name"
-                cp "$source_path" "$release_dir/$destination"
-                ;;
-              *)
-                version="$(archive_version_from_contents "$source_path")"
-                arch="$(asset_arch_for_target "$target")"
-                destination="${prefix}${version}-${arch}.tar.gz"
-                archive_target="$(archive_target_for_target "$target")"
-                temp_dir="$(mktemp -d)"
-                if ! tar -xzf "$source_path" -C "$temp_dir"; then
-                  rm -rf "$temp_dir"
-                  return 1
-                fi
-                if [ ! -d "$temp_dir/anland-kde-packages/$archive_target" ]; then
-                  rm -rf "$temp_dir"
-                  echo "旧包资产 $(basename "$source_path") 缺少 $archive_target 包目录。" >&2
-                  return 1
-                fi
-                printf 'target=%s\nkwin_version=%s\nbuild_time=unknown\nlegacy_release_tag=%s\nlegacy_release_published_at=%s\n' \
-                  "$archive_target" "$version" "$previous_tag" "${previous_release_time:-unknown}" \
-                  > "$temp_dir/anland-kde-packages/$archive_target/.anland-kde-build-info"
-                if ! tar -C "$temp_dir" -czf "$release_dir/$destination" "anland-kde-packages/$archive_target"; then
-                  rm -rf "$temp_dir"
-                  return 1
-                fi
-                rm -rf "$temp_dir"
-                ;;
-            esac
-            printf '%s\n' "$destination"
-          }
-
           previous_tag=""
           previous_release_time=""
           find_previous_release() {
-            local page candidate candidates target asset complete stable_candidate
+            local target asset complete stable_candidate
 
-            # 优先从固定滚动 Release 复用未选择的平台；首次迁移时再回退到旧的时间戳 Release。
-            stable_candidate=""
-            if stable_candidate="$(gh api \
+            stable_candidate="$(gh api \
               "repos/$GITHUB_REPOSITORY/releases/tags/$rolling_release_tag" \
-              --jq 'select(.draft == false and .prerelease == false) | .tag_name' 2>/dev/null)" && \
-              [ "$stable_candidate" = "$rolling_release_tag" ]; then
-              release_assets_tag=""
-              if load_release_assets "$rolling_release_tag"; then
-                complete=true
-                for target in "${release_targets[@]}"; do
-                  if ! asset="$(release_asset_for_target "$rolling_release_tag" "$target")"; then
-                    complete=false
-                    break
-                  fi
-                done
-                if [ "$complete" = true ]; then
-                  previous_tag="$rolling_release_tag"
-                  previous_release_time="$(gh api \
-                    "repos/$GITHUB_REPOSITORY/releases/tags/$rolling_release_tag" \
-                    --jq '.published_at // empty')"
-                  return 0
-                fi
+              --jq 'select(.draft == false and .prerelease == false) | .tag_name' 2>/dev/null)" || return 1
+            [ "$stable_candidate" = "$rolling_release_tag" ] || return 1
+            release_assets_tag=""
+            load_release_assets "$rolling_release_tag" || return 1
+            complete=true
+            for target in "${release_targets[@]}"; do
+              if ! asset="$(release_asset_for_target "$rolling_release_tag" "$target")"; then
+                complete=false
+                break
               fi
-            fi
-
-            for page in $(seq 1 10); do
-              if ! candidates="$(gh api \
-                "repos/$GITHUB_REPOSITORY/releases?per_page=100&page=$page" \
-                --jq '.[] | select((.draft == false) and (.prerelease == false) and (.tag_name | startswith("anland-kde-packages-"))) | .tag_name')"; then
-                return 1
-              fi
-              while IFS= read -r candidate; do
-                [ -n "$candidate" ] || continue
-                if ! load_release_assets "$candidate"; then
-                  return 1
-                fi
-                complete=true
-                for target in "${release_targets[@]}"; do
-                  if ! asset="$(release_asset_for_target "$candidate" "$target")"; then
-                    complete=false
-                    break
-                  fi
-                done
-                if [ "$complete" = true ]; then
-                  previous_tag="$candidate"
-                  if ! previous_release_time="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$candidate" --jq '.published_at // empty')"; then
-                    return 1
-                  fi
-                  return 0
-                fi
-              done <<< "$candidates"
             done
-            return 1
+            [ "$complete" = true ] || return 1
+            previous_tag="$rolling_release_tag"
+            previous_release_time="$(gh api \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$rolling_release_tag" \
+              --jq '.published_at // empty')" || return 1
+            return 0
           }
 
           case "$BUILD_TARGET_INPUT" in
@@ -656,8 +554,7 @@ jobs:
 
           missing_targets=()
           for target in "${release_targets[@]}"; do
-            prefix="$(asset_prefix_for_target "$target")"
-            if asset="$(local_asset_for_prefix "$prefix")"; then
+            if asset="$(local_asset_for_target "$target")"; then
               if ! asset_build_time="$(archive_build_time "$release_dir/$asset" "$target")"; then
                 echo "本次构建资产 $asset 缺少构建时间元数据。" >&2
                 exit 1
@@ -673,7 +570,7 @@ jobs:
             fi
           done
 
-          # 单平台选择失败时不更新滚动 Release；all 模式才允许用旧资产补齐。
+          # 单平台选择失败时不更新滚动 Release；其他平台始终从固定 Release 补齐。
           if [ -n "$selected_prefix" ]; then
             selected_target="$BUILD_TARGET_INPUT"
             selected_missing=false
@@ -691,7 +588,7 @@ jobs:
 
           if [ "${#missing_targets[@]}" -gt 0 ]; then
             if ! find_previous_release; then
-              echo "缺少以下平台的新资产：${missing_targets[*]}；没有可复用的完整旧 Release。首次创建滚动 Release 时必须让 all 的五个平台全部成功。" >&2
+              echo "缺少以下平台的新资产：${missing_targets[*]}；固定 Release 没有完整的五平台资产可复用，本次不更新 Release。" >&2
               exit 1
             fi
 
@@ -704,11 +601,12 @@ jobs:
                 --repo "$GITHUB_REPOSITORY" \
                 --pattern "$asset" \
                 --dir "$previous_dir"
-              migrated_asset="$(migrate_asset_name "$target" "$previous_dir/$asset" "$asset")"
-              asset_by_target["$target"]="$migrated_asset"
-              if reused_build_time="$(archive_build_time "$release_dir/$migrated_asset" "$target")"; then
+              reused_asset="$asset"
+              cp "$previous_dir/$asset" "$release_dir/$reused_asset"
+              asset_by_target["$target"]="$reused_asset"
+              if reused_build_time="$(archive_build_time "$release_dir/$reused_asset" "$target")"; then
                 if [ "$reused_build_time" = unknown ]; then
-                  asset_time_by_target["$target"]="${previous_release_time:-未知}（旧包未记录构建时间）"
+                  asset_time_by_target["$target"]="${previous_release_time:-未知}（包未记录构建时间）"
                 else
                   asset_time_by_target["$target"]="$reused_build_time（沿用）"
                 fi
@@ -725,19 +623,22 @@ jobs:
             exit 1
           fi
 
-          expected_assets=()
           for target in "${release_targets[@]}"; do
             asset="${asset_by_target[$target]}"
             test -f "$release_dir/$asset"
-            expected_assets+=("$asset")
           done
 
           cp scripts/install-anland-kde.sh "$release_dir/install-anland-kde.sh"
           chmod +x "$release_dir/install-anland-kde.sh"
-          (
-            cd "$release_dir"
-            sha256sum "${expected_assets[@]}" install-anland-kde.sh > SHA256SUMS
-          )
+          {
+            printf 'format=1\n'
+            printf 'release_tag=%s\n' "$rolling_release_tag"
+            printf 'revision=run-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'generated_at=%s\n' "$build_time"
+            for target in "${release_targets[@]}"; do
+              printf '%s=%s\n' "$(archive_target_for_target "$target")" "${asset_by_target[$target]}"
+            done
+          } > "$release_dir/anland-kde-manifest"
 
           format_target_list() {
             local target text=""
@@ -779,14 +680,14 @@ jobs:
             '' \
             '压缩包文件名中的 `kwin-版本` 来自该发行版实际生成的 KWin 包；不同发行版的版本可以不同。' \
             '' \
-            '每个压缩包只包含对应系统的 patched KWin/Xwayland 包；安装脚本会自动选择目标系统并校验 `SHA256SUMS`。' \
+            '每个压缩包只包含对应系统的 patched KWin/Xwayland 包；`anland-kde-manifest` 精确映射目标系统到资产。' \
             '' \
             '## 构建详情' \
             '' \
             "- 构建目标：${BUILD_TARGET_INPUT}" \
             "- ${replacement_note}" \
             "- Release 生成时间：${build_time}" \
-            '- 构建时间取自压缩包内的构建元数据；早期旧包未记录时显示其旧 Release 发布时间。' \
+            '- 构建时间取自压缩包内的构建元数据；缺失时显示固定 Release 的发布时间。' \
             "- 软件包请求 ID / Package request ID: ${REQUEST_ID:-manual-${GITHUB_RUN_ID}}" \
             "- 软件包工作流运行号：${GITHUB_RUN_ID}" \
             "- 本次构建源码（仅更新资产）：\`${ANLAND_REPO}\` @ \`${ANLAND_COMMIT}\`（请求：\`${ANLAND_REF}\`）" \
@@ -809,16 +710,86 @@ jobs:
               --dir "$rollback_dir"
           fi
 
-          delete_release_assets() {
+          asset_matches_target() {
+            local target="$1"
+            local name="$2"
+            local prefix arch legacy
+            prefix="$(asset_prefix_for_target "$target")"
+            arch="$(asset_arch_for_target "$target")"
+            case "$target" in
+              Arch) legacy='anland-kde-arch-aarch64.tar.gz' ;;
+              Debian13) legacy='anland-kde-debian13-arm64.tar.gz' ;;
+              ubuntu2604) legacy='anland-kde-ubuntu2604-arm64.tar.gz' ;;
+              Fedora43) legacy='anland-kde-fedora43-aarch64.tar.gz' ;;
+              Fedora44) legacy='anland-kde-fedora44-aarch64.tar.gz' ;;
+              *) return 1 ;;
+            esac
+            case "$name" in
+              "${prefix}"*"-${arch}.tar.gz"|"$legacy") return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          delete_stale_target_assets() {
+            local target="$1"
+            local desired="$2"
+            local asset_rows asset_id asset_name
+            asset_rows="$(gh api \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
+              --jq '.assets[] | [.id, .name] | @tsv')" || return 1
+            while IFS=$'\t' read -r asset_id asset_name; do
+              [ -n "$asset_id" ] || continue
+              if asset_matches_target "$target" "$asset_name" && [ "$asset_name" != "$desired" ]; then
+                gh api --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              fi
+            done <<< "$asset_rows"
+          }
+
+          delete_release_asset_named() {
+            local asset_name="$1"
             local asset_ids asset_id
             asset_ids="$(gh api \
               "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
-              --jq '.assets[].id')"
+              --jq ".assets[] | select(.name == \"$asset_name\") | .id")" || return 1
             while IFS= read -r asset_id; do
               [ -n "$asset_id" ] || continue
               gh api --method DELETE \
                 "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
             done <<< "$asset_ids"
+          }
+
+          restore_rollback_assets() {
+            local rollback_asset rollback_name current_rows current_id current_name
+
+            # Restore packages and the installer first. The old manifest is uploaded
+            # last, so it never points at an asset that has not been restored yet.
+            for rollback_asset in "$rollback_dir"/*; do
+              rollback_name="${rollback_asset##*/}"
+              [ "$rollback_name" = 'anland-kde-manifest' ] && continue
+              gh release upload "$release_tag" "$rollback_asset" \
+                --repo "$GITHUB_REPOSITORY" \
+                --clobber || echo "恢复资产失败：$rollback_name" >&2
+            done
+            if [ -f "$rollback_dir/anland-kde-manifest" ]; then
+              gh release upload "$release_tag" "$rollback_dir/anland-kde-manifest" \
+                --repo "$GITHUB_REPOSITORY" \
+                --clobber || echo '恢复软件包清单失败。' >&2
+            fi
+
+            # Removing extras is best effort. A failed deletion only leaves an
+            # unreferenced asset; it must never make the prior Release unavailable.
+            current_rows="$(gh api \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
+              --jq '.assets[] | [.id, .name] | @tsv')" || return 0
+            while IFS=$'\t' read -r current_id current_name; do
+              [ -n "$current_id" ] || continue
+              if [ ! -f "$rollback_dir/$current_name" ]; then
+                gh api --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$current_id" || \
+                  echo "未能删除恢复后的多余资产：$current_name" >&2
+              fi
+            done <<< "$current_rows"
           }
 
           restore_previous_release() {
@@ -827,16 +798,7 @@ jobs:
               echo "滚动 Release 原地更新失败，尝试恢复旧资产..." >&2
               set +e
               if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-                delete_release_assets
-                gh release upload "$release_tag" "$rollback_dir"/* \
-                  --repo "$GITHUB_REPOSITORY" \
-                  --clobber
-                gh release edit "$release_tag" \
-                  --repo "$GITHUB_REPOSITORY" \
-                  --title 'Anland KDE Wayland 预编译包' \
-                  --notes '自动恢复：本次滚动 Release 更新失败，已恢复上一份可用资产。' \
-                  --draft=false \
-                  --latest=false
+                restore_rollback_assets
               else
                 gh release create "$release_tag" "$rollback_dir"/* \
                   --draft \
@@ -854,10 +816,25 @@ jobs:
 
           if [ "$release_exists" = true ]; then
             release_mutated=true
-            delete_release_assets
-            gh release upload "$release_tag" "$release_dir"/* \
+            updated_uploads=()
+            for target in "${updated_targets[@]}"; do
+              updated_uploads+=("$release_dir/${asset_by_target[$target]}")
+            done
+            gh release upload "$release_tag" "${updated_uploads[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
+            gh release upload "$release_tag" \
+              "$release_dir/install-anland-kde.sh" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release upload "$release_tag" \
+              "$release_dir/anland-kde-manifest" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            delete_release_asset_named 'SHA256SUMS'
+            for target in "${updated_targets[@]}"; do
+              delete_stale_target_assets "$target" "${asset_by_target[$target]}"
+            done
             gh release edit "$release_tag" \
               --repo "$GITHUB_REPOSITORY" \
               --title 'Anland KDE Wayland 预编译包' \
