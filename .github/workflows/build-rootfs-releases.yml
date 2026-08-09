@@ -264,7 +264,7 @@ jobs:
             -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
             -f "inputs[request_id]=$REQUEST_ID"
 
-          echo "已触发 build-kde-wayland.yml，发布完整五平台 Release，request_id=$REQUEST_ID"
+          echo "已触发 build-kde-wayland.yml，更新固定滚动五平台 Release，request_id=$REQUEST_ID"
 
           run_id=""
           for attempt in {1..60}; do
@@ -292,15 +292,16 @@ jobs:
           echo "等待 build-kde-wayland.yml run $run_id 完成..."
           gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status --interval 60
 
-          release_tag="$(gh api \
-            "repos/${{ github.repository }}/releases?per_page=100" \
-            --jq ".[] | select((.body // \"\") | contains(\"Package request ID: $REQUEST_ID\")) | .tag_name" | sed -n '1p')"
-          if [ -z "$release_tag" ]; then
-            echo "错误: 未找到本次 KDE Wayland 包构建发布的 Release tag" >&2
+          release_tag="anland-kde-packages"
+          release_body="$(gh api \
+            "repos/${{ github.repository }}/releases/tags/$release_tag" \
+            --jq '.body // ""')"
+          if ! printf '%s\n' "$release_body" | grep -Fq "Package request ID: $REQUEST_ID"; then
+            echo "错误: 固定滚动 Release 未记录本次 KDE Wayland 包构建请求" >&2
             exit 1
           fi
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "KDE Wayland 包 Release: $release_tag"
+          echo "KDE Wayland 包滚动 Release: $release_tag"
 
   # --------------------------------------------------------
   # 阶段 2: build (常规 Linux 发行版 RootFS 的构建)

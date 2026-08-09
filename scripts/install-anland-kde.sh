@@ -6,6 +6,7 @@ set -euo pipefail
 readonly DEFAULT_REPOSITORY="Goldzxcbug/Droidspaces-rootfs-KDE-builder"
 readonly RELEASE_REPOSITORY="${ANLAND_KDE_RELEASE_REPOSITORY:-$DEFAULT_REPOSITORY}"
 RELEASE_TAG="${ANLAND_KDE_RELEASE_TAG:-}"
+readonly ROLLING_RELEASE_TAG="anland-kde-packages"
 readonly RELEASE_TAG_PREFIX="anland-kde-packages-"
 
 WORK_DIR=""
@@ -13,6 +14,7 @@ UI_LANG="en"
 TARGET=""
 PACKAGE_TYPE=""
 ARCHIVE_PREFIX=""
+LEGACY_ARCHIVE_NAME=""
 ARCHIVE_NAME=""
 ARCHIVE_TARGET=""
 PACKAGE_DIR=""
@@ -77,6 +79,7 @@ detect_target() {
             TARGET="Arch Linux"
             PACKAGE_TYPE="pkg.tar.*"
             ARCHIVE_PREFIX="anland-kde-arch-kwin-"
+            LEGACY_ARCHIVE_NAME="anland-kde-arch-aarch64.tar.gz"
             ARCHIVE_TARGET="arch"
             ;;
         *)
@@ -86,24 +89,28 @@ detect_target() {
                     TARGET="Debian 13"
                     PACKAGE_TYPE="deb"
                     ARCHIVE_PREFIX="anland-kde-debian13-kwin-"
+                    LEGACY_ARCHIVE_NAME="anland-kde-debian13-arm64.tar.gz"
                     ARCHIVE_TARGET="debian13"
                     ;;
                 ubuntu:26.04*)
                     TARGET="Ubuntu 26.04"
                     PACKAGE_TYPE="deb"
                     ARCHIVE_PREFIX="anland-kde-ubuntu2604-kwin-"
+                    LEGACY_ARCHIVE_NAME="anland-kde-ubuntu2604-arm64.tar.gz"
                     ARCHIVE_TARGET="ubuntu2604"
                     ;;
                 fedora:43*)
                     TARGET="Fedora 43"
                     PACKAGE_TYPE="rpm"
                     ARCHIVE_PREFIX="anland-kde-fedora43-kwin-"
+                    LEGACY_ARCHIVE_NAME="anland-kde-fedora43-aarch64.tar.gz"
                     ARCHIVE_TARGET="fedora43"
                     ;;
                 fedora:44*)
                     TARGET="Fedora 44"
                     PACKAGE_TYPE="rpm"
                     ARCHIVE_PREFIX="anland-kde-fedora44-kwin-"
+                    LEGACY_ARCHIVE_NAME="anland-kde-fedora44-aarch64.tar.gz"
                     ARCHIVE_TARGET="fedora44"
                     ;;
                 *)
@@ -154,10 +161,10 @@ download_stdout() {
 
 validate_release_tag() {
     case "$RELEASE_TAG" in
-        "${RELEASE_TAG_PREFIX}"[0-9]*) ;;
+        "$ROLLING_RELEASE_TAG"|"${RELEASE_TAG_PREFIX}"[0-9]*) ;;
         *)
-            die "Release tag 必须以 ${RELEASE_TAG_PREFIX} 开头。" \
-                "Release tags must start with ${RELEASE_TAG_PREFIX}."
+            die "Release tag 必须是 ${ROLLING_RELEASE_TAG}，或以 ${RELEASE_TAG_PREFIX} 开头的旧版本标签。" \
+                "The Release tag must be ${ROLLING_RELEASE_TAG} or a legacy tag starting with ${RELEASE_TAG_PREFIX}."
             ;;
     esac
 }
@@ -168,6 +175,19 @@ resolve_release_tag() {
     if [[ -n "$RELEASE_TAG" ]]; then
         validate_release_tag
         return
+    fi
+
+    # 固定滚动 Release 优先；旧的时间戳 Release 只作为迁移期间的回退。
+    api_url="https://api.github.com/repos/${RELEASE_REPOSITORY}/releases/tags/${ROLLING_RELEASE_TAG}"
+    if response="$(download_stdout "$api_url" 2>/dev/null)"; then
+        candidate="$(printf '%s\n' "$response" | tr '{,}' '\n' | \
+            sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' | \
+            sed -n "/^${ROLLING_RELEASE_TAG}$/ { p; q; }")"
+        if [[ "$candidate" == "$ROLLING_RELEASE_TAG" ]]; then
+            RELEASE_TAG="$ROLLING_RELEASE_TAG"
+            log "已选择固定滚动 Release: ${RELEASE_TAG}" "Selected rolling Release: ${RELEASE_TAG}"
+            return
+        fi
     fi
 
     api_url="https://api.github.com/repos/${RELEASE_REPOSITORY}/releases?per_page=100"
@@ -182,7 +202,8 @@ resolve_release_tag() {
             sed -n "/^${RELEASE_TAG_PREFIX}[0-9]/ { p; q; }")"
         if [[ -n "$candidate" ]]; then
             RELEASE_TAG="$candidate"
-            log "已选择不可变 Release: ${RELEASE_TAG}" "Selected immutable Release: ${RELEASE_TAG}"
+            log "固定 Release 尚未创建，兼容使用旧版 Release: ${RELEASE_TAG}" \
+                "The rolling Release is not available; using legacy Release: ${RELEASE_TAG}"
             return
         fi
 
@@ -210,12 +231,28 @@ resolve_archive_name() {
     done < <(printf '%s\n' "$response" | tr '{,}' '\n' | \
         sed -nE 's/^[[:space:]]*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')
 
-    if [[ "${#candidates[@]}" -ne 1 ]]; then
-        die "Release ${RELEASE_TAG} 中没有唯一的 ${TARGET} KWin 版本包（找到 ${#candidates[@]} 个）。" \
-            "Release ${RELEASE_TAG} does not contain exactly one ${TARGET} KWin version archive (found ${#candidates[@]})."
+    if [[ "${#candidates[@]}" -gt 1 ]]; then
+        die "Release ${RELEASE_TAG} 中 ${TARGET} 的 KWin 版本包不唯一（找到 ${#candidates[@]} 个）。" \
+            "Release ${RELEASE_TAG} contains multiple ${TARGET} KWin version archives (found ${#candidates[@]})."
     fi
-    ARCHIVE_NAME="${candidates[0]}"
-    log "已选择 ${ARCHIVE_NAME}" "Selected ${ARCHIVE_NAME}"
+    if [[ "${#candidates[@]}" -eq 1 ]]; then
+        ARCHIVE_NAME="${candidates[0]}"
+        log "已选择 ${ARCHIVE_NAME}" "Selected ${ARCHIVE_NAME}"
+        return
+    fi
+
+    # 迁移期间兼容旧 Release 中不带 KWin 版本的固定资产名。
+    while IFS= read -r name; do
+        if [[ "$name" == "$LEGACY_ARCHIVE_NAME" ]]; then
+            ARCHIVE_NAME="$name"
+            log "已选择旧版资产 ${ARCHIVE_NAME}" "Selected legacy asset ${ARCHIVE_NAME}"
+            return
+        fi
+    done < <(printf '%s\n' "$response" | tr '{,}' '\n' | \
+        sed -nE 's/^[[:space:]]*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')
+
+    die "Release ${RELEASE_TAG} 中没有 ${TARGET} 的可用包（未找到版本化或旧版资产）。" \
+        "Release ${RELEASE_TAG} contains no usable ${TARGET} package (neither a versioned nor a legacy asset was found)."
 }
 
 release_download_base() {

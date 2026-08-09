@@ -55,44 +55,53 @@ jobs:
 
           echo "总 Releases: $COUNT"
 
-          if [ "$COUNT" -le "$KEEP_RELEASES" ]; then
-            echo "无需清理 Releases"
-          else
-            jq -r 'sort_by(.created_at) | reverse | .[] | "\(.id) \(.tag_name)"' releases.json \
-              > releases.txt
-
-            INDEX=0
-
-            while read ID TAG; do
-              case "$TAG" in
-                anland-kde-packages-*)
-                  echo "保留 Anland KDE 预编译包 Release: $TAG"
-                  continue
-                  ;;
-              esac
-
-              INDEX=$((INDEX + 1))
-
-              if [ "$INDEX" -le "$KEEP_RELEASES" ]; then
-                echo "保留 Release: $TAG"
-                continue
-              fi
-
-              echo "删除 Release: $TAG"
-
-              gh api \
-                --method DELETE \
-                repos/$REPO/releases/$ID
-
-              echo "删除 Tag: $TAG"
-
-              gh api \
-                --method DELETE \
-                repos/$REPO/git/refs/tags/$TAG \
-                || true
-
-            done < releases.txt
+          ROLLING_RELEASE_TAG="anland-kde-packages"
+          ROLLING_RELEASE_READY=false
+          if gh api "repos/$REPO/releases/tags/$ROLLING_RELEASE_TAG" >/dev/null 2>&1; then
+            ROLLING_RELEASE_READY=true
           fi
+
+          jq -r 'sort_by(.created_at) | reverse | .[] | "\(.id) \(.tag_name)"' releases.json \
+            > releases.txt
+
+          INDEX=0
+
+          while read ID TAG; do
+            case "$TAG" in
+              anland-kde-packages)
+                echo "保留 Anland KDE 滚动 Release: $TAG"
+                continue
+                ;;
+              anland-kde-packages-*)
+                if [ "$ROLLING_RELEASE_READY" = true ]; then
+                  echo "删除已迁移的 Anland KDE 旧 Release: $TAG"
+                else
+                  echo "固定滚动 Release 尚未创建，保留迁移来源: $TAG"
+                  continue
+                fi
+                ;;
+              *)
+                INDEX=$((INDEX + 1))
+                if [ "$INDEX" -le "$KEEP_RELEASES" ]; then
+                  echo "保留 Release: $TAG"
+                  continue
+                fi
+                echo "删除 Release: $TAG"
+                ;;
+            esac
+
+            gh api \
+              --method DELETE \
+              repos/$REPO/releases/$ID
+
+            echo "删除 Tag: $TAG"
+
+            gh api \
+              --method DELETE \
+              repos/$REPO/git/refs/tags/$TAG \
+              || true
+
+          done < releases.txt
 
       - name: Delete old workflow runs
         env:

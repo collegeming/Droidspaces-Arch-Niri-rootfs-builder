@@ -127,11 +127,11 @@ RUN chmod +x /usr/local/sbin/install-anland-kde && \
 ############################################## anland_kde(wayland) 支持 ################################################
 RUN if [ "$ENABLE_anland_kde_ARG" = "true" ] && ([ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "mobile" ]); then \
         if [ -z "$ANLAND_KDE_RELEASE_TAG" ]; then \
-            echo "错误：Docker 构建必须传入不可变的 ANLAND_KDE_RELEASE_TAG。" >&2; \
+            echo "错误：Docker 构建必须传入固定的 ANLAND_KDE_RELEASE_TAG。" >&2; \
             exit 1; \
         fi && \
         echo "--> [开启] 正在安装 anland_kde..." && \
-        echo "--> [开启] 从不可变 Release 下载预编译包 (${ANLAND_KDE_PACKAGE_REVISION})..." && \
+        echo "--> [开启] 从固定滚动 Release 下载预编译包 (${ANLAND_KDE_PACKAGE_REVISION})..." && \
         ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
         ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
         /usr/local/sbin/install-anland-kde && \

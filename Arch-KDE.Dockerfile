@@ -94,10 +94,10 @@ RUN chmod +x /usr/local/sbin/install-anland-kde && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi 
 
-# 启用 Anland 时从不可变 GitHub Release 安装 ARM64 patched KWin/Xwayland。
+# 启用 Anland 时从固定滚动 GitHub Release 安装 ARM64 patched KWin/Xwayland。
 RUN if [ "$ENABLE_anland_kde_ARG" = "true" ]; then \
         if [ -z "$ANLAND_KDE_RELEASE_TAG" ]; then \
-            echo "An immutable ANLAND_KDE_RELEASE_TAG is required for Docker builds." >&2; \
+            echo "A fixed ANLAND_KDE_RELEASE_TAG is required for Docker builds." >&2; \
             exit 1; \
         fi && \
         echo "--> [enabled] Installing Anland KDE packages (${ANLAND_KDE_PACKAGE_REVISION})..." && \

@@ -37,15 +37,16 @@ done
 : "${ANLAND_KDE_RELEASE_REPOSITORY:=Goldzxcbug/Droidspaces-rootfs-KDE-builder}"
 : "${ANLAND_KDE_RELEASE_TAG:=}"
 : "${ANLAND_KDE_PACKAGE_REVISION:=}"
+ANLAND_KDE_ROLLING_RELEASE_TAG="anland-kde-packages"
 
 resolve_anland_kde_release_tag() {
   local page response candidate
 
   case "$ANLAND_KDE_RELEASE_TAG" in
-    anland-kde-packages-[0-9]*) return 0 ;;
+    anland-kde-packages|anland-kde-packages-[0-9]*) return 0 ;;
     '') ;;
     *)
-      echo "错误：ANLAND_KDE_RELEASE_TAG 必须是 anland-kde-packages-*。" >&2
+      echo "错误：ANLAND_KDE_RELEASE_TAG 必须是 anland-kde-packages 或旧版 anland-kde-packages-*。" >&2
       return 1
       ;;
   esac
@@ -53,6 +54,17 @@ resolve_anland_kde_release_tag() {
   if ! command -v curl >/dev/null 2>&1; then
     echo "错误：无法自动解析 Anland KDE Release，需要 curl。" >&2
     return 1
+  fi
+
+  if response="$(curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 \
+    "https://api.github.com/repos/${ANLAND_KDE_RELEASE_REPOSITORY}/releases/tags/${ANLAND_KDE_ROLLING_RELEASE_TAG}")"; then
+    candidate="$(printf '%s\n' "$response" | tr '{,}' '\n' | \
+      sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' | \
+      sed -n "/^${ANLAND_KDE_ROLLING_RELEASE_TAG}$/ { p; q; }")"
+    if [ "$candidate" = "$ANLAND_KDE_ROLLING_RELEASE_TAG" ]; then
+      ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_ROLLING_RELEASE_TAG"
+      return 0
+    fi
   fi
 
   page=1

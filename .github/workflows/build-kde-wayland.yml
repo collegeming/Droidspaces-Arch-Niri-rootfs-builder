@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       build_target:
-        description: 选择构建目标；all 中失败的平台沿用上一份完整 Release，单个平台会重建该包并复用其余资产
+        description: 选择构建目标；all 中失败的平台沿用上一份完整 Release，单个平台只替换选中的包
         required: true
         type: choice
         default: all
@@ -36,7 +36,7 @@ permissions:
   contents: write
 
 concurrency:
-  # 一次只发布一组不可变的包资产。
+  # 固定 Release 会被原地重写，必须串行更新。
   group: anland-kde-package-release
   cancel-in-progress: false
 
@@ -351,7 +351,7 @@ jobs:
           retention-days: 1
 
   release:
-    name: 发布不可变的 Anland KDE 包 Release
+    name: 更新 Anland KDE 滚动 Release
     needs: [prepare, build]
     if: ${{ always() && !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
@@ -383,6 +383,7 @@ jobs:
 
           release_dir="$GITHUB_WORKSPACE/release-assets"
           mkdir -p "$release_dir"
+          rolling_release_tag="anland-kde-packages"
           release_targets=(Arch Debian13 ubuntu2604 Fedora43 Fedora44)
           declare -A asset_by_target=()
           declare -A asset_time_by_target=()
@@ -571,7 +572,33 @@ jobs:
           previous_tag=""
           previous_release_time=""
           find_previous_release() {
-            local page candidate candidates target asset complete
+            local page candidate candidates target asset complete stable_candidate
+
+            # 优先从固定滚动 Release 复用未选择的平台；首次迁移时再回退到旧的时间戳 Release。
+            stable_candidate=""
+            if stable_candidate="$(gh api \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$rolling_release_tag" \
+              --jq 'select(.draft == false and .prerelease == false) | .tag_name' 2>/dev/null)" && \
+              [ "$stable_candidate" = "$rolling_release_tag" ]; then
+              release_assets_tag=""
+              if load_release_assets "$rolling_release_tag"; then
+                complete=true
+                for target in "${release_targets[@]}"; do
+                  if ! asset="$(release_asset_for_target "$rolling_release_tag" "$target")"; then
+                    complete=false
+                    break
+                  fi
+                done
+                if [ "$complete" = true ]; then
+                  previous_tag="$rolling_release_tag"
+                  previous_release_time="$(gh api \
+                    "repos/$GITHUB_REPOSITORY/releases/tags/$rolling_release_tag" \
+                    --jq '.published_at // empty')"
+                  return 0
+                fi
+              fi
+            fi
+
             for page in $(seq 1 10); do
               if ! candidates="$(gh api \
                 "repos/$GITHUB_REPOSITORY/releases?per_page=100&page=$page" \
@@ -646,7 +673,7 @@ jobs:
             fi
           done
 
-          # 单平台选择失败时不发布一份完全重复的 Release；all 模式才允许用旧资产补齐。
+          # 单平台选择失败时不更新滚动 Release；all 模式才允许用旧资产补齐。
           if [ -n "$selected_prefix" ]; then
             selected_target="$BUILD_TARGET_INPUT"
             selected_missing=false
@@ -657,14 +684,14 @@ jobs:
               fi
             done
             if [ "$selected_missing" = true ]; then
-              echo "选择的 ${selected_target} 构建没有生成新资产，本次不发布重复 Release。" >&2
+              echo "选择的 ${selected_target} 构建没有生成新资产，本次不更新滚动 Release。" >&2
               exit 1
             fi
           fi
 
           if [ "${#missing_targets[@]}" -gt 0 ]; then
             if ! find_previous_release; then
-              echo "缺少以下平台的新资产：${missing_targets[*]}；没有可复用的完整旧 Release。首次发布时必须让 all 的五个平台全部成功。" >&2
+              echo "缺少以下平台的新资产：${missing_targets[*]}；没有可复用的完整旧 Release。首次创建滚动 Release 时必须让 all 的五个平台全部成功。" >&2
               exit 1
             fi
 
@@ -694,7 +721,7 @@ jobs:
           fi
 
           if [ "${#updated_targets[@]}" -eq 0 ]; then
-            echo "本次没有任何平台生成新资产，不发布重复 Release。" >&2
+            echo "本次没有任何平台生成新资产，不更新滚动 Release。" >&2
             exit 1
           fi
 
@@ -725,10 +752,10 @@ jobs:
           if [ "${#reused_targets[@]}" -eq 0 ]; then
             replacement_note="本次构建重新生成全部五个平台的软件包。"
           else
-            replacement_note="本次更新：${updated_target_list}；沿用上一份完整 Release ${previous_tag}：${reused_target_list}。"
+            replacement_note="本次替换：${updated_target_list}；沿用 ${previous_tag}：${reused_target_list}。"
           fi
 
-          release_tag="anland-kde-packages-$(date -u +'%Y%m%d-%H%M%S')-${GITHUB_RUN_ID}"
+          release_tag="$rolling_release_tag"
           release_asset_table="$(printf '%s\n' \
             '| 压缩包 | 目标系统 | 构建时间 |' \
             '| --- | --- | --- |')"
@@ -744,7 +771,7 @@ jobs:
           release_notes="$(printf '%s\n' \
             '# Anland KDE Wayland 预编译包' \
             '' \
-            '这是供 Droidspaces Wayland RootFS 使用的不可变 ARM64/aarch64 包 Release。' \
+            '这是供 Droidspaces Wayland RootFS 使用的固定滚动 ARM64/aarch64 包 Release。每次更新只替换本次成功的平台，其他平台资产保持不变。' \
             '' \
             '## 发布资产' \
             '' \
@@ -769,12 +796,84 @@ jobs:
             '## 资产来源' \
             "$release_source_list" \
             '')"
-          gh release create "$release_tag" "$release_dir"/* \
-            --draft \
-            --latest=false \
-            --target "$GITHUB_SHA" \
-            --title 'Anland KDE Wayland 预编译包' \
-            --notes "$release_notes"
-          gh release edit "$release_tag" --draft=false --latest=false
+          # 先备份当前滚动 Release；原地重写失败时恢复原资产，避免丢失可用包。
+          rollback_dir="$RUNNER_TEMP/anland-kde-rolling-backup"
+          release_mutated=false
+          release_exists=false
+          rm -rf "$rollback_dir"
+          if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_exists=true
+            mkdir -p "$rollback_dir"
+            gh release download "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --dir "$rollback_dir"
+          fi
 
-          echo "已发布 $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$release_tag"
+          delete_release_assets() {
+            local asset_ids asset_id
+            asset_ids="$(gh api \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
+              --jq '.assets[].id')"
+            while IFS= read -r asset_id; do
+              [ -n "$asset_id" ] || continue
+              gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done <<< "$asset_ids"
+          }
+
+          restore_previous_release() {
+            local status=$?
+            if [ "$status" -ne 0 ] && [ "$release_mutated" = true ] && [ -d "$rollback_dir" ]; then
+              echo "滚动 Release 原地更新失败，尝试恢复旧资产..." >&2
+              set +e
+              if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                delete_release_assets
+                gh release upload "$release_tag" "$rollback_dir"/* \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --clobber
+                gh release edit "$release_tag" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --title 'Anland KDE Wayland 预编译包' \
+                  --notes '自动恢复：本次滚动 Release 更新失败，已恢复上一份可用资产。' \
+                  --draft=false \
+                  --latest=false
+              else
+                gh release create "$release_tag" "$rollback_dir"/* \
+                  --draft \
+                  --latest=false \
+                  --target "$GITHUB_SHA" \
+                  --title 'Anland KDE Wayland 预编译包' \
+                  --notes '自动恢复：本次滚动 Release 更新失败，已恢复上一份可用资产。'
+                gh release edit "$release_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+              fi
+              set -e
+            fi
+            exit "$status"
+          }
+          trap restore_previous_release EXIT
+
+          if [ "$release_exists" = true ]; then
+            release_mutated=true
+            delete_release_assets
+            gh release upload "$release_tag" "$release_dir"/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title 'Anland KDE Wayland 预编译包' \
+              --notes "$release_notes" \
+              --draft=false \
+              --latest=false
+          else
+            gh release create "$release_tag" "$release_dir"/* \
+              --draft \
+              --latest=false \
+              --target "$GITHUB_SHA" \
+              --title 'Anland KDE Wayland 预编译包' \
+              --notes "$release_notes"
+            gh release edit "$release_tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+          fi
+          release_mutated=false
+          trap - EXIT
+
+          echo "已更新 $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$release_tag"

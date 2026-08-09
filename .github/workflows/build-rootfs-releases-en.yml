@@ -264,7 +264,7 @@ jobs:
             -f "inputs[anland_repo]=https://github.com/superturtlee/anland.git" \
             -f "inputs[request_id]=$REQUEST_ID"
 
-          echo "Triggered build-kde-wayland.yml to publish the complete five-platform Release, request_id=$REQUEST_ID"
+          echo "Triggered build-kde-wayland.yml to update the fixed rolling five-platform Release, request_id=$REQUEST_ID"
 
           run_id=""
           for attempt in {1..60}; do
@@ -292,15 +292,16 @@ jobs:
           echo "Waiting for build-kde-wayland.yml run $run_id to complete..."
           gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status --interval 60
 
-          release_tag="$(gh api \
-            "repos/${{ github.repository }}/releases?per_page=100" \
-            --jq ".[] | select((.body // \"\") | contains(\"Package request ID: $REQUEST_ID\")) | .tag_name" | sed -n '1p')"
-          if [ -z "$release_tag" ]; then
-            echo "Error: could not find the Release tag published by this KDE Wayland package build" >&2
+          release_tag="anland-kde-packages"
+          release_body="$(gh api \
+            "repos/${{ github.repository }}/releases/tags/$release_tag" \
+            --jq '.body // ""')"
+          if ! printf '%s\n' "$release_body" | grep -Fq "Package request ID: $REQUEST_ID"; then
+            echo "Error: the fixed rolling Release does not record this KDE Wayland package request" >&2
             exit 1
           fi
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "KDE Wayland package Release: $release_tag"
+          echo "KDE Wayland rolling package Release: $release_tag"
 
   # --------------------------------------------------------
   # Phase 2: build (Build of regular Linux distribution RootFS)
