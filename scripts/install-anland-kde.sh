@@ -315,7 +315,7 @@ validate_package_architecture() {
         pkg.tar.*)
             mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.pkg.tar.*' -print | sort)
             for file in "${files[@]}"; do
-                package_arch="$(pacman -Qp --qf '%a' "$file")"
+                package_arch="$(LC_ALL=C pacman -Qip "$file" | awk -F': *' '$1 == "Architecture" { print $2 }')"
                 case "$package_arch" in aarch64|any) ;; *) return 1 ;; esac
             done
             ;;
@@ -408,7 +408,7 @@ clear_stale_apt_holds() {
     local -a current_packages=("$@") previous_packages=()
     local previous current keep
 
-    [[ -r "$APT_HOLD_STATE" ]] || return
+    [[ -r "$APT_HOLD_STATE" ]] || return 0
     mapfile -t previous_packages < <(sed -nE 's/^([a-z0-9][a-z0-9+.-]*)$/\1/p' "$APT_HOLD_STATE" | sort -u)
     for previous in "${previous_packages[@]}"; do
         keep=false
