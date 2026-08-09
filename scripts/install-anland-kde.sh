@@ -315,7 +315,7 @@ validate_package_architecture() {
         pkg.tar.*)
             mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.pkg.tar.*' -print | sort)
             for file in "${files[@]}"; do
-                package_arch="$(LC_ALL=C pacman -Qip "$file" | awk -F': *' '$1 == "Architecture" { print $2 }')"
+                package_arch="$(LC_ALL=C pacman -Qip "$file" | sed -n 's/^[[:space:]]*Architecture[[:space:]]*:[[:space:]]*//p')"
                 case "$package_arch" in aarch64|any) ;; *) return 1 ;; esac
             done
             ;;
