@@ -59,6 +59,19 @@ RUN chmod +x /usr/local/sbin/install-anland-kde && \
         kfind plasma-systemmonitor filelight glmark2 vkmark systemsettings kscreenlocker kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kimageformats plasma-browser-integration libcanberra gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop chromium; \
     fi && \
+    # 移动版 KDE
+    if [ "$BUILD_KDE" = "mobile" ]; then \
+        pacman -S --noconfirm --needed \
+        plasma-mobile plasma-settings plasma-camera plasma-keyboard plasma-nano \
+        kwin qt6-wayland qt6-svg wayland-utils \
+        pipewire pipewire-pulse wireplumber powerdevil plasma-pa upower \
+        konsole qmlkonsole dolphin kate kinfocenter mesa-utils vulkan-tools \
+        systemsettings kio-extras xdg-user-dirs \
+        dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kimageformats \
+        plasma-browser-integration angelfish kclock \
+        gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop \
+        polkit-kde-agent; \
+    fi && \
     # Arch 强制安装，但是这玩意不开硬件访问会导致桌面闪退
     if [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "min" ] ; then \
         mv /usr/lib/xdg-desktop-portal /usr/lib/xdg-desktop-portal.bak && \
@@ -215,7 +228,11 @@ Enabled=false
 EOF
     fi
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
-    if [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
+    if [ "$BUILD_KDE_plus" = "true" ] && [ "$BUILD_KDE" = "mobile" ] ; then
+        install -Dm644 /tmp/droidspaces-start/plasma-mobile.service /etc/systemd/system/plasma-mobile.service
+        mkdir -p /etc/systemd/system/multi-user.target.wants
+        ln -sf /etc/systemd/system/plasma-mobile.service /etc/systemd/system/multi-user.target.wants/plasma-mobile.service
+    elif [ "$BUILD_KDE_plus" = "true" ] && [ "$ENABLE_anland_kde_ARG" = "true" ] ; then
     install -Dm644 /tmp/droidspaces-start/plasma-wayland.service /etc/systemd/system/plasma-wayland.service
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/plasma-wayland.service /etc/systemd/system/multi-user.target.wants/plasma-wayland.service

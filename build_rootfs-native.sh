@@ -39,6 +39,11 @@ done
 : "${ANLAND_KDE_PACKAGE_REVISION:=}"
 ANLAND_KDE_ROLLING_RELEASE_TAG="anland-kde-packages"
 
+if [ "${BUILD_KDE:-}" = "mobile" ]; then
+  ENABLE_anland_kde="true"
+  PulseAudio="none"
+fi
+
 resolve_anland_kde_release_tag() {
   case "$ANLAND_KDE_RELEASE_TAG" in
     anland-kde-packages) return 0 ;;
