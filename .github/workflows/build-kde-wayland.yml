@@ -343,7 +343,7 @@ jobs:
           echo "已将 $package_count 个文件打包进 $asset_name（构建时间：$build_time）"
 
       - name: 上传 Release 资产
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: anland-kde-package-${{ matrix.target }}
           path: ${{ steps.package.outputs.asset_path }}
@@ -363,7 +363,7 @@ jobs:
 
       - name: 下载软件包资产
         if: ${{ always() }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: anland-kde-package-*
           path: release-assets
