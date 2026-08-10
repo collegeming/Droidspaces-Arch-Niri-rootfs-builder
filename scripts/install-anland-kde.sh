@@ -663,7 +663,7 @@ install_arch_packages() {
             END { exit found ? 0 : 1 }
         ' /etc/pacman.conf; then
             if grep -qE '^[[:space:]]*IgnorePkg[[:space:]]*=' /etc/pacman.conf; then
-                sed -i -E "0,/^[[:space:]]*IgnorePkg[[:space:]]*=/{s/$/ ${package}/}" /etc/pacman.conf
+                sed -i -E "0,/^[[:space:]]*IgnorePkg[[:space:]]*=/{s/^([[:space:]]*IgnorePkg[[:space:]]*=.*)$/\\1 ${package}/}" /etc/pacman.conf
             elif grep -qE '^\[options\][[:space:]]*$' /etc/pacman.conf; then
                 sed -i "/^\[options\][[:space:]]*$/a IgnorePkg = ${package}" /etc/pacman.conf
             else
