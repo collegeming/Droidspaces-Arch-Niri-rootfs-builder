@@ -307,7 +307,7 @@ jobs:
     if: ${{ needs.setup.outputs.templates != '[]' }}
     runs-on: ubuntu-24.04-arm
     env:
-      ANLAND_KDE_RELEASE_REPOSITORY: ${{ github.repository }}
+      ANLAND_KDE_RELEASE_REPOSITORY: Goldzxcbug/Droidspaces-rootfs-KDE-builder
       ANLAND_KDE_RELEASE_TAG: ${{ needs.build-wayland-packages.outputs.release_tag }}
     strategy:
       fail-fast: false
