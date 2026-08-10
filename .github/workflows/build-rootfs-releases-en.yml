@@ -306,9 +306,6 @@ jobs:
     needs: [setup, build-wayland-packages]
     if: ${{ needs.setup.outputs.templates != '[]' }}
     runs-on: ubuntu-24.04-arm
-    env:
-      ANLAND_KDE_RELEASE_REPOSITORY: Goldzxcbug/Droidspaces-rootfs-KDE-builder
-      ANLAND_KDE_RELEASE_TAG: ${{ needs.build-wayland-packages.outputs.release_tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -327,7 +324,86 @@ jobs:
             exit 1
           fi
 
+      - name: Select Wayland package source (${{ matrix.template }})
+        id: wayland_source
+        if: ${{ needs.setup.outputs.wayland_enabled == 'true' && github.repository != 'Goldzxcbug/Droidspaces-rootfs-KDE-builder' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEMPLATE: ${{ matrix.template }}
+          OWN_REPOSITORY: ${{ github.repository }}
+          UPSTREAM_REPOSITORY: Goldzxcbug/Droidspaces-rootfs-KDE-builder
+          RELEASE_TAG: anland-kde-packages
+          MANIFEST_NAME: anland-kde-manifest
+        run: |
+          set -euo pipefail
+
+          case "$TEMPLATE" in
+            Debian-13-KDE) archive_target=debian13 ;;
+            Ubuntu-26-KDE) archive_target=ubuntu2604 ;;
+            Fedora-43-KDE) archive_target=fedora43 ;;
+            Fedora-44-KDE) archive_target=fedora44 ;;
+            Arch-KDE) archive_target=arch ;;
+            *)
+              echo "$TEMPLATE does not use Wayland prebuilt packages; keeping the upstream default."
+              exit 0
+              ;;
+          esac
+
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$work_dir"' EXIT
+
+          # Read the build time recorded inside the distribution archive of a
+          # repository's rolling Release; return 1 when it cannot be read.
+          package_build_time() {
+            local repository="$1"
+            local slot_dir="$work_dir/$2"
+            local manifest_format manifest_tag archive_name build_time
+
+            mkdir -p "$slot_dir"
+            gh release download "$RELEASE_TAG" --repo "$repository" \
+              --pattern "$MANIFEST_NAME" --dir "$slot_dir" >/dev/null 2>&1 || return 1
+
+            manifest_format="$(awk -F= '$1 == "format" { print substr($0, index($0, "=") + 1) }' "$slot_dir/$MANIFEST_NAME")"
+            manifest_tag="$(awk -F= '$1 == "release_tag" { print substr($0, index($0, "=") + 1) }' "$slot_dir/$MANIFEST_NAME")"
+            [ "$manifest_format" = 1 ] && [ "$manifest_tag" = "$RELEASE_TAG" ] || return 1
+
+            archive_name="$(awk -F= -v key="$archive_target" '$1 == key { print substr($0, index($0, "=") + 1) }' "$slot_dir/$MANIFEST_NAME")"
+            case "$archive_name" in
+              ''|*[!A-Za-z0-9._+~-]*|*..*) return 1 ;;
+            esac
+
+            gh release download "$RELEASE_TAG" --repo "$repository" \
+              --pattern "$archive_name" --dir "$slot_dir" >/dev/null 2>&1 || return 1
+            build_time="$(tar -xOzf "$slot_dir/$archive_name" \
+              "anland-kde-packages/$archive_target/.anland-kde-build-info" 2>/dev/null \
+              | sed -n 's/^build_time=//p' | sed -n '1p')"
+            case "$build_time" in
+              [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
+              *) return 1 ;;
+            esac
+            printf '%s\n' "$build_time"
+          }
+
+          selected_repository="$UPSTREAM_REPOSITORY"
+          if ! own_time="$(package_build_time "$OWN_REPOSITORY" own)"; then
+            selected_reason="this repository has no usable ${archive_target} prebuilt package"
+          elif ! upstream_time="$(package_build_time "$UPSTREAM_REPOSITORY" upstream)"; then
+            selected_repository="$OWN_REPOSITORY"
+            selected_reason="the upstream ${archive_target} build time is unreadable, using this repository (${own_time})"
+          elif [[ "$own_time" < "$upstream_time" ]]; then
+            selected_reason="this repository (${own_time}) is older than upstream (${upstream_time})"
+          else
+            selected_repository="$OWN_REPOSITORY"
+            selected_reason="this repository (${own_time}) is not older than upstream (${upstream_time})"
+          fi
+
+          echo "repository=$selected_repository" >> "$GITHUB_OUTPUT"
+          echo "Wayland package source: ${selected_repository} (${selected_reason})"
+
       - name: Build RootFS (${{ matrix.template }})
+        env:
+          ANLAND_KDE_RELEASE_REPOSITORY: ${{ steps.wayland_source.outputs.repository || 'Goldzxcbug/Droidspaces-rootfs-KDE-builder' }}
+          ANLAND_KDE_RELEASE_TAG: ${{ needs.build-wayland-packages.outputs.release_tag }}
         run: |
           chmod +x build_rootfs-native.sh
           ./build_rootfs-native.sh \

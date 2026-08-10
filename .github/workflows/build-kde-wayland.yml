@@ -503,8 +503,9 @@ jobs:
 
           previous_tag=""
           previous_release_time=""
+          # 固定 Release 有几个平台就能沿用几个；第一次构建时它还不存在，返回 1 即可。
           find_previous_release() {
-            local target asset complete stable_candidate
+            local stable_candidate
 
             stable_candidate="$(gh api \
               "repos/$GITHUB_REPOSITORY/releases/tags/$rolling_release_tag" \
@@ -512,14 +513,6 @@ jobs:
             [ "$stable_candidate" = "$rolling_release_tag" ] || return 1
             release_assets_tag=""
             load_release_assets "$rolling_release_tag" || return 1
-            complete=true
-            for target in "${release_targets[@]}"; do
-              if ! asset="$(release_asset_for_target "$rolling_release_tag" "$target")"; then
-                complete=false
-                break
-              fi
-            done
-            [ "$complete" = true ] || return 1
             previous_tag="$rolling_release_tag"
             previous_release_time="$(gh api \
               "repos/$GITHUB_REPOSITORY/releases/tags/$rolling_release_tag" \
@@ -586,17 +579,30 @@ jobs:
             fi
           fi
 
+          # 固定 Release 里有的平台就沿用，没有的（例如第一次只构建单个平台）本次先缺着，
+          # 等后续构建补上，不再因为凑不齐五个平台就整体失败。
+          unavailable_targets=()
           if [ "${#missing_targets[@]}" -gt 0 ]; then
-            if ! find_previous_release; then
-              echo "缺少以下平台的新资产：${missing_targets[*]}；固定 Release 没有完整的五平台资产可复用，本次不更新 Release。" >&2
-              exit 1
-            fi
-
             previous_dir="$RUNNER_TEMP/anland-kde-previous-assets"
             rm -rf "$previous_dir"
             mkdir -p "$previous_dir"
+            find_previous_release || echo "固定 Release 还不存在或不可读，本次只发布已构建的平台。"
+
             for target in "${missing_targets[@]}"; do
-              asset="$(release_asset_for_target "$previous_tag" "$target")"
+              asset=""
+              if [ -n "$previous_tag" ]; then
+                if asset="$(release_asset_for_target "$previous_tag" "$target")"; then
+                  :
+                else
+                  asset_status=$?
+                  [ "$asset_status" -eq 1 ] || exit "$asset_status"
+                  asset=""
+                fi
+              fi
+              if [ -z "$asset" ]; then
+                unavailable_targets+=("$target")
+                continue
+              fi
               gh release download "$previous_tag" \
                 --repo "$GITHUB_REPOSITORY" \
                 --pattern "$asset" \
@@ -623,7 +629,18 @@ jobs:
             exit 1
           fi
 
+          if [ "${#unavailable_targets[@]}" -gt 0 ]; then
+            echo "以下平台本次 Release 暂无软件包，等待后续构建补齐：${unavailable_targets[*]}"
+          fi
+
+          present_targets=()
           for target in "${release_targets[@]}"; do
+            if [ -n "${asset_by_target[$target]+set}" ]; then
+              present_targets+=("$target")
+            fi
+          done
+
+          for target in "${present_targets[@]}"; do
             asset="${asset_by_target[$target]}"
             test -f "$release_dir/$asset"
           done
@@ -635,7 +652,7 @@ jobs:
             printf 'release_tag=%s\n' "$rolling_release_tag"
             printf 'revision=run-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
             printf 'generated_at=%s\n' "$build_time"
-            for target in "${release_targets[@]}"; do
+            for target in "${present_targets[@]}"; do
               printf '%s=%s\n' "$(archive_target_for_target "$target")" "${asset_by_target[$target]}"
             done
           } > "$release_dir/anland-kde-manifest"
@@ -650,29 +667,40 @@ jobs:
 
           updated_target_list="$(format_target_list "${updated_targets[@]}")"
           reused_target_list="$(format_target_list "${reused_targets[@]}")"
-          if [ "${#reused_targets[@]}" -eq 0 ]; then
+          unavailable_target_list="$(format_target_list "${unavailable_targets[@]}")"
+          if [ "${#reused_targets[@]}" -eq 0 ] && [ "${#unavailable_targets[@]}" -eq 0 ]; then
             replacement_note="本次构建重新生成全部五个平台的软件包。"
           else
-            replacement_note="本次替换：${updated_target_list}；沿用 ${previous_tag}：${reused_target_list}。"
+            replacement_note="本次替换：${updated_target_list}"
+            if [ "${#reused_targets[@]}" -gt 0 ]; then
+              replacement_note="${replacement_note}；沿用 ${previous_tag}：${reused_target_list}"
+            fi
+            if [ "${#unavailable_targets[@]}" -gt 0 ]; then
+              replacement_note="${replacement_note}；本 Release 暂无：${unavailable_target_list}"
+            fi
+            replacement_note="${replacement_note}。"
           fi
 
           release_tag="$rolling_release_tag"
           release_asset_table="$(printf '%s\n' \
             '| 压缩包 | 目标系统 | 构建时间 |' \
             '| --- | --- | --- |')"
-          for target in "${release_targets[@]}"; do
+          for target in "${present_targets[@]}"; do
             asset="${asset_by_target[$target]}"
             asset_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${release_tag}/${asset}"
             release_asset_table="${release_asset_table}"$'\n'"| [\`${asset}\`](${asset_url}) | $(target_label "$target") | ${asset_time_by_target[$target]} |"
           done
           release_source_list=""
-          for target in "${release_targets[@]}"; do
+          for target in "${present_targets[@]}"; do
             release_source_list="${release_source_list}"$'\n'"- $(target_label "$target")：${asset_source_by_target[$target]}"
+          done
+          for target in "${unavailable_targets[@]}"; do
+            release_source_list="${release_source_list}"$'\n'"- $(target_label "$target")：本 Release 暂无软件包，等待后续构建补齐"
           done
           release_notes="$(printf '%s\n' \
             '# Anland KDE Wayland 预编译包' \
             '' \
-            '这是供 Droidspaces Wayland RootFS 使用的固定滚动 ARM64/aarch64 包 Release。每次更新只替换本次成功的平台，其他平台资产保持不变。' \
+            '这是供 Droidspaces Wayland RootFS 使用的固定滚动 ARM64/aarch64 包 Release。每次更新只替换本次成功的平台，其他平台资产保持不变；尚未构建过的平台会在后续构建中补齐。' \
             '' \
             '## 发布资产' \
             '' \
