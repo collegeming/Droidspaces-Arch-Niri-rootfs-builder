@@ -62,13 +62,15 @@ RUN chmod +x /usr/local/sbin/install-anland-kde && \
     # 移动版 KDE
     if [ "$BUILD_KDE" = "mobile" ]; then \
         pacman -S --noconfirm --needed \
+        xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop plasma-workspace \
         plasma-mobile plasma-settings plasma-camera plasma-keyboard plasma-nano \
-        kwin qt6-wayland qt6-svg wayland-utils \
+        kwin kwin-x11 qt6-wayland qt6-svg qt6-virtualkeyboard wayland-utils xorg-server \
         pipewire pipewire-pulse wireplumber powerdevil plasma-pa upower \
-        konsole qmlkonsole dolphin kate kinfocenter mesa-utils vulkan-tools \
-        systemsettings kio-extras xdg-user-dirs \
+        kscreen ark konsole qmlkonsole dolphin kate kinfocenter mesa-utils libpulse vulkan-tools \
+        aha clinfo dmidecode kfind plasma-systemmonitor filelight glmark2 vkmark \
+        systemsettings kscreenlocker kio-extras xdg-user-dirs \
         dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kimageformats \
-        plasma-browser-integration angelfish kclock \
+        plasma-browser-integration angelfish kclock libcanberra chromium \
         gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop \
         polkit-kde-agent; \
     fi && \
