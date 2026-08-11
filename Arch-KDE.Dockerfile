@@ -118,7 +118,7 @@ RUN if [ "$ENABLE_anland_kde_ARG" = "true" ]; then \
         echo "--> [enabled] Installing Anland KDE packages (${ANLAND_KDE_PACKAGE_REVISION})..." && \
         ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
         ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
-        /usr/local/sbin/install-anland-kde && \
+        /usr/local/sbin/install-anland-kde --1 && \
         echo "--> [enabled] Anland KDE support installed"; \
     fi
 

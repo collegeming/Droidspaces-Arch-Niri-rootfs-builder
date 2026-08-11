@@ -10,6 +10,11 @@ readonly ROLLING_RELEASE_TAG="anland-kde-packages"
 readonly MANIFEST_NAME="anland-kde-manifest"
 readonly MAX_ARCHIVE_BYTES=$((512 * 1024 * 1024))
 readonly MAX_EXTRACTED_BYTES=$((2 * 1024 * 1024 * 1024))
+readonly SOURCE_PROBE_TIMEOUT_SECONDS=2
+readonly GITHUB_RELEASE_URL="https://github.com"
+readonly GITHUB_API_URL="https://api.github.com"
+readonly GH_PROXY_RELEASE_URL="https://gh-proxy.com/https://github.com"
+readonly GHPROXY_NET_RELEASE_URL="https://ghproxy.net/https://github.com"
 readonly APT_HOLD_STATE="/var/lib/anland-kde/apt-holds"
 readonly DNF_MANAGED_BEGIN="# BEGIN anland-kde package holds"
 readonly DNF_MANAGED_END="# END anland-kde package holds"
@@ -25,6 +30,11 @@ ARCHIVE_SUFFIX=""
 ARCHIVE_NAME=""
 ARCHIVE_TARGET=""
 PACKAGE_DIR=""
+DOWNLOAD_SOURCE=""
+SKIP_SOURCE_PROBE=false
+EXPECTED_MANIFEST_SHA256=""
+EXPECTED_ARCHIVE_SHA256=""
+OFFICIAL_RELEASE_METADATA=""
 
 detect_language() {
     local locale_name="${LC_ALL:-${LC_MESSAGES:-${LANG:-C}}}"
@@ -49,6 +59,31 @@ log() {
 die() {
     printf '[anland-kde] %s: %s\n' "$(msg '错误' 'Error')" "$(msg "$1" "$2")" >&2
     exit 1
+}
+
+parse_arguments() {
+    local argument
+
+    for argument in "$@"; do
+        case "$argument" in
+            -1|--1)
+                DOWNLOAD_SOURCE="1"
+                SKIP_SOURCE_PROBE=true
+                ;;
+            -2|--2)
+                DOWNLOAD_SOURCE="2"
+                SKIP_SOURCE_PROBE=true
+                ;;
+            -3|--3)
+                DOWNLOAD_SOURCE="3"
+                SKIP_SOURCE_PROBE=true
+                ;;
+            *)
+                die "不支持的参数：${argument}。可用参数为 -1/--1、-2/--2、-3/--3。" \
+                    "Unsupported argument: ${argument}. Valid arguments are -1/--1, -2/--2, and -3/--3."
+                ;;
+        esac
+    done
 }
 
 cleanup() {
@@ -165,6 +200,18 @@ download_file() {
     fi
 }
 
+download_stdout() {
+    local url="$1"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 60 "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --tries=3 --timeout=20 --waitretry=3 --retry-connrefused -O - "$url"
+    else
+        die "未找到 curl 或 wget，无法读取 Release 信息。" "Neither curl nor wget was found; Release information cannot be read."
+    fi
+}
+
 validate_release_tag() {
     case "$RELEASE_TAG" in
         "$ROLLING_RELEASE_TAG") ;;
@@ -220,8 +267,199 @@ resolve_archive_name() {
     log "已选择 ${ARCHIVE_NAME}" "Selected ${ARCHIVE_NAME}"
 }
 
+fetch_official_release_metadata() {
+    local api_url
+
+    api_url="${GITHUB_API_URL}/repos/${RELEASE_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+    if ! OFFICIAL_RELEASE_METADATA="$(download_stdout "$api_url")"; then
+        log "无法获取 GitHub 官方 SHA-256 校验值，拒绝使用第三方镜像包。" \
+            "Could not obtain GitHub's official SHA-256 digest; refusing the third-party mirror package."
+        return 1
+    fi
+}
+
+release_asset_sha256() {
+    local requested_name="$1"
+    local digest
+
+    if ! digest="$(jq -er --arg name "$requested_name" --arg tag "$RELEASE_TAG" '
+        if .tag_name != $tag then
+            error("release tag mismatch")
+        else
+            [.assets[] | select(.name == $name) | .digest] |
+            if length == 1 then .[0] else error("asset digest is not unique") end
+        end
+    ' <<< "$OFFICIAL_RELEASE_METADATA" 2>/dev/null)"; then
+        return 1
+    fi
+    if [[ ! "$digest" =~ ^sha256:([0-9A-Fa-f]{64})$ ]]; then
+        return 1
+    fi
+
+    printf '%s' "${BASH_REMATCH[1],,}"
+}
+
+resolve_official_manifest_sha256() {
+    EXPECTED_MANIFEST_SHA256=""
+    if [[ "$DOWNLOAD_SOURCE" == "1" ]]; then
+        return
+    fi
+    command -v jq >/dev/null 2>&1 || \
+        die "选择第三方镜像需要 jq 来校验 GitHub Release。" \
+            "Selecting a third-party mirror requires jq to verify the GitHub Release."
+    command -v sha256sum >/dev/null 2>&1 || \
+        die "选择第三方镜像需要 sha256sum 来校验下载文件。" \
+            "Selecting a third-party mirror requires sha256sum to verify downloaded files."
+    if ! fetch_official_release_metadata; then
+        return 1
+    fi
+    if ! EXPECTED_MANIFEST_SHA256="$(release_asset_sha256 "$MANIFEST_NAME")"; then
+        log "GitHub Release 未提供 ${MANIFEST_NAME} 的 SHA-256 校验值，拒绝使用第三方镜像包。" \
+            "GitHub Release did not provide a SHA-256 digest for ${MANIFEST_NAME}; refusing the third-party mirror package."
+        return 1
+    fi
+}
+
+resolve_official_archive_sha256() {
+    EXPECTED_ARCHIVE_SHA256=""
+    if [[ "$DOWNLOAD_SOURCE" == "1" ]]; then
+        return
+    fi
+    if EXPECTED_ARCHIVE_SHA256="$(release_asset_sha256 "$ARCHIVE_NAME")"; then
+        return
+    fi
+    log "GitHub Release 未提供 ${ARCHIVE_NAME} 的 SHA-256 校验值，拒绝使用第三方镜像包。" \
+        "GitHub Release did not provide a SHA-256 digest for ${ARCHIVE_NAME}; refusing the third-party mirror package."
+    return 1
+}
+
 release_download_base() {
-    printf 'https://github.com/%s/releases/download/%s' "$RELEASE_REPOSITORY" "$RELEASE_TAG"
+    local source_url
+
+    case "$DOWNLOAD_SOURCE" in
+        1) source_url="$GITHUB_RELEASE_URL" ;;
+        2) source_url="$GH_PROXY_RELEASE_URL" ;;
+        3) source_url="$GHPROXY_NET_RELEASE_URL" ;;
+        *) die "下载源选择无效。" "The selected download source is invalid." ;;
+    esac
+    printf '%s/%s/releases/download/%s' "$source_url" "$RELEASE_REPOSITORY" "$RELEASE_TAG"
+}
+
+download_source_name() {
+    case "$1" in
+        1) printf 'GitHub' ;;
+        2) printf 'gh-proxy.com' ;;
+        3) printf 'ghproxy.net' ;;
+        *) return 1 ;;
+    esac
+}
+
+download_source_probe_url() {
+    local source="$1"
+    local source_url
+
+    case "$source" in
+        1) source_url="$GITHUB_RELEASE_URL" ;;
+        2) source_url="$GH_PROXY_RELEASE_URL" ;;
+        3) source_url="$GHPROXY_NET_RELEASE_URL" ;;
+        *) return 1 ;;
+    esac
+    printf '%s/%s/releases/download/%s/%s' \
+        "$source_url" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+}
+
+format_latency() {
+    local seconds="$1"
+
+    awk -v seconds="$seconds" 'BEGIN { printf "%d ms", (seconds * 1000) + 0.5 }'
+}
+
+probe_download_source() {
+    local source="$1"
+    local probe_url latency started finished probe_status=0
+    local -a probe_command
+
+    probe_url="$(download_source_probe_url "$source")" || return 1
+    if command -v curl >/dev/null 2>&1; then
+        if latency="$(curl -fsSL --connect-timeout "$SOURCE_PROBE_TIMEOUT_SECONDS" \
+            --max-time "$SOURCE_PROBE_TIMEOUT_SECONDS" --output /dev/null \
+            --write-out '%{time_total}' "$probe_url" 2>/dev/null)"; then
+            if awk -v seconds="$latency" -v limit="$SOURCE_PROBE_TIMEOUT_SECONDS" \
+                'BEGIN { exit (seconds < limit ? 0 : 1) }'; then
+                format_latency "$latency"
+                return
+            fi
+            printf '%s' "$(msg '超时' 'timeout')"
+            return
+        else
+            probe_status=$?
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        command -v timeout >/dev/null 2>&1 || \
+            die "wget 测试下载源需要 timeout 命令以限制为 ${SOURCE_PROBE_TIMEOUT_SECONDS} 秒。" \
+                "Testing download sources with wget requires timeout to enforce the ${SOURCE_PROBE_TIMEOUT_SECONDS}-second limit."
+        started="$(date +%s%3N 2>/dev/null || true)"
+        probe_command=(wget -q --tries=1 --timeout="$SOURCE_PROBE_TIMEOUT_SECONDS" -O /dev/null "$probe_url")
+        probe_command=(timeout "$SOURCE_PROBE_TIMEOUT_SECONDS" "${probe_command[@]}")
+        if "${probe_command[@]}"; then
+            finished="$(date +%s%3N 2>/dev/null || true)"
+            if [[ "$started" =~ ^[0-9]+$ && "$finished" =~ ^[0-9]+$ ]]; then
+                if (( finished - started < SOURCE_PROBE_TIMEOUT_SECONDS * 1000 )); then
+                    printf '%d ms' "$((finished - started))"
+                else
+                    printf '%s' "$(msg '超时' 'timeout')"
+                fi
+            else
+                printf '%s' "$(msg '可用' 'available')"
+            fi
+            return
+        else
+            probe_status=$?
+        fi
+    else
+        die "未找到 curl 或 wget，无法测试下载源。" "Neither curl nor wget was found; download sources cannot be tested."
+    fi
+
+    if (( probe_status == 28 || probe_status == 124 )); then
+        printf '%s' "$(msg '超时' 'timeout')"
+    else
+        printf '%s' "$(msg '不可用' 'unavailable')"
+    fi
+}
+
+select_download_source() {
+    local source latency choice
+
+    if [[ "$SKIP_SOURCE_PROBE" == true ]]; then
+        log "已按参数选择 $(download_source_name "$DOWNLOAD_SOURCE")，跳过延迟测试。" \
+            "Selected $(download_source_name "$DOWNLOAD_SOURCE") from the command line; skipping latency checks."
+        return
+    fi
+
+    log "正在测试下载源延迟（达到 ${SOURCE_PROBE_TIMEOUT_SECONDS} 秒视为超时）..." \
+        "Testing download-source latency (timeouts at ${SOURCE_PROBE_TIMEOUT_SECONDS} seconds)..."
+    for source in 1 2 3; do
+        latency="$(probe_download_source "$source")"
+        printf '%s. %s %s: %s\n' "$source" "$(download_source_name "$source")" \
+            "$(msg '延迟' 'latency')" "$latency"
+    done
+
+    while :; do
+        printf '%s' "$(msg '请输入下载源编号 [1-3]: ' 'Choose a download source [1-3]: ')"
+        if ! IFS= read -r choice; then
+            die "无法读取下载源选择。请使用 -1/--1、-2/--2 或 -3/--3 指定下载源。" \
+                "Unable to read a download-source choice. Specify -1/--1, -2/--2, or -3/--3."
+        fi
+        case "$choice" in
+            1|2|3)
+                DOWNLOAD_SOURCE="$choice"
+                return
+                ;;
+            *)
+                log "请输入 1、2 或 3。" "Enter 1, 2, or 3."
+                ;;
+        esac
+    done
 }
 
 has_packages() {
@@ -293,6 +531,21 @@ validate_archive_contents() {
     fi
 }
 
+validate_release_asset_checksum() {
+    local asset_file="$1"
+    local expected_checksum="$2"
+    local asset_name="$3"
+    local actual_checksum
+
+    if ! actual_checksum="$(sha256sum "$asset_file" | awk '{print $1}')" || \
+        ! [[ "$actual_checksum" =~ ^[0-9a-f]{64}$ ]] || \
+        [[ "$actual_checksum" != "$expected_checksum" ]]; then
+        log "下载的 ${asset_name} 未通过 SHA-256 校验。" \
+            "Downloaded ${asset_name} failed SHA-256 verification."
+        return 1
+    fi
+}
+
 validate_package_architecture() {
     local -a files=()
     local file package_arch
@@ -329,14 +582,23 @@ download_packages_once() {
 
     base_url="$(release_download_base)"
     manifest_file="$WORK_DIR/$MANIFEST_NAME"
+    OFFICIAL_RELEASE_METADATA=""
+    resolve_official_manifest_sha256 || return 1
 
-    log "正在从 GitHub Release 下载 ${TARGET} 预编译包..." \
-        "Downloading ${TARGET} prebuilt packages from GitHub Release..."
+    log "正在从 $(download_source_name "$DOWNLOAD_SOURCE") 下载 ${TARGET} 预编译包..." \
+        "Downloading ${TARGET} prebuilt packages from $(download_source_name "$DOWNLOAD_SOURCE")..."
     download_file "$base_url/$MANIFEST_NAME" "$manifest_file" || return 1
+    if [[ -n "$EXPECTED_MANIFEST_SHA256" ]]; then
+        validate_release_asset_checksum "$manifest_file" "$EXPECTED_MANIFEST_SHA256" "$MANIFEST_NAME" || return 1
+    fi
     resolve_archive_name "$manifest_file" || return 1
+    resolve_official_archive_sha256 || return 1
 
     archive_file="$WORK_DIR/$ARCHIVE_NAME"
     download_file "$base_url/$ARCHIVE_NAME" "$archive_file" || return 1
+    if [[ -n "$EXPECTED_ARCHIVE_SHA256" ]]; then
+        validate_release_asset_checksum "$archive_file" "$EXPECTED_ARCHIVE_SHA256" "$ARCHIVE_NAME" || return 1
+    fi
     validate_archive_contents "$archive_file" || return 1
     if ! tar --no-same-owner --no-same-permissions -xzf "$archive_file" -C "$WORK_DIR"; then
         log "无法安全解压下载包。" "Unable to safely extract the downloaded archive."
@@ -678,6 +940,7 @@ install_arch_packages() {
 
 main() {
     detect_language
+    parse_arguments "$@"
     detect_target
     check_architecture
     require_runtime_dependencies
@@ -685,6 +948,7 @@ main() {
     if [[ -n "$PREPARED_WORK_DIR" || -n "$PREPARED_PACKAGE_DIR" ]]; then
         use_prepared_packages
     else
+        select_download_source
         download_packages
     fi
     require_root "$@"

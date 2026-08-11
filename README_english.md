@@ -238,6 +238,8 @@ Run it from the repository root:
 sudo ./scripts/install-anland-kde.sh
 ```
 
+On startup, the installer probes GitHub, `gh-proxy.com`, and `ghproxy.net` in that fixed order. A probe taking two seconds or longer is shown as a timeout; enter `1`, `2`, or `3` to choose a source. When a third-party mirror is selected, both the downloaded manifest and archive are verified against SHA-256 digests published by the GitHub Release API; this requires `jq`, `sha256sum`, and access to `api.github.com`. For non-interactive use, pass `-1` or `--1` to select GitHub directly and skip probing. GitHub Actions builds use `--1`.
+
 Or download the installer directly:
 
 ```bash

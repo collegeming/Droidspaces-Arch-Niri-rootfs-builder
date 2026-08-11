@@ -107,7 +107,7 @@ RUN apt-get update && \
         echo "--> [开启] 从固定滚动 Release 下载预编译包 (${ANLAND_KDE_PACKAGE_REVISION})..." && \
         ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
         ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
-        /usr/local/sbin/install-anland-kde && \
+        /usr/local/sbin/install-anland-kde --1 && \
         echo "--> [开启] anland_kde 支持已安装"; \
     fi && \
     ######################################################################################################

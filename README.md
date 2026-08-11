@@ -238,6 +238,8 @@ Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 和 GitHub
 sudo ./scripts/install-anland-kde.sh
 ```
 
+启动后会按固定顺序测试 GitHub、`gh-proxy.com`、`ghproxy.net` 三个下载源；单个测试达到 2 秒会显示为超时，然后输入 `1`、`2` 或 `3` 选择下载源。选择第三方镜像时，下载的清单和归档都会以 GitHub Release API 公布的 SHA-256 digest 校验，因此需要系统具有 `jq`、`sha256sum`，且能访问 `api.github.com`。非交互场景可传入 `-1` 或 `--1` 直接使用 GitHub 并跳过测速；GitHub Actions 构建使用 `--1`。
+
 也可以直接获取安装器：
 
 ```bash
