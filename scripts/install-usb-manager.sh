@@ -353,6 +353,16 @@ configure_permissions() {
     local sudoers_tmp
     sudoers_tmp="$(mktemp -t droidspaces-usb-manager-sudoers.XXXXXXXX)"
 
+    # 让桌面用户加入 ntfsusb 组（gid 1023）。
+    # 新版 ntfs-3g (2026.x) 挂载的 NTFS 卷固定属主为 root:1023 770，
+    # 普通用户加入该组后可直接读写挂载点，无需走 pkexec 认证。
+    if command -v groupadd >/dev/null 2>&1; then
+        groupadd -g 1023 ntfsusb 2>/dev/null || true
+        usermod -a -G 1023 "${TARGET_USER}" 2>/dev/null || true
+        log "已将用户 ${TARGET_USER} 加入 ntfsusb 组。" \
+            "User ${TARGET_USER} has been added to the ntfsusb group."
+    fi
+
     cat > "$sudoers_tmp" <<EOF
 # Droidspaces USB Manager: device-node creation and removable-media mounting
 Cmnd_Alias DROIDSPACES_USB_MANAGER = /usr/bin/mount *, /usr/bin/umount *, /usr/bin/mknod *, /usr/bin/chmod *, /usr/bin/mkdir -p /dev/bus/usb/*, /usr/bin/blkid *, /usr/bin/bash ${INSTALL_DIR}/usb-passthrough.sh
@@ -397,6 +407,8 @@ main() {
 
     log "安装完成。可从应用菜单或桌面快捷方式启动 USB Manager，也可运行 usb-manager。" \
         "Installation complete. Start USB Manager from the application menu or desktop shortcut, or run usb-manager."
+    log "已加入 ntfsusb 组，请注销重新登录（或重启容器）后生效。" \
+        "Added to the ntfsusb group; log out and back in (or restart the container) for it to take effect."
     log "导入 Droidspaces 容器时必须开启硬件访问。" \
         "Hardware access must be enabled when importing the Droidspaces container."
 }
