@@ -64,10 +64,12 @@
 - 定位：**不含任何 KDE 组件的最小化 Arch**，桌面为滚动平铺 Wayland 合成器 [niri](https://github.com/niri-wm/niri)（通过 [ANiri](https://github.com/Celvra/ANiri) 的 anland 后端适配 Android）+ [Noctalia Shell](https://github.com/noctalia-dev/noctalia) 桌面外壳，启动器为 fuzzel。
 - 终端为 **ghostty 优先**：Arch Linux ARM 的 aarch64 仓库尚未收录 ghostty（x86_64 主线有），构建时会尝试安装，缺失则回退 kitty；niri 终端快捷键（Mod+T）通过 `spawn-sh` 运行时探测，两个终端任一存在即可用，仓库收录 ghostty 后无需改代码自动切换。
 - 构建逻辑：以上游 `Droidspaces-rootfs-builder` 的 Arch-Minimal 为基础（最小包集合、iptables-legacy 兼容、`ds-aliases` 别名），叠加本项目的中文环境、用户创建、`enable_systemd257` 旧内核兼容（4.19 设备建议开启）、fcitx5、高通 GPU 定制 Mesa（`enable_mesa`，ANiri 的 kgsl 渲染依赖它）、binfmt、NAT/硬件识别门控、USB Manager 与各可选组件。
+- 软件源与工具链：pacman 配置 **TUNA 清华镜像置顶**（官方 ALARM 源保留回退），附加 **archlinuxcn aarch64 仓库**（TUNA 优先、官方回退，keyring 引导安装后恢复签名校验），内置 **paru**（AUR 助手，容器内以普通用户运行）；编辑器为 neovim，文件管理器为 Nemo（niri 快捷键 `Mod+E`）。
 - niri 二进制固定从 ANiri Releases 下载（当前 `v0.2.0`，SHA256 校验 + strip），内核要求 ≥3.7，4.19 完全兼容；ANiri 不依赖本项目的 patched KWin 预编译包。
 - 显示路径固定为 **Anland/Wayland**（无 X11/Termux:X11 路径）：工作流选中该目标时会强制启用 Wayland 支持、关闭 PulseAudio 转发（Anland App 自带音频）。
 - `build_KDE` 选项被忽略（模板不含 KDE）；`build_KDE_plus=true`（默认）时启用 `niri.service` 自启动：以普通用户运行 `/usr/bin/niri`，自动创建 `/run/user/1000`，异常退出 3 秒后自动重启。
-- niri 配置安装到 `~/.config/niri/config.kdl`（默认来自 niri 上游 `default-config.kdl`，已把 waybar 自启动替换为 noctalia、终端快捷键改为 ghostty 优先（运行时探测，缺失回退 kitty）；开启 `enable_srf` 时追加 fcitx5 自启动）。新用户会从 `/etc/skel` 获得同样配置。
+- 输入法（`enable_srf`）使用 **fcitx5-rime + rime-ice-git（雾凇拼音）**：fcitx5-rime 来自 ALARM extra，rime-ice-git 为 archlinuxcn aarch64 预编译包，开箱即用、无需手工配置 rime。
+- niri 配置安装到 `~/.config/niri/config.kdl`（默认来自 niri 上游 `default-config.kdl`，已把 waybar 自启动替换为 noctalia、终端快捷键改为 ghostty 优先（运行时探测，缺失回退 kitty）、新增 `Mod+E` 打开 Nemo；开启 `enable_srf` 时追加 fcitx5 自启动）。新用户会从 `/etc/skel` 获得同样配置。
 - 宿主侧准备与 Wayland/Anland 配置一节相同：刷入 virtual-drm-daemon、安装 Anland App、绑定挂载 `display_daemon.sock -> /run/display.sock`、开启 GPU 访问与 SELinux 宽容，并在 Anland 中开启无障碍开关（否则 Android 会拦截 Super 键）。
 - 已知限制：ANiri 上游声明的已知问题包括 glmark2/vkmark 得分略低于 KWin、Android 悬浮窗可能引起花屏、麦克风/摄像头转发应用侧不可读；本模板未集成 Xwayland（ patched Xwayland 属于 KWin 预编译包体系）。
 
