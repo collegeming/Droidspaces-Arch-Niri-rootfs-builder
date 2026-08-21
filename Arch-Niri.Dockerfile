@@ -78,10 +78,11 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     sed -i '/NoExtract.*i18n/d' /etc/pacman.conf && \
     # pacman 清华镜像置顶，官方 ALARM 源保留为回退
     sed -i '1i Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm/$arch/$repo' /etc/pacman.d/mirrorlist && \
-    # archlinuxcn aarch64 仓库（置于末尾，官方仓库优先）；
+    # archlinuxcn aarch64 仓库（置于末尾，官方仓库优先）。
+    # 注意 archlinuxcn 的目录结构为 $arch/（无 $repo 子目录，与 ALARM 不同）
     # 首次以仓库级 SigLevel=Never 引导安装 archlinuxcn-keyring，
     # 其安装脚本会 pacman-key --populate archlinuxcn 建立本地信任
-    printf '\n[archlinuxcn]\nSigLevel = Never\nServer = https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/$arch/$repo\nServer = https://repo.archlinuxcn.org/$arch/$repo\n' >> /etc/pacman.conf && \
+    printf '\n[archlinuxcn]\nSigLevel = Never\nServer = https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/$arch\nServer = https://repo.archlinuxcn.org/$arch\n' >> /etc/pacman.conf && \
     pacman -Sy --noconfirm archlinux-keyring glibc archlinuxcn-keyring && \
     # keyring 就位后恢复 archlinuxcn 签名校验
     sed -i '/^\[archlinuxcn\]/,/^Server/{/^SigLevel = Never$/d;}' /etc/pacman.conf && \
