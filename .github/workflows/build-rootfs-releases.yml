@@ -16,6 +16,9 @@ on:
           - 'Fedora-43-KDE'
           - 'Fedora-44-KDE'
           - 'Arch-KDE'
+          - 'Arch-Niri'
+          - 'Artix-KDE'
+          - 'NixOS-KDE'
           - 'all'
           - 'all-wayland'
       custom_username:
@@ -39,7 +42,7 @@ on:
         type: boolean
         default: true
       enable_anland_kde:
-        description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43/44、Arch；选择 mobile 强制 wayland）'
+        description: 'Wayland 支持（支持 Debian-13、Ubuntu-26、Fedora-43/44、Arch；Artix/NixOS 暂不支持；选择 mobile 强制 wayland）'
         required: true
         type: boolean
         default: false
@@ -78,15 +81,15 @@ on:
         type: boolean
         default: false
       enable_systemd257:
-        description: '旧内核兼容：在 systemd 高于 257 时构建并使用 systemd 257'
+        description: '旧内核兼容：在 systemd 高于 257 时构建并使用 systemd 257（4.19 内核设备建议开启；Artix 无 systemd、NixOS 25.05 自带 257，均自动跳过）'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_srf:
         description: '开启 输入法 fcitx5 支持'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_binfmt:
         description: '开启 跨架构 支持'
         required: true
@@ -181,12 +184,27 @@ jobs:
           esac
 
           if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ] && [ "$TARGET" != "Debian-13-KDE" ] && [ "$TARGET" != "Fedora-43-KDE" ] && [ "$TARGET" != "Fedora-44-KDE" ] && [ "$TARGET" != "Arch-KDE" ] && [ "$TARGET" != "all-wayland" ]; then
-            echo "错误: 移动版 KDE 目前支持 Ubuntu-26-KDE、Debian-13-KDE、Fedora-43-KDE、Fedora-44-KDE、Arch-KDE、all-wayland" >&2
+            echo "错误: 移动版 KDE 目前支持 Ubuntu-26-KDE、Debian-13-KDE、Fedora-43-KDE、Fedora-44-KDE、Arch-KDE、all-wayland（Artix-KDE、NixOS-KDE 和 Arch-Niri 暂不支持）" >&2
             exit 1
           fi
 
-          if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ]; then
-            echo "错误: 启用 Wayland 支持时，KDE 桌面选择不能为 'none'" >&2
+          if [ "$TARGET" = "NixOS-KDE" ] && [ "$BUILD_KDE" = "conc" ]; then
+            echo "错误: NixOS-KDE 目前仅支持 min 和 none 桌面规模（conc 体积超出 GitHub ARM 运行器磁盘预算）" >&2
+            exit 1
+          fi
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ] && { [ "$TARGET" = "Artix-KDE" ] || [ "$TARGET" = "NixOS-KDE" ]; }; then
+            echo "错误: Artix-KDE 和 NixOS-KDE 暂不支持 Wayland/Anland，请选择 Debian-13-KDE、Ubuntu-26-KDE、Fedora-43-KDE、Fedora-44-KDE 或 Arch-KDE" >&2
+            exit 1
+          fi
+
+          if [ "$TARGET" = "Arch-Niri" ]; then
+            echo "提示: Arch-Niri 为无 KDE 模板（niri + Noctalia Shell），build_KDE 将被忽略，Wayland/Anland 显示路径已强制启用"
+            ENABLE_ANLAND_KDE="true"
+          fi
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ] && [ "$TARGET" != "Arch-Niri" ]; then
+            echo "错误: 启用 Wayland 支持时，KDE 桌面选择不能为 'none'（Arch-Niri 除外，其桌面由 niri 提供）" >&2
             exit 1
           fi
 
@@ -318,8 +336,8 @@ jobs:
 
       - name: 验证构建选项
         run: |
-          if [ "${{ inputs.build_KDE }}" = "none" ] && [ "${{ inputs.build_KDE_plus }}" = "true" ]; then
-            echo "❌ 错误: 当 KDE 桌面选择为 'none' 时，无法启用 KDE 开机自启动"
+          if [ "${{ inputs.build_KDE }}" = "none" ] && [ "${{ inputs.build_KDE_plus }}" = "true" ] && [ "${{ matrix.template }}" != "Arch-Niri" ]; then
+            echo "❌ 错误: 当 KDE 桌面选择为 'none' 时，无法启用 KDE 开机自启动（Arch-Niri 除外，其开机自启动对象为 niri）"
             echo "请重新运行工作流，取消勾选 'KDE 桌面开机自启动' 或选择 KDE 桌面"
             exit 1
           fi

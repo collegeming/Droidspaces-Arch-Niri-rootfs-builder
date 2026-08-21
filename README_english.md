@@ -34,13 +34,47 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 | `Fedora-43-KDE` | `fedora:43` | `min`, `conc`, `mobile`, `none` | Supported | Some devices require hardware access to avoid flicker or crashes. |
 | `Fedora-44-KDE` | `fedora:44` | `min`, `conc`, `mobile`, `none` | Supported | Some devices require hardware access. |
 | `Arch-KDE` | `ogarcia/archlinux` | `min`, `conc`, `mobile`, `none` | Supported | Uses ARM64 Arch patched KWin/Xwayland; this project's QEMU/binfmt flow is not recommended for Arch at the moment. |
+| `Arch-Niri` | `ogarcia/archlinux` | No KDE (`build_KDE` ignored) | Forced on | KDE-free minimal Arch + niri (ANiri anland backend) + Noctalia Shell; see the Arch-Niri notes below. |
+| `Artix-KDE` | ARMtix OpenRC rootfs | `min`, `conc`, `none` | Not supported | Artix mainline has no aarch64; uses the [ARMtix](https://armtixlinux.org/) community port. OpenRC init (no systemd); unsigned repositories (`SigLevel = Never`); X11 path only. |
+| `NixOS-KDE` | `nixos/nix` + declarative build | `min`, `none` | Not supported | Pinned to the NixOS 25.05 channel (systemd 257, old-kernel friendly); `conc` exceeds the GitHub ARM runner disk budget; GPU falls back to software rendering (see the NixOS notes below). |
 
 `all` builds every Dockerfile template. For `min`, `conc`, and `mobile`, `all-wayland` builds `Debian-13-KDE`, `Ubuntu-26-KDE`, `Fedora-43-KDE`, `Fedora-44-KDE`, and `Arch-KDE`; `mobile` forces Wayland on.
 
+### Artix-KDE notes
+
+- Bootstrapped from the official [ARMtix](https://wiki.artixlinux.org/Main/Aarch64) (Artix Linux aarch64 community port) OpenRC rootfs; packages come from the `system`, `world`, and `galaxy` repositories at `repo.armtixlinux.org` (unsigned, so pacman runs with `SigLevel = Never`).
+- Uses OpenRC + elogind + standalone udev; there is no systemd, so systemd version compatibility is a non-issue and `enable_systemd257` auto-skips.
+- Desktop auto-start uses the OpenRC service `plasma-x11` (`/etc/init.d/plasma-x11`, supervised by supervise-daemon), equivalent to the systemd `plasma-x11.service`.
+- The OpenRC services for `NetworkManager` and `udev` carry the same runtime gating as the systemd versions (NAT network mode only / hardware access only).
+- Snapdragon GPU support reuses the `archlinux_arm64` custom Mesa build from `mesa-for-android-container` (binary-compatible with ARMtix).
+- Wayland/Anland patched KWin and plasma-mobile are not supported on Artix yet.
+
+### NixOS-KDE notes
+
+- Built declaratively inside the `nixos/nix` container, pinned to the `nixos-25.05` channel: it ships **systemd 257**, the last major line that works on old Android kernels such as 4.19, so `scripts/systemd257.sh` is neither needed nor applicable.
+- The channel is EOL/frozen: builds are reproducible but receive no further security updates; to update, switch channels inside the container with `nix-channel --add` (newer channels may ship systemd versions incompatible with old kernels).
+- The rootfs is produced with nixpkgs `make-system-tarball`, includes the full `/nix/store` closure, and provides `/sbin/init` pointing to the NixOS activation script; the first boot registers the Nix database and creates the user (default password `1234`).
+- **GPU limitation**: NixOS uses stock nixpkgs Mesa, which has no Qualcomm KGSL backend, and the `mesa-for-android-container` packages are incompatible with the NixOS store. GPU rendering therefore falls back to llvmpipe software rendering; `enable_mesa` only installs the graphics stack and tools. For GPU acceleration prefer the Arch/Debian/Ubuntu/Fedora templates.
+- Only `min` and `none` desktop profiles are supported: the `conc` Plasma closure plus builder intermediates exceed the GitHub ARM runner disk budget.
+- TMOE targets apt/dnf/pacman systems and is not integrated on NixOS; Droidspaces USB Manager is not integrated yet either (all other distributions ship it).
+- Wayland/Anland patched KWin and plasma-mobile are not supported on NixOS yet.
+
+### Arch-Niri notes (KDE-free minimal + niri + Noctalia Shell)
+
+- Positioning: a **minimal Arch without any KDE components**, with a scrollable-tiling Wayland compositor [niri](https://github.com/niri-wm/niri) (adapted for Android through the [ANiri](https://github.com/Celvra/ANiri) anland backend), the [Noctalia Shell](https://github.com/noctalia-dev/noctalia) desktop shell, kitty as the terminal, and fuzzel as the launcher.
+- Build logic: based on the upstream `Droidspaces-rootfs-builder` Arch-Minimal (minimal package set, iptables-legacy compatibility, `ds-aliases` shell aliases), combined with this project's Chinese localization, user creation, `enable_systemd257` old-kernel compatibility (recommended for 4.19 devices), fcitx5, the custom Qualcomm Mesa build (`enable_mesa`, which ANiri's kgsl rendering requires), binfmt, NAT/hardware-access gating, USB Manager, and the optional components.
+- The niri binary is downloaded from a pinned ANiri release (currently `v0.2.0`, SHA256-verified and stripped at build time); it requires kernel ≥3.7, so 4.19 is fully compatible. ANiri does not use this project's patched KWin packages.
+- The display path is **Anland/Wayland only** (no X11/Termux:X11 path): selecting this target forces Wayland support on and disables PulseAudio forwarding (the Anland app provides audio).
+- The `build_KDE` option is ignored (the template contains no KDE); with `build_KDE_plus=true` (default), `niri.service` auto-starts: it runs `/usr/bin/niri` as the regular user, creates `/run/user/1000` automatically, and restarts 3 seconds after an abnormal exit.
+- The niri config is installed to `~/.config/niri/config.kdl` (from the upstream `default-config.kdl`, with the waybar autostart replaced by noctalia and the terminal shortcut pointed at kitty; an fcitx5 autostart entry is appended when `enable_srf` is on). New users get the same config from `/etc/skel`.
+- Host-side preparation is identical to the Wayland/Anland configuration section: flash virtual-drm-daemon, install the Anland app, bind-mount `display_daemon.sock -> /run/display.sock`, enable GPU access and permissive SELinux, and turn on Anland's accessibility toggle (otherwise Android intercepts the Super key).
+- Known limitations: upstream ANiri lists a few known issues (glmark2/vkmark scores slightly below KWin, Android floating windows may cause glitches, microphone/camera forwarding is unreadable by apps); Xwayland is not integrated (the patched Xwayland belongs to the KWin prebuilt package set).
+
 ## Feature Overview
 
-- Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, and Arch.
+- Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, Arch, Artix, and NixOS.
 - Scalable KDE desktop profiles, from command-line only to minimal, compact, and mobile KDE.
+- KDE-free niri desktop: the `Arch-Niri` target provides minimal Arch + niri (ANiri anland backend) + Noctalia Shell.
 - Desktop auto-start and failure recovery using shared systemd service templates for X11, Plasma Wayland, and Plasma Mobile, with rate-limited automatic restarts after failures.
 - Termux:X11 desktop startup support. X11 mode defaults to `DISPLAY=:5`.
 - PulseAudio forwarding through Unix socket, TCP, or disabled mode.
@@ -75,8 +109,8 @@ The main GitHub Actions inputs are:
 | Fix Snapdragon 8 Gen 2 Wayland display corruption (`enable_8gen2_wayland`) | `true`, `false` | `false` | Writes `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` to `/etc/environment` for Debian 13, Ubuntu 26, Fedora 43/44, and Arch. |
 | Integrate TMOE (`enable_tmoe`) | `true`, `false` | `true` | Integrates TMOE. |
 | Remove Ubuntu Snap (`nosnap`) | `true`, `false` | `false` | Ubuntu-only option that removes Snap, snapd, and APT policy paths that may reinstall snapd. |
-| systemd 257 old-kernel compatibility (`enable_systemd257`) | `true`, `false` | `false` | When enabled, builds a `v257-stable` compatibility runtime if the current systemd major version is above 257; versions 257 and older are skipped. systemd-related packages are locked after the build to prevent replacement by upgrades. |
-| Fcitx5 input method support (`enable_srf`) | `true`, `false` | `false` | Installs Fcitx5 input method support. |
+| systemd 257 old-kernel compatibility (`enable_systemd257`) | `true`, `false` | `true` | When enabled, builds a `v257-stable` compatibility runtime if the current systemd major version is above 257; versions 257 and older are skipped, as are Artix (no systemd) and NixOS 25.05 (pinned to 257). systemd-related packages are locked after the build to prevent replacement by upgrades. |
+| Fcitx5 input method support (`enable_srf`) | `true`, `false` | `true` | Installs Fcitx5 input method support. |
 | Cross-architecture support (`enable_binfmt`) | `true`, `false` | `false` | Adds binfmt cross-architecture components inside the RootFS. Not recommended for Arch in this project. |
 | NAT and hardware recognition (`enable_yj`) | `true`, `false` | `true` | Enables container hardware and network recognition improvements. |
 | Development tools integration (`enable_kfgj`) | `true`, `false` | `false` | Installs development tools. |
@@ -110,6 +144,27 @@ When `enable_systemd257` is enabled, the build runs `scripts/systemd257.sh`. The
 - build dependencies are removed after the build, and systemd-related packages are locked so a later upgrade does not overwrite the compatibility runtime.
 
 This option targets old Android kernels and is experimental. It adds substantial build time; test the desktop, dbus, udev, and networking behavior on the target kernel before distributing the image.
+
+### Recommended settings for 4.19-kernel devices (for example Redmi K40 / Snapdragon 870)
+
+This `4.19Core` repository targets 4.19-kernel devices (reference device: Redmi K40 `alioth`, Snapdragon 870 / SM8250, Adreno 650). Recommended workflow inputs for such devices:
+
+| Option | Recommended | Notes |
+| --- | --- | --- |
+| `enable_systemd257` | `true` | 4.19 kernels cannot run systemd 258+; this is the Chinese workflow default. NixOS 25.05 already ships systemd 257 and Artix has no systemd; both skip automatically. |
+| `enable_zh_tz` | `true` | Chinese locale and Shanghai timezone (Chinese workflow default). |
+| `enable_srf` | `true` | Fcitx5 input method; Chinese input addons are included when the Chinese locale is enabled (Chinese workflow default). |
+| `enable_mesa` | `true` | Snapdragon (Adreno) GPU support; on NixOS this is a software-rendering fallback. |
+| `enable_yj` | `true` | Container hardware and network recognition (default). |
+| `enable_zip` | `true` | Compression tools integration (default). |
+| `enable_binfmt` | `false` | See the kernel notes below. |
+| `PulseAudio` | `socket` | Recommended Unix-socket forwarding in X11 mode. |
+
+Kernel notes for such devices (verified on the Redmi K40):
+
+- `CONFIG_USER_NS` is not set: enable `noseccomp` in the Droidspaces privileged options when importing, otherwise operations that rely on user namespaces may stutter.
+- `CONFIG_BINFMT_MISC` is not set: in-container QEMU binfmt registration skips gracefully (the log prints `binfmt_misc not supported by kernel`), so `enable_binfmt` has no effect on the device; cross-architecture binary emulation requires a kernel with that option enabled.
+- The GPU render node `/dev/dri/renderD128` is available; enable GPU access when importing (the `droidspaces-gpu` group is built in).
 
 ## Build with GitHub Actions
 
@@ -282,7 +337,7 @@ If `mobile` is selected, the workflow forces Wayland on because Plasma Mobile is
 
 ## Droidspaces USB Manager
 
-All seven distribution templates install [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager) through `scripts/install-usb-manager.sh`. The installer detects Debian/Ubuntu, Fedora, or Arch, installs the matching PyQt5, ADB, udev, NTFS, and exFAT dependencies through APT, DNF, or Pacman, and fixes command paths that are Debian-specific in the upstream source.
+Eight of the distribution templates (all except NixOS) install [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager) through `scripts/install-usb-manager.sh`; NixOS's declarative layout does not integrate it yet (see the NixOS notes above). The installer detects Debian/Ubuntu, Fedora, or Arch-family systems including Artix, installs the matching PyQt5, ADB, udev, NTFS, and exFAT dependencies through APT, DNF, or Pacman, and fixes command paths that are Debian-specific in the upstream source.
 
 Hardware access must be enabled when importing the RootFS into Droidspaces. Without it, `/sys/bus/usb` and `/sys/bus/scsi` devices are not visible inside the container. The installer creates both an application-menu entry and a `~/Desktop/usb-manager.desktop` desktop shortcut. After entering KDE, you can also run:
 
@@ -389,9 +444,12 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
 ```text
 .
 ├── Arch-KDE.Dockerfile
+├── Arch-Niri.Dockerfile
+├── Artix-KDE.Dockerfile
 ├── Debian-13-KDE.Dockerfile
 ├── Fedora-43-KDE.Dockerfile
 ├── Fedora-44-KDE.Dockerfile
+├── NixOS-KDE.Dockerfile
 ├── Ubuntu-24-KDE.Dockerfile
 ├── Ubuntu-25-KDE.Dockerfile
 ├── Ubuntu-26-KDE.Dockerfile
@@ -406,6 +464,8 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── install-anland-kde.sh
+│   ├── niri/
+│   │   └── default-config.kdl
 │   ├── nosnap.sh
 │   ├── systemd257.sh
 │   ├── on_aaudio_socket.sh
@@ -423,9 +483,12 @@ KDE packages are published only as GitHub Release assets. When running `build-kd
 
 ## Known Limitations
 
-- Wayland/Anland support covers Debian 13, Ubuntu 26, Fedora 43/44, and Arch.
+- Wayland/Anland support covers Debian 13, Ubuntu 26, Fedora 43/44, and Arch; Artix and NixOS are not supported yet (X11 path only). `Arch-Niri` uses its own ANiri approach (not patched KWin).
 - Ubuntu 24 and Ubuntu 25 currently use the X11 path.
-- `mobile` mode is supported on Debian 13, Ubuntu 26, Fedora 43/44, and Arch.
+- `mobile` mode is supported on Debian 13, Ubuntu 26, Fedora 43/44, and Arch; not yet on Artix, NixOS, or Arch-Niri.
+- The `build_KDE` option is ignored for `Arch-Niri`; its ANiri upstream has known issues such as slightly lower rendering performance and floating-window glitches (see the Arch-Niri notes above).
+- NixOS-KDE supports only the `min` and `none` desktop profiles, falls back to software GPU rendering, and does not bundle the USB Manager (see the NixOS notes above).
+- Artix-KDE depends on the ARMtix community repositories (unsigned); availability and update cadence depend on that community.
 - When Anland is enabled, the workflow disables PulseAudio forwarding because the Anland app provides its own audio path.
 - Fedora may require hardware access on some devices to avoid flicker or crashes.
 - Ubuntu and Debian may lag or freeze if `noseccomp` is disabled or the kernel lacks `USER_NS`.
@@ -439,3 +502,5 @@ KDE packages are published only as GitHub Release assets. When running `build-kd
 - [TMOE](https://github.com/2moe/tmoe): convenient management tooling inside the container.
 - [anland](https://github.com/superturtlee/anland): Wayland display backend and patched KDE work.
 - [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager): USB storage and ADB device management for Droidspaces.
+- [ARMtix](https://armtixlinux.org/): the Artix Linux aarch64 community port used by `Artix-KDE`.
+- [ANiri](https://github.com/Celvra/ANiri), [niri](https://github.com/niri-wm/niri), and [Noctalia](https://github.com/noctalia-dev/noctalia): the scrollable-tiling desktop stack behind `Arch-Niri`.

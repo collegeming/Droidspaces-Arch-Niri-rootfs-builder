@@ -16,6 +16,9 @@ on:
           - 'Fedora-43-KDE'
           - 'Fedora-44-KDE'
           - 'Arch-KDE'
+          - 'Arch-Niri'
+          - 'Artix-KDE'
+          - 'NixOS-KDE'
           - 'all'
           - 'all-wayland'
       custom_username:
@@ -39,7 +42,7 @@ on:
         type: boolean
         default: true
       enable_anland_kde:
-        description: 'Wayland support (supported on Debian-13, Ubuntu-26, Fedora-43/44, Arch; mobile forces Wayland).'
+        description: 'Wayland support (supported on Debian-13, Ubuntu-26, Fedora-43/44, Arch; not yet on Artix/NixOS; mobile forces Wayland).'
         required: true
         type: boolean
         default: false
@@ -78,15 +81,15 @@ on:
         type: boolean
         default: false
       enable_systemd257:
-        description: 'Old-kernel compatibility: build and use systemd 257 when the distro ships a newer systemd'
+        description: 'Old-kernel compatibility: build and use systemd 257 when the distro ships a newer systemd (recommended for 4.19-kernel devices; auto-skipped on Artix and NixOS 25.05)'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_srf:
         description: 'Enable input method fcitx5 support'
         required: true
         type: boolean
-        default: false
+        default: true
       enable_binfmt:
         description: 'Enable cross-architecture support'
         required: true
@@ -181,12 +184,27 @@ jobs:
           esac
 
           if [ "$BUILD_KDE" = "mobile" ] && [ "$TARGET" != "Ubuntu-26-KDE" ] && [ "$TARGET" != "Debian-13-KDE" ] && [ "$TARGET" != "Fedora-43-KDE" ] && [ "$TARGET" != "Fedora-44-KDE" ] && [ "$TARGET" != "Arch-KDE" ] && [ "$TARGET" != "all-wayland" ]; then
-            echo "Error: KDE mobile edition is currently supported on Ubuntu-26-KDE, Debian-13-KDE, Fedora-43-KDE, Fedora-44-KDE, Arch-KDE, all-wayland" >&2
+            echo "Error: KDE mobile edition is currently supported on Ubuntu-26-KDE, Debian-13-KDE, Fedora-43-KDE, Fedora-44-KDE, Arch-KDE, all-wayland (not yet on Artix-KDE and NixOS-KDE)" >&2
             exit 1
           fi
 
-          if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ]; then
-            echo "Error: KDE desktop choice cannot be 'none' when Wayland support is enabled" >&2
+          if [ "$TARGET" = "NixOS-KDE" ] && [ "$BUILD_KDE" = "conc" ]; then
+            echo "Error: NixOS-KDE currently only supports the min and none desktop sizes (conc exceeds the GitHub ARM runner disk budget)" >&2
+            exit 1
+          fi
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ] && { [ "$TARGET" = "Artix-KDE" ] || [ "$TARGET" = "NixOS-KDE" ]; }; then
+            echo "Error: Artix-KDE and NixOS-KDE do not support Wayland/Anland yet; pick Debian-13-KDE, Ubuntu-26-KDE, Fedora-43-KDE, Fedora-44-KDE, or Arch-KDE" >&2
+            exit 1
+          fi
+
+          if [ "$TARGET" = "Arch-Niri" ]; then
+            echo "Notice: Arch-Niri is a KDE-free template (niri + Noctalia Shell); build_KDE will be ignored and the Wayland/Anland display path is forced on"
+            ENABLE_ANLAND_KDE="true"
+          fi
+
+          if [ "$ENABLE_ANLAND_KDE" = "true" ] && [ "$BUILD_KDE" = "none" ] && [ "$TARGET" != "Arch-Niri" ]; then
+            echo "Error: KDE desktop choice cannot be 'none' when Wayland support is enabled (except Arch-Niri, whose desktop is niri)" >&2
             exit 1
           fi
 
@@ -318,8 +336,8 @@ jobs:
 
       - name: Verify build options
         run: |
-          if [ "${{ inputs.build_KDE }}" = "none" ] && [ "${{ inputs.build_KDE_plus }}" = "true" ]; then
-            echo "❌ Error: Cannot enable KDE auto-start when KDE desktop choice is 'none'"
+          if [ "${{ inputs.build_KDE }}" = "none" ] && [ "${{ inputs.build_KDE_plus }}" = "true" ] && [ "${{ matrix.template }}" != "Arch-Niri" ]; then
+            echo "❌ Error: Cannot enable KDE auto-start when KDE desktop choice is 'none' (except Arch-Niri, whose auto-start target is niri)"
             echo "Please re-run the workflow, uncheck 'KDE desktop auto-start on boot' or select a KDE desktop"
             exit 1
           fi
