@@ -179,8 +179,15 @@ install_dependencies() {
         pacman)
             pacman -Syu --noconfirm --needed \
                 python python-pyqt5 qt5-wayland qt5-svg util-linux sudo \
-                android-tools ntfs-3g exfatprogs desktop-file-utils gvfs gvfs-mtp kio-extras \
+                android-tools ntfs-3g exfatprogs desktop-file-utils gvfs gvfs-mtp \
                 xdg-utils ca-certificates curl wget tar
+            # kio-extras 仅对 KDE 桌面有意义（dolphin 的 samba/mtp 等协议后端），
+            # 非 KDE 环境（如 niri 等独立合成器）安装会拖入整套 KDE Frameworks
+            if pacman -Q plasma-desktop >/dev/null 2>&1 || pacman -Q plasma-workspace >/dev/null 2>&1; then
+                pacman -S --noconfirm --needed kio-extras
+            else
+                log "未检测到 KDE 桌面，跳过 kio-extras。" "No KDE desktop detected, skipping kio-extras."
+            fi
             # udev 提供方因发行版而异：Arch 主线内含于 systemd，Artix（OpenRC）为独立 udev 包
             pacman -S --noconfirm --needed systemd 2>/dev/null || \
                 pacman -S --noconfirm --needed udev

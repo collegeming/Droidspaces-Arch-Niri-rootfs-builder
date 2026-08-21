@@ -67,11 +67,17 @@
 - 软件源与工具链：pacman 配置 **TUNA 清华镜像置顶**（官方 ALARM 源保留回退），附加 **archlinuxcn aarch64 仓库**（TUNA 优先、官方回退，keyring 引导安装后恢复签名校验），内置 **paru**（AUR 助手，容器内以普通用户运行）；编辑器为 neovim，文件管理器为 Nemo（niri 快捷键 `Mod+E`）。
 - niri 二进制固定从 ANiri Releases 下载（当前 `v0.2.0`，SHA256 校验 + strip），内核要求 ≥3.7，4.19 完全兼容；ANiri 不依赖本项目的 patched KWin 预编译包。
 - 显示路径固定为 **Anland/Wayland**（无 X11/Termux:X11 路径）：工作流选中该目标时会强制启用 Wayland 支持、关闭 PulseAudio 转发（Anland App 自带音频）。
-- `build_KDE` 选项被忽略（模板不含 KDE）；`build_KDE_plus=true`（默认）时启用 `niri.service` 自启动：以普通用户运行 `/usr/bin/niri`，自动创建 `/run/user/1000`，异常退出 3 秒后自动重启。
+- `build_KDE` 选项被忽略（模板不含 KDE）；`build_KDE_plus=true`（默认）时启用 `niri.service` 自启动：以普通用户运行 `/usr/bin/niri`，自动创建 `/run/user/1000`，异常退出 3 秒后自动重启。服务以 `dbus-run-session` 包裹启动：fcitx5 的 GTK/Qt 输入法模块、Noctalia Shell 的 IPC 等都依赖会话级 D-Bus 总线，而 systemd 系统服务默认没有。
 - 输入法（`enable_srf`）使用 **fcitx5-rime + rime-ice-git（雾凇拼音）**：fcitx5-rime 来自 ALARM extra，rime-ice-git 为 archlinuxcn aarch64 预编译包，开箱即用、无需手工配置 rime。
 - niri 配置安装到 `~/.config/niri/config.kdl`（默认来自 niri 上游 `default-config.kdl`，已把 waybar 自启动替换为 noctalia、终端快捷键改为 ghostty 优先（运行时探测，缺失回退 kitty）、新增 `Mod+E` 打开 Nemo；开启 `enable_srf` 时追加 fcitx5 自启动）。新用户会从 `/etc/skel` 获得同样配置。
+- 桌面应用预配置（全部写入 `/etc/skel` 并同步到默认用户家目录）：
+  - **fcitx5**：niri 原生支持输入法协议（text-input-v3，v26.04 起修复了 GTK4 弹窗与 Fcitx 的兼容问题）；预置 `profile` 默认挂 rime 引擎，跳过首次运行向导；环境变量沿用 fcitx5 官方键名（GTK/Qt 模块同时注册 `fcitx` 与 `fcitx5`）；niri 启动时自动拉起 `fcitx5 -d`。
+  - **Nemo**：GTK3 应用在 Wayland 原生运行（无需 Xwayland）；`gvfs` 提供回收站/挂载后端；目录默认打开方式设为 Nemo（`/etc/xdg/mimeapps.list`）；预置「在终端中打开」动作（走 `droidspaces-terminal` 包装脚本，ghostty 优先、回退 kitty，与 `Mod+T` 行为一致）。
+  - **neovim**：预置最小 `init.lua`（UTF-8、行号、真彩色、鼠标、系统剪贴板同步）；随附 `wl-clipboard` 提供剪贴板支撑。删除 `~/.config/nvim/init.lua` 即可恢复原生默认。
+  - **GTK3/GTK4 暗色主题**：与 Noctalia 深色风格一致（ghostty 与 Nemo 均读取）。
+- Noctalia Shell：niri 是其官方集成的合成器之一，通知守护/启动器/控制中心均为内置，无需额外守护进程；其自身无 polkit 认证代理（本项目内 USB Manager 走免密 sudo，不受影响）。
 - 宿主侧准备与 Wayland/Anland 配置一节相同：刷入 virtual-drm-daemon、安装 Anland App、绑定挂载 `display_daemon.sock -> /run/display.sock`、开启 GPU 访问与 SELinux 宽容，并在 Anland 中开启无障碍开关（否则 Android 会拦截 Super 键）。
-- 已知限制：ANiri 上游声明的已知问题包括 glmark2/vkmark 得分略低于 KWin、Android 悬浮窗可能引起花屏、麦克风/摄像头转发应用侧不可读；本模板未集成 Xwayland（ patched Xwayland 属于 KWin 预编译包体系）。
+- 已知限制：ANiri 上游声明的已知问题包括 glmark2/vkmark 得分略低于 KWin、Android 悬浮窗可能引起花屏、麦克风/摄像头转发应用侧不可读；本模板未集成 Xwayland（ patched Xwayland 属于 KWin 预编译包体系）；Nemo 的「在终端中打开」动作在空白背景右键时可能不显示（对文件/文件夹右键可用）。
 
 ## 功能概览
 

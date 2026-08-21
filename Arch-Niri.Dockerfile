@@ -96,8 +96,9 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     openssh net-tools iptables iputils iproute2 bind \
     # 日志与监控
     logrotate procps-ng fastfetch jq \
-    # 编辑器与文件管理器
-    neovim nemo \
+    # 编辑器与文件管理器（gvfs 提供 Nemo 回收站/挂载后端，wl-clipboard
+    # 提供 Wayland 原生剪贴板工具，neovim 与 Noctalia 均可使用）
+    neovim nemo gvfs wl-clipboard \
     # 内核模块与时区数据
     kmod tzdata tar util-linux \
     # strip niri 二进制需要 binutils
@@ -235,6 +236,86 @@ EOF
 RUN echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc && \
     chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bashrc
 
+# 桌面应用预配置：统一写入 /etc/skel（新用户模板）并复制到当前用户家目录
+# 1. fcitx5 输入法 profile：默认分组直接挂 rime（雾凇拼音），跳过首次运行向导
+# 2. GTK3/GTK4 暗色主题（与 Noctalia 深色风格一致；ghostty/Nemo 均读取）
+# 3. neovim 最小默认配置（UTF-8、行号、真彩色、鼠标、系统剪贴板同步）
+# 4. mimeapps：目录默认用 Nemo 打开
+# 5. Nemo "在终端中打开" 动作 + droidspaces-terminal 包装脚本
+#    （ghostty 优先、缺失回退 kitty，与 niri Mod+T 快捷键行为一致）
+RUN <<'EOF_RUN'
+install -d -m 755 /etc/skel/.config/fcitx5 \
+    /etc/skel/.config/gtk-3.0 /etc/skel/.config/gtk-4.0 \
+    /etc/skel/.config/nvim /etc/xdg
+
+cat <<'EOF' > /etc/skel/.config/fcitx5/profile
+[Groups/0]
+Name=Default
+Default Layout=us
+DefaultIM=rime
+
+[Groups/0/Items/0]
+Name=keyboard-us
+Layout=
+
+[Groups/0/Items/1]
+Name=rime
+Layout=
+
+[GroupOrder]
+0=Default
+EOF
+
+cat <<'EOF' > /etc/skel/.config/gtk-3.0/settings.ini
+[Settings]
+gtk-application-prefer-dark-theme=true
+EOF
+cp /etc/skel/.config/gtk-3.0/settings.ini /etc/skel/.config/gtk-4.0/settings.ini
+
+cat <<'EOF' > /etc/skel/.config/nvim/init.lua
+-- Droidspaces Arch-Niri 预置默认配置；删除本文件即可恢复 nvim 原生默认
+vim.opt.encoding = "utf-8"
+vim.opt.number = true
+vim.opt.termguicolors = true
+vim.opt.mouse = "a"
+vim.opt.clipboard = "unnamedplus"
+vim.opt.backspace = { "indent", "eol", "start" }
+EOF
+
+cat <<'EOF' > /etc/xdg/mimeapps.list
+[Default Applications]
+inode/directory=nemo.desktop
+EOF
+
+cat <<'EOF' > /usr/local/bin/droidspaces-terminal
+#!/bin/bash
+# Droidspaces 统一终端启动器：ghostty 优先，缺失回退 kitty
+dir="${1:-$PWD}"
+cd "$dir" 2>/dev/null || true
+if command -v ghostty >/dev/null 2>&1; then
+    exec ghostty
+fi
+exec kitty
+EOF
+chmod 755 /usr/local/bin/droidspaces-terminal
+
+cat <<'EOF' > /usr/share/nemo/actions/droidspaces-terminal.nemo_action
+[Nemo Action]
+Name=Open in Terminal
+Name[zh_CN]=在终端中打开
+Comment=Open the current folder in a terminal
+Comment[zh_CN]=在终端中打开当前文件夹
+Exec=droidspaces-terminal %P
+Icon=terminal
+Selection=any
+Extensions=any;
+Dependencies=nemo;
+EOF
+
+cp -r /etc/skel/.config/fcitx5 /etc/skel/.config/gtk-3.0 /etc/skel/.config/gtk-4.0 /etc/skel/.config/nvim /home/${USERNAME}/.config/
+chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
+EOF_RUN
+
 # 下载 ANiri niri 二进制（固定版本 + SHA256 校验 + strip 减小体积）
 RUN echo "--> [niri] 下载 ANiri ${ANIRI_VERSION}..." && \
     curl -fL --retry 5 --retry-delay 3 \
@@ -263,7 +344,10 @@ install -Dm644 /tmp/config.kdl /etc/skel/.config/niri/config.kdl
 rm -f /tmp/config.kdl
 EOF_RUN
 
-# niri 自启动 systemd 服务（等价上游指南的手写 niri.service）
+# niri 自启动 systemd 服务（等价上游指南的手写 niri.service）。
+# ExecStart 使用 dbus-run-session 包裹：niri 的子进程（fcitx5 的 GTK/Qt
+# 输入法模块、Noctalia Shell 的 IPC、剪贴板工具等）都需要会话级
+# D-Bus 总线；system 级服务默认没有会话总线。
 RUN <<'EOF_RUN'
 cat <<'EOF' > /etc/systemd/system/niri.service
 [Unit]
@@ -278,7 +362,7 @@ User=__DS_USER__
 EnvironmentFile=-/etc/environment
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStartPre=+/usr/bin/install -d -o __DS_USER__ -g __DS_USER__ -m 700 /run/user/1000
-ExecStart=/usr/bin/niri
+ExecStart=/usr/bin/dbus-run-session -- /usr/bin/niri
 Restart=on-failure
 RestartSec=3s
 
