@@ -103,7 +103,7 @@ detect_target() {
     case "$ID" in
         debian|ubuntu) PACKAGE_FAMILY="apt" ;;
         fedora) PACKAGE_FAMILY="dnf" ;;
-        arch|archarm) PACKAGE_FAMILY="pacman" ;;
+        arch|archarm|artix) PACKAGE_FAMILY="pacman" ;;
         *)
             case " ${ID_LIKE:-} " in
                 *" debian "*|*" ubuntu "*) PACKAGE_FAMILY="apt" ;;
@@ -178,9 +178,12 @@ install_dependencies() {
             ;;
         pacman)
             pacman -Syu --noconfirm --needed \
-                python python-pyqt5 qt5-wayland qt5-svg systemd util-linux sudo \
+                python python-pyqt5 qt5-wayland qt5-svg util-linux sudo \
                 android-tools ntfs-3g exfatprogs desktop-file-utils gvfs gvfs-mtp kio-extras \
                 xdg-utils ca-certificates curl wget tar
+            # udev 提供方因发行版而异：Arch 主线内含于 systemd，Artix（OpenRC）为独立 udev 包
+            pacman -S --noconfirm --needed systemd 2>/dev/null || \
+                pacman -S --noconfirm --needed udev
             ;;
     esac
 }
