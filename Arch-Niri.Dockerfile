@@ -94,8 +94,14 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     xkeyboard-config \
     # 音频栈（Anland App 负责转发，容器内安装客户端库）
     pipewire libpipewire pipewire-pulse wireplumber \
-    # 桌面外壳与终端、启动器
-    noctalia kitty fuzzel \
+    # 桌面外壳与启动器；终端 ghostty 优先（ALARM aarch64 尚未收录 ghostty，
+    # 缺失时回退 kitty，niri 快捷键运行时自动探测，仓库收录后自动切换）
+    noctalia fuzzel kitty && \
+    if pacman -S --noconfirm --needed ghostty; then \
+        echo "--> [终端] 已安装 ghostty"; \
+    else \
+        echo "--> [提示] ghostty 尚未进入 aarch64 仓库，保留 kitty 作为回退终端"; \
+    fi && \
     # 电源信息（Noctalia 电池组件）
     upower \
     # 字体（中文环境附带 CJK）
@@ -223,13 +229,14 @@ RUN echo "--> [niri] 下载 ANiri ${ANIRI_VERSION}..." && \
     rm -f /tmp/niri-bin && \
     /usr/bin/niri --version
 
-# 安装 niri 默认配置：waybar 自启动替换为 noctalia，终端替换为 kitty，
-# 并按构建开关追加 fcitx5 自启动；同时安装到 /etc/skel 与用户家目录
+# 安装 niri 默认配置：waybar 自启动替换为 noctalia，终端快捷键指向
+# ghostty（缺失时回退 kitty，spawn-sh 运行时探测），并按构建开关追加
+# fcitx5 自启动；同时安装到 /etc/skel 与用户家目录
 RUN <<'EOF_RUN'
 install -Dm644 /usr/share/niri/default-config.kdl /tmp/config.kdl
 sed -i 's/spawn-at-startup "waybar"/spawn-at-startup "noctalia"/' /tmp/config.kdl
-sed -i 's/spawn "alacritty"/spawn "kitty"/' /tmp/config.kdl
-sed -i 's/Open a Terminal: alacritty/Open a Terminal: kitty/' /tmp/config.kdl
+sed -i 's#spawn "alacritty"#spawn-sh "command -v ghostty >/dev/null 2>\&1 \&\& exec ghostty || exec kitty"#' /tmp/config.kdl
+sed -i 's/Open a Terminal: alacritty/Open a Terminal: ghostty (fallback kitty)/' /tmp/config.kdl
 if [ "$ENABLE_srf_ARG" = "true" ]; then
     printf '\n// Droidspaces: fcitx5 input method\nspawn-at-startup "fcitx5" "-d"\n' >> /tmp/config.kdl
 fi
