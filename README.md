@@ -33,14 +33,48 @@
 | `Ubuntu-26-KDE` | `ubuntu:26.04` | `min`、`conc`、`mobile`、`none` | 支持 | 支持 `nosnap`，推荐用于 Anland KDE。 |
 | `Fedora-43-KDE` | `fedora:43` | `min`、`conc`、`mobile`、`none` | 支持 | 某些设备需要启用硬件访问。 |
 | `Fedora-44-KDE` | `fedora:44` | `min`、`conc`、`mobile`、`none` | 支持 | 某些设备需要启用硬件访问。 |
-| `Arch-KDE` | `ogarcia/archlinux` | `min`、`conc`、`mobile`、`none` | 支持 | 使用 ARM64 Arch patched KWin/Xwayland；当前不建议使用本项目的 QEMU/binfmt 跨架构方案。 |
+| `Arch-KDE` | `ogarcia/archlinux` | `min`、`conc`、`mobile`、`none` | 支持 | 使用 ARM64 Arch patched KWin/Xwayland；当前不建议使用本项目的 QEMU/binFmt 跨架构方案。 |
+| `Arch-Niri` | `ogarcia/archlinux` | 无 KDE（`build_KDE` 被忽略） | 强制启用 | 无 KDE 最小化 Arch + niri（ANiri anland 后端）+ Noctalia Shell；详见下文 Arch-Niri 说明。 |
+| `Artix-KDE` | ARMtix OpenRC rootfs | `min`、`conc`、`none` | 不支持 | Artix 官方主线无 aarch64，使用 [ARMtix](https://armtixlinux.org/) 社区移植；OpenRC 初始化（无 systemd）；仓库未签名（`SigLevel = Never`）；仅 X11 路径。 |
+| `NixOS-KDE` | `nixos/nix` + 声明式构建 | `min`、`none` | 不支持 | 固定 NixOS 25.05 渠道（systemd 257，旧内核友好）；`conc` 体积超出 GitHub ARM 运行器磁盘预算故不支持；GPU 为软件渲染回退（详见下文 NixOS 说明）。 |
 
 `all` 会构建全部 Dockerfile 模板。`all-wayland` 在 `min`、`conc` 和 `mobile` 模式下构建 `Debian-13-KDE`、`Ubuntu-26-KDE`、`Fedora-43-KDE`、`Fedora-44-KDE` 和 `Arch-KDE`；`mobile` 模式会强制启用 Wayland 支持。
 
+### Artix-KDE 说明
+
+- 基于 [ARMtix](https://wiki.artixlinux.org/Main/Aarch64)（Artix Linux aarch64 社区移植）官方 OpenRC rootfs 引导，包仓库为 `repo.armtixlinux.org` 的 `system`、`world`、`galaxy` 三仓库（未签名，pacman 配置为 `SigLevel = Never`）。
+- 使用 OpenRC + elogind + 独立 udev，没有 systemd，因此天然没有 systemd 版本兼容问题，`enable_systemd257` 会自动跳过。
+- 桌面自启动通过 OpenRC 服务 `plasma-x11`（`/etc/init.d/plasma-x11`，supervise-daemon 守护）实现，等价于 systemd 版本的 `plasma-x11.service`。
+- `NetworkManager` 与 `udev` 的 OpenRC 服务内置了与 systemd 版等价的运行条件检查（仅 NAT 网络模式 / 仅开启硬件访问时启动）。
+- Mesa 高通 GPU 支持复用 `mesa-for-android-container` 的 `archlinux_arm64` 定制包（与 ARMtix 二进制兼容）。
+- Wayland/Anland patched KWin 与 plasma-mobile 暂不支持 Artix。
+
+### NixOS-KDE 说明
+
+- 在 `nixos/nix` 容器内以声明式 `configuration.nix` 构建，固定使用 `nixos-25.05` 渠道：该版本搭载 **systemd 257**，是适配 4.19 等旧 Android 内核的最后主线大版本，因此无需（也不适用）`scripts/systemd257.sh` 降级编译。
+- 渠道已 EOL 冻结：结果可复现，但不再接收上游安全更新；如需更新请自行在容器内 `nix-channel --add` 切换渠道（注意新渠道的 systemd 版本可能不再兼容旧内核）。
+- rootfs 通过 nixpkgs 的 `make-system-tarball` 生成，包含完整 `/nix/store` 闭包、`/sbin/init` 指向 NixOS 激活脚本；首次启动自动注册 Nix 数据库并创建用户（默认密码 `1234`）。
+- **GPU 限制**：NixOS 使用 nixpkgs 自带 Mesa，不含高通 KGSL 后端；`mesa-for-android-container` 的定制包与 NixOS store 不兼容。因此在 NixOS 上 GPU 渲染为 llvmpipe 软件回退，`enable_mesa` 仅安装图形栈与工具。需要 GPU 加速请优先选择 Arch/Debian/Ubuntu/Fedora 模板。
+- KDE 桌面规模仅支持 `min` 和 `none`：`conc` 的 Plasma 全家桶闭包叠加构建器中间产物会超出 GitHub ARM 运行器磁盘预算。
+- `TMOE` 面向 apt/dnf/pacman 体系，NixOS 不集成；`Droidspaces USB Manager` 暂未集成（其余发行版均已内置）。
+- Wayland/Anland patched KWin 与 plasma-mobile 暂不支持 NixOS。
+
+### Arch-Niri 说明（无 KDE 最小化 + niri + Noctalia Shell）
+
+- 定位：**不含任何 KDE 组件的最小化 Arch**，桌面为滚动平铺 Wayland 合成器 [niri](https://github.com/niri-wm/niri)（通过 [ANiri](https://github.com/Celvra/ANiri) 的 anland 后端适配 Android）+ [Noctalia Shell](https://github.com/noctalia-dev/noctalia) 桌面外壳，终端为 kitty，启动器为 fuzzel。
+- 构建逻辑：以上游 `Droidspaces-rootfs-builder` 的 Arch-Minimal 为基础（最小包集合、iptables-legacy 兼容、`ds-aliases` 别名），叠加本项目的中文环境、用户创建、`enable_systemd257` 旧内核兼容（4.19 设备建议开启）、fcitx5、高通 GPU 定制 Mesa（`enable_mesa`，ANiri 的 kgsl 渲染依赖它）、binfmt、NAT/硬件识别门控、USB Manager 与各可选组件。
+- niri 二进制固定从 ANiri Releases 下载（当前 `v0.2.0`，SHA256 校验 + strip），内核要求 ≥3.7，4.19 完全兼容；ANiri 不依赖本项目的 patched KWin 预编译包。
+- 显示路径固定为 **Anland/Wayland**（无 X11/Termux:X11 路径）：工作流选中该目标时会强制启用 Wayland 支持、关闭 PulseAudio 转发（Anland App 自带音频）。
+- `build_KDE` 选项被忽略（模板不含 KDE）；`build_KDE_plus=true`（默认）时启用 `niri.service` 自启动：以普通用户运行 `/usr/bin/niri`，自动创建 `/run/user/1000`，异常退出 3 秒后自动重启。
+- niri 配置安装到 `~/.config/niri/config.kdl`（默认来自 niri 上游 `default-config.kdl`，已把 waybar 自启动替换为 noctalia、终端快捷键指向 kitty；开启 `enable_srf` 时追加 fcitx5 自启动）。新用户会从 `/etc/skel` 获得同样配置。
+- 宿主侧准备与 Wayland/Anland 配置一节相同：刷入 virtual-drm-daemon、安装 Anland App、绑定挂载 `display_daemon.sock -> /run/display.sock`、开启 GPU 访问与 SELinux 宽容，并在 Anland 中开启无障碍开关（否则 Android 会拦截 Super 键）。
+- 已知限制：ANiri 上游声明的已知问题包括 glmark2/vkmark 得分略低于 KWin、Android 悬浮窗可能引起花屏、麦克风/摄像头转发应用侧不可读；本模板未集成 Xwayland（ patched Xwayland 属于 KWin 预编译包体系）。
+
 ## 功能概览
 
-- 多发行版 RootFS 构建：支持 Debian、Ubuntu、Fedora 和 Arch。
+- 多发行版 RootFS 构建：支持 Debian、Ubuntu、Fedora、Arch、Artix 和 NixOS。
 - KDE 桌面可裁剪：支持命令行 RootFS、最小 KDE、精简 KDE 和移动版 KDE。
+- 无 KDE 的 niri 桌面：`Arch-Niri` 目标提供最小化 Arch + niri（ANiri anland 后端）+ Noctalia Shell。
 - 桌面自动启动与故障恢复：X11、Plasma Wayland 和 Plasma Mobile 使用统一的 systemd 服务模板，异常退出后会限频自动重启。
 - Termux:X11 桌面启动：X11 模式下默认使用 `DISPLAY=:5`。
 - PulseAudio 音频转发：支持 Unix socket、TCP 和关闭音频转发。
@@ -53,7 +87,7 @@
 - 开发工具：可选安装编译器、CMake、Python 开发环境等。
 - 压缩工具：可选安装 `zip`、`unzip`、`7z`、`xz`、`tar`、`gzip` 等工具。
 - Docker：可选在 RootFS 内安装 Docker 相关软件包。
-- 旧内核 systemd 兼容：可选在 systemd 主版本高于 257 的 apt、dnf 或 pacman 发行版中构建并安装 `v257-stable`；Debian 13 等已是 257 或更低版本时会自动跳过。
+- 旧内核 systemd 兼容：可选在 systemd 主版本高于 257 的 apt、dnf 或 pacman 发行版中构建并安装 `v257-stable`；Debian 13 等已是 257 或更低版本时会自动跳过；Artix 无 systemd、NixOS 25.05 固定 257，两者均自动跳过。
 - Wayland/Anland：对 Debian 13、Ubuntu 26.04、Fedora 43/44 和 Arch Linux 提供 ARM64 patched KWin 与 Xwayland 包。
 - USB 设备管理：全部发行版内置 Droidspaces USB Manager，支持 USB 存储、ADB 设备节点、挂载、卸载和系统托盘。
 - Release 自动发布：构建完成后会把 RootFS `.tar.xz` 和对应的音频启动脚本上传到 GitHub Release。
@@ -75,8 +109,8 @@ GitHub Actions 的主要输入项如下：
 | 修复 8Gen2 Wayland 花屏 (`enable_8gen2_wayland`) | `true`、`false` | `false` | 为 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch 写入 `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` 到 `/etc/environment`。 |
 | 集成 TMOE (`enable_tmoe`) | `true`、`false` | `true` | 集成 TMOE。 |
 | 移除 Ubuntu Snap (`nosnap`) | `true`、`false` | `false` | 只对 Ubuntu 有意义，用于移除 Snap、snapd 和可能重新安装 snapd 的 APT 策略。 |
-| systemd 257 旧内核兼容 (`enable_systemd257`) | `true`、`false` | `false` | 启用后，在当前 systemd 主版本高于 257 时从 `v257-stable` 构建兼容运行时；systemd 257 及更低版本自动跳过。构建完成后会锁定 systemd 相关包，避免再次升级覆盖。 |
-| 输入法 Fcitx5 支持 (`enable_srf`) | `true`、`false` | `false` | 安装 Fcitx5 输入法。 |
+| systemd 257 旧内核兼容 (`enable_systemd257`) | `true`、`false` | `true` | 启用后，在当前 systemd 主版本高于 257 时从 `v257-stable` 构建兼容运行时；systemd 257 及更低版本自动跳过；Artix（无 systemd）与 NixOS 25.05（固定 257）自动跳过。构建完成后会锁定 systemd 相关包，避免再次升级覆盖。 |
+| 输入法 Fcitx5 支持 (`enable_srf`) | `true`、`false` | `true` | 安装 Fcitx5 输入法。 |
 | 跨架构支持 (`enable_binfmt`) | `true`、`false` | `false` | 在 RootFS 内加入 binfmt 跨架构支持组件。Arch 当前不建议使用。 |
 | NAT 和硬件识别支持 (`enable_yj`) | `true`、`false` | `true` | 启用容器硬件和网络识别增强。 |
 | 开发工具集成 (`enable_kfgj`) | `true`、`false` | `false` | 安装开发工具链。 |
@@ -110,6 +144,27 @@ KDE 模式说明：
 - 构建依赖会在完成后清理，并锁定 systemd 相关软件包，防止后续升级覆盖兼容版本。
 
 该选项主要面向旧 Android 内核，属于实验性兼容方案，会显著增加构建时间；建议先在目标内核上验证桌面、dbus、udev 和网络功能。
+
+### 4.19 内核设备推荐配置（如 Redmi K40 / 骁龙 870）
+
+本仓库 `4.19Core` 定位面向 4.19 内核设备（参考设备：Redmi K40 `alioth`，骁龙 870 / SM8250，Adreno 650）。针对这类设备的推荐工作流选项：
+
+| 选项 | 推荐值 | 说明 |
+| --- | --- | --- |
+| `enable_systemd257` | `true` | 4.19 内核无法运行 systemd 258+；本项为中文工作流默认值。NixOS 25.05 已内置 systemd 257，Artix 无 systemd，均自动跳过。 |
+| `enable_zh_tz` | `true` | 中文 locale + 上海时区（中文工作流默认值）。 |
+| `enable_srf` | `true` | Fcitx5 输入法，启用中文环境时自动附带中文输入引擎（中文工作流默认值）。 |
+| `enable_mesa` | `true` | 高通 GPU（Adreno）支持；NixOS 上为软件渲染回退。 |
+| `enable_yj` | `true` | 容器硬件与网络识别（默认值）。 |
+| `enable_zip` | `true` | 压缩工具集成（默认值）。 |
+| `enable_binfmt` | `false` | 见下方内核注意事项。 |
+| `PulseAudio` | `socket` | X11 模式推荐 Unix socket 转发。 |
+
+这类设备的内核注意事项（以 Redmi K40 实测为准）：
+
+- `CONFIG_USER_NS` 未开启：导入 Droidspaces 时请在特权模式开启 `noseccomp`，避免依赖用户命名空间的操作卡顿。
+- `CONFIG_BINFMT_MISC` 未开启：容器内的 QEMU binfmt 跨架构注册会优雅跳过（日志提示 `binfmt_misc not supported by kernel`），`enable_binfmt` 打开也不会在设备上生效；跨架构二进制转译需要更换启用该选项的内核。
+- GPU 渲染节点 `/dev/dri/renderD128` 正常可用；导入时需开启 GPU 访问（droidspaces-gpu 组已内置）。
 
 ## 使用 GitHub Actions 构建
 
@@ -282,7 +337,7 @@ startplasma-wayland
 
 ## Droidspaces USB Manager
 
-全部 7 个发行版模板都会通过 `scripts/install-usb-manager.sh` 安装 [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager)。安装器会自动识别 Debian/Ubuntu、Fedora 或 Arch 系统，使用 APT、DNF 或 Pacman 安装对应的 PyQt5、ADB、udev、NTFS 和 exFAT 依赖，并修正上游代码中仅适用于 Debian 的命令路径。
+除 NixOS 外的 9 个发行版模板都会通过 `scripts/install-usb-manager.sh` 安装 [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager)（NixOS 的声明式体系暂未集成，见上文说明）。安装器会自动识别 Debian/Ubuntu、Fedora 或 Arch 系（含 Artix）系统，使用 APT、DNF 或 Pacman 安装对应的 PyQt5、ADB、udev、NTFS 和 exFAT 依赖，并修正上游代码中仅适用于 Debian 的命令路径。
 
 导入 RootFS 时必须开启 Droidspaces 的硬件访问，否则容器内看不到 `/sys/bus/usb` 和 `/sys/bus/scsi` 设备。安装器会同时创建应用菜单入口和 `~/Desktop/usb-manager.desktop` 桌面快捷方式。进入 KDE 后，也可以运行：
 
@@ -389,9 +444,12 @@ sudo download-firmware
 ```text
 .
 ├── Arch-KDE.Dockerfile
+├── Arch-Niri.Dockerfile
+├── Artix-KDE.Dockerfile
 ├── Debian-13-KDE.Dockerfile
 ├── Fedora-43-KDE.Dockerfile
 ├── Fedora-44-KDE.Dockerfile
+├── NixOS-KDE.Dockerfile
 ├── Ubuntu-24-KDE.Dockerfile
 ├── Ubuntu-25-KDE.Dockerfile
 ├── Ubuntu-26-KDE.Dockerfile
@@ -406,6 +464,8 @@ sudo download-firmware
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── install-anland-kde.sh
+│   ├── niri/
+│   │   └── default-config.kdl
 │   ├── nosnap.sh
 │   ├── systemd257.sh
 │   ├── on_aaudio_socket.sh
@@ -424,9 +484,12 @@ KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.y
 
 ## 已知限制
 
-- Wayland/Anland 当前覆盖 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。
+- Wayland/Anland 当前覆盖 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch；Artix 与 NixOS 暂不支持（仅 X11 路径）。`Arch-Niri` 使用独立的 ANiri 方案（非 patched KWin）。
 - Ubuntu 24 和 Ubuntu 25 当前按 X11 路径使用。
-- `mobile` 模式支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。
+- `mobile` 模式支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch；Artix、NixOS 与 Arch-Niri 暂不支持。
+- `Arch-Niri` 的 `build_KDE` 选项被忽略；其 ANiri 上游存在渲染性能略低、悬浮窗花屏等已知问题（详见上文 Arch-Niri 说明）。
+- NixOS-KDE 仅支持 `min` 和 `none` 桌面规模，且 GPU 为软件渲染回退、未集成 USB Manager（详见上文 NixOS-KDE 说明）。
+- Artix-KDE 依赖 ARMtix 社区仓库（未签名），可用性与更新节奏取决于上游社区。
 - 启用 Anland 后，工作流会关闭 PulseAudio 转发，因为 Anland App 自带音频路径。
 - Fedora 在部分设备上需要硬件访问，否则可能闪屏或崩溃。
 - Ubuntu 和 Debian 在未启用 `noseccomp` 或内核缺少 `USER_NS` 时，可能出现卡顿。
@@ -440,3 +503,6 @@ KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.y
 - [TMOE](https://github.com/2moe/tmoe)：容器内管理工具。
 - [anland](https://github.com/superturtlee/anland)：Wayland 显示后端和 patched KDE 相关工作。
 - [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager)：适用于Droidspaces 的 USB 存储和 ADB 设备管理工具。
+- [ARMtix](https://armtixlinux.org/)：`Artix-KDE` 所使用的 Artix Linux aarch64 社区移植。
+- [NixOS](https://nixos.org/) 与 [nixpkgs](https://github.com/NixOS/nixpkgs)：`NixOS-KDE` 声明式构建的基础。
+- [ANiri](https://github.com/Celvra/ANiri) 与 [niri](https://github.com/niri-wm/niri)、[Noctalia](https://github.com/noctalia-dev/noctalia)：`Arch-Niri` 的滚动平铺桌面方案。
