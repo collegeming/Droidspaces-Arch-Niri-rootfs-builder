@@ -13,9 +13,13 @@
 #     二进制固定从 ANiri Releases 下载并校验 SHA256，构建时 strip 减小体积。
 #   - 显示路径固定为 Anland/Wayland：无需 Termux:X11；BUILD_KDE 选项被忽略
 #     （本模板不安装任何 KDE 组件），BUILD_KDE_plus 控制的是 niri 自启动。
-#   - 无 pacman 镜像定制：沿用 ogarcia/archlinux 基础镜像自带的
-#     Arch Linux ARM 官方镜像源；仅开启 ParallelDownloads 并移除 locale 的
-#     NoExtract 过滤（中文 locale 需要）。
+#   - pacman 源定制：
+#       * TUNA 清华镜像置顶（archlinuxarm $arch/$repo），官方源保留回退；
+#       * 附加 archlinuxcn aarch64 仓库（TUNA 优先、官方回退），
+#         首次以 SigLevel=Never 引导安装 archlinuxcn-keyring（其安装脚本
+#         会执行 pacman-key --populate 完成本地信任），随后恢复签名校验；
+#       * archlinuxcn 提供 paru（AUR 助手）与 rime-ice-git（雾凇拼音）等
+#         aarch64 预编译包，无需本地编译。
 
 ARG TARGETPLATFORM
 
@@ -72,7 +76,15 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
     sed -i '/NoExtract.*i18n/d' /etc/pacman.conf && \
-    pacman -Sy --noconfirm archlinux-keyring glibc && \
+    # pacman 清华镜像置顶，官方 ALARM 源保留为回退
+    sed -i '1i Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm/$arch/$repo' /etc/pacman.d/mirrorlist && \
+    # archlinuxcn aarch64 仓库（置于末尾，官方仓库优先）；
+    # 首次以仓库级 SigLevel=Never 引导安装 archlinuxcn-keyring，
+    # 其安装脚本会 pacman-key --populate archlinuxcn 建立本地信任
+    printf '\n[archlinuxcn]\nSigLevel = Never\nServer = https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/$arch/$repo\nServer = https://repo.archlinuxcn.org/$arch/$repo\n' >> /etc/pacman.conf && \
+    pacman -Sy --noconfirm archlinux-keyring glibc archlinuxcn-keyring && \
+    # keyring 就位后恢复 archlinuxcn 签名校验
+    sed -i '/^\[archlinuxcn\]/,/^Server/{/^SigLevel = Never$/d;}' /etc/pacman.conf && \
     pacman -Su --noconfirm && \
     pacman -S --noconfirm --needed \
     # 核心工具组件（沿用上游 Arch-Minimal 的最小集合）
@@ -84,6 +96,8 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     openssh net-tools iptables iputils iproute2 bind \
     # 日志与监控
     logrotate procps-ng fastfetch jq \
+    # 编辑器与文件管理器
+    neovim nemo \
     # 内核模块与时区数据
     kmod tzdata tar util-linux \
     # strip niri 二进制需要 binutils
@@ -102,6 +116,8 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     else \
         echo "--> [提示] ghostty 尚未进入 aarch64 仓库，保留 kitty 作为回退终端"; \
     fi && \
+    # AUR 助手 paru（来自 archlinuxcn aarch64；容器内以普通用户运行）
+    paru \
     # 电源信息（Noctalia 电池组件）
     upower \
     # 字体（中文环境附带 CJK）
@@ -109,12 +125,13 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 中文附加字体（可选）
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed noto-fonts-cjk; fi && \
     ############################################## 可选组件 ################################################
-    # 输入法 fcitx5 (可选)
+    # 输入法 fcitx5 + rime 雾凇拼音 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed fcitx5-im; \
     fi && \
-    if [ "$ENABLE_srf_ARG" = "true" ] && [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
-        pacman -S --noconfirm --needed fcitx5-chinese-addons; \
+    if [ "$ENABLE_srf_ARG" = "true" ]; then \
+        pacman -S --noconfirm --needed fcitx5-rime; \
+        pacman -S --noconfirm --needed rime-ice-git; \
     fi && \
     ## 开发工具集成 (可选)
     if [ "$ENABLE_kfgj_ARG" = "true" ]; then \
@@ -237,6 +254,7 @@ install -Dm644 /usr/share/niri/default-config.kdl /tmp/config.kdl
 sed -i 's/spawn-at-startup "waybar"/spawn-at-startup "noctalia"/' /tmp/config.kdl
 sed -i 's#spawn "alacritty"#spawn-sh "command -v ghostty >/dev/null 2>\&1 \&\& exec ghostty || exec kitty"#' /tmp/config.kdl
 sed -i 's/Open a Terminal: alacritty/Open a Terminal: ghostty (fallback kitty)/' /tmp/config.kdl
+sed -i '/Open a Terminal: ghostty/a\    Mod+E hotkey-overlay-title="Open Files: nemo" { spawn "nemo"; }' /tmp/config.kdl
 if [ "$ENABLE_srf_ARG" = "true" ]; then
     printf '\n// Droidspaces: fcitx5 input method\nspawn-at-startup "fcitx5" "-d"\n' >> /tmp/config.kdl
 fi
