@@ -205,11 +205,9 @@ ANLAND_DRM_DEVICE=/dev/dri/renderD128
 XWAYLAND_GBM_DEVICE=/dev/dri/renderD128
 EOF
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
-        cat <<'EOF' >> /etc/environment
-MESA_LOADER_DRIVER_OVERRIDE=kgsl
-GALLIUM_DRIVER=kgsl
-FD_FORCE_KGSL=1
-EOF
+        echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment && \
+        echo "GALLIUM_DRIVER=kgsl" >> /etc/environment && \
+        echo "FD_FORCE_KGSL=1" >> /etc/environment; \
     fi
 # 音频选择（X11 时代的转发方式，Anland 下通常不需要）
 RUN if [ "$PulseAudio" = "socket" ]; then \
@@ -222,15 +220,14 @@ RUN if [ "$ENABLE_8gen2_wayland_ARG" = "true" ]; then \
         echo 'FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1' >> /etc/environment; \
     fi
 
-# 输入法环境变量
+# 输入法环境变量（不使用 heredoc：BuildKit 的重定向 heredoc 会终止指令，
+# 其后的 fi 会被当作 Dockerfile 指令导致解析错误）
 RUN if [ "$ENABLE_srf_ARG" = "true" ]; then \
-        cat <<'EOF' >> /etc/environment
-XMODIFIERS=@im=fcitx5
-GTK_IM_MODULE=fcitx5
-QT_IM_MODULE=fcitx5
-SDL_IM_MODULE=fcitx5
-GLFW_IM_MODULE=fcitx
-EOF
+        echo "XMODIFIERS=@im=fcitx5" >> /etc/environment && \
+        echo "GTK_IM_MODULE=fcitx5" >> /etc/environment && \
+        echo "QT_IM_MODULE=fcitx5" >> /etc/environment && \
+        echo "SDL_IM_MODULE=fcitx5" >> /etc/environment && \
+        echo "GLFW_IM_MODULE=fcitx" >> /etc/environment; \
     fi
 
 RUN echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc && \
