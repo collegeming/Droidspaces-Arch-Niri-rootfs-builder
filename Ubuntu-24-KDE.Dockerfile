@@ -208,9 +208,14 @@ EOF
     rm -rf /tmp/droidspaces-start
 EOF_RUN
 
-RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
+RUN --mount=type=secret,id=github_token if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
-        URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | \
+        GH_TOKEN_VAL="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
+        URL=$(if [ -n "$GH_TOKEN_VAL" ]; then \
+                 curl -s --retry 5 --retry-delay 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN_VAL" https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest; \
+             else \
+                 curl -s --retry 5 --retry-delay 3 --retry-all-errors https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest; \
+             fi | \
         jq -r '.assets[] | select(.name | test("mesa-for-android-container_.*_ubuntu_noble_arm64\\.tar\\.gz")) | .browser_download_url' | head -1) && \
         if [ -z "$URL" ] || [ "$URL" = "null" ]; then echo "获取下载链接失败，可能是触发了 GitHub API 速率限制"; exit 1; fi && \
         wget -q --tries=5 --waitretry=3 -O /tmp/mesa.tar.gz "$URL" && \

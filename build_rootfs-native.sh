@@ -177,6 +177,7 @@ docker buildx build \
   --build-arg ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
   --build-arg ANLAND_KDE_PACKAGE_REVISION="$ANLAND_KDE_PACKAGE_REVISION" \
   --build-arg USERNAME="$USERNAME" \
+  ${GITHUB_TOKEN:+--secret id=github_token,env=GITHUB_TOKEN} \
   -f "$DOCKERFILE" \
   .
 

@@ -420,6 +420,7 @@ jobs:
 
       - name: 编译 RootFS (${{ matrix.template }})
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANLAND_KDE_RELEASE_REPOSITORY: ${{ steps.wayland_source.outputs.repository || 'Goldzxcbug/Droidspaces-rootfs-KDE-builder' }}
           ANLAND_KDE_RELEASE_TAG: ${{ needs.build-wayland-packages.outputs.release_tag }}
         run: |
