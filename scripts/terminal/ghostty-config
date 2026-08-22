@@ -1,0 +1,37 @@
+# Ghostty 配置 —— Arch + niri + noctalia + Maple Mono + Catppuccin Frappe
+# 对应 kitty 方案的 Ghostty 版。shell 侧（fish/reef/fisher/tide）完全不变。
+
+# ── 主题：Catppuccin Frappe（Ghostty 1.1+ 内置，无需手动下载 include）──
+theme = catppuccin-frappe
+
+# ── Shell：fish + 交互登录 ──
+command = /usr/bin/fish --login --interactive
+
+# ── 字体：Maple Mono NF CN（等宽 + Nerd 图标 + 中文）──
+font-family = Maple Mono NF CN
+font-size = 14
+
+# ── 窗口 ──
+window-padding-x = 5
+window-padding-y = 5
+window-decoration = false
+
+# ── 透明度：必须半透明，background-blur 才显形 ──
+background-opacity = 0.85
+
+# ── 背景模糊 ──
+# Ghostty 1.1+ Linux 原生支持，Wayland 走 ext-background-effect-v1 协议（niri 支持）。
+background-blur = true
+
+# ── 光标 ──
+cursor-style = block
+cursor-style-blink = true
+
+# ── 光标拖尾（Neovide 风格）：自定义 GLSL shader ──
+# 先克隆：git clone https://github.com/sahaj-b/ghostty-cursor-shaders ~/.config/ghostty/shaders
+custom-shader = shaders/cursor_warp.glsl
+custom-shader-animation = always
+
+# ── 其他 ──
+mouse-hide-while-typing = true
+scrollback-limit = 10000
