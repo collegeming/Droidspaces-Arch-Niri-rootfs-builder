@@ -121,13 +121,14 @@ on:
         type: boolean
         default: false
       terminal:
-        description: 'Terminal choice (kitty - repo install, stable and fast; ghostty - build official stable 1.3.1 from source, ~25-50 min, hard-fail on failure)'
+        description: 'Terminal choice (kitty - repo install, stable and fast; ghostty - build official stable 1.3.1 from source, ~25-50 min, hard-fail; konsole - KDE built-in, Arch-KDE only)'
         required: true
         type: choice
         default: 'kitty'
         options:
           - 'kitty'
           - 'ghostty'
+          - 'konsole'
 
 jobs:
   # --------------------------------------------------------

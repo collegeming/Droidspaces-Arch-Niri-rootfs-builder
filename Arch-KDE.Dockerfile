@@ -21,11 +21,13 @@ ARG USERNAME
 ARG ANLAND_KDE_RELEASE_REPOSITORY=Goldzxcbug/Droidspaces-rootfs-KDE-builder
 ARG ANLAND_KDE_RELEASE_TAG
 ARG ANLAND_KDE_PACKAGE_REVISION=unknown
+ARG TERMINAL_ARG=konsole
 ######################################################
 
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
+COPY scripts/build-ghostty.sh /usr/local/sbin/build-ghostty
 
 RUN chmod +x /usr/local/sbin/install-anland-kde && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
@@ -78,6 +80,22 @@ RUN chmod +x /usr/local/sbin/install-anland-kde && \
     if [ "$BUILD_KDE" = "conc" ] || [ "$BUILD_KDE" = "min" ] ; then \
         mv /usr/lib/xdg-desktop-portal /usr/lib/xdg-desktop-portal.bak && \
         mv /usr/lib/xdg-desktop-portal-kde /usr/lib/xdg-desktop-portal-kde.bak; \
+    fi && \
+    # 终端选择（TERMINAL_ARG，默认 konsole 已随 KDE 包安装）：
+    # kitty 额外从仓库装并设为 KDE 默认终端；ghostty 调 build-ghostty.sh 源码
+    # 构建（硬失败）。konsole 选项跳过本块。
+    if [ "$TERMINAL_ARG" = "kitty" ]; then \
+        pacman -S --noconfirm --needed kitty && \
+        printf '[General]\nTerminalApplication=kitty\n' > /etc/xdg/kdeglobals; \
+    elif [ "$TERMINAL_ARG" = "ghostty" ]; then \
+        /usr/local/sbin/build-ghostty && \
+        printf '[General]\nTerminalApplication=ghostty\n' > /etc/xdg/kdeglobals; \
+        userdel -r aurbuild 2>/dev/null || true; \
+        rm -f /etc/sudoers.d/aurbuild; \
+        pacman -Rdd --noconfirm zig 2>/dev/null || true; \
+        rm -f /usr/local/bin/pandoc /usr/local/bin/zig; \
+        rm -rf /usr/local/lib/zig; \
+        rm -rf /tmp/ghostty-pkg; \
     fi && \
     ######################################################################################################
     #输入法 fcitx5 (可选)
