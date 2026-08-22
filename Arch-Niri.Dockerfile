@@ -113,13 +113,38 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     xkeyboard-config \
     # 音频栈（Anland App 负责转发，容器内安装客户端库）
     pipewire libpipewire pipewire-pulse wireplumber \
-    # 桌面外壳与启动器；终端 ghostty 优先（ALARM aarch64 尚未收录 ghostty，
-    # 缺失时回退 kitty，niri 快捷键运行时自动探测，仓库收录后自动切换）
+    # 桌面外壳与启动器；终端 ghostty 三层保障：ALARM 仓库 → AUR 源码构建 → kitty 回退
+    # AUR 构建链（约 25-50 分钟）：
+    #   * zig0.15-bin (0.15.2) 提供 /usr/bin/zig-0.15（不覆盖系统 zig）
+    #   * pandoc-bin 提供 pandoc-cli（官方 arm64 二进制，免 Haskell 编译）
+    #   * ghostty-git 源码构建：sed 移除 PKGBUILD 的 'zig<0.16.0' makedepend
+    #     （PATH 无法满足 pacman 依赖声明），PATH shim 将 zig 指向 zig-0.15
+    #     （同时覆盖 fetch-zig-cache.sh 内部的 zig 调用）
+    # paru 拒绝以 root 运行，构建使用临时 aurbuild 用户（免密 sudo 供依赖安装）
     noctalia fuzzel kitty && \
     if pacman -S --noconfirm --needed ghostty; then \
-        echo "--> [终端] 已安装 ghostty"; \
+        echo "--> [终端] 已从 ALARM 仓库安装 ghostty"; \
     else \
-        echo "--> [提示] ghostty 尚未进入 aarch64 仓库，保留 kitty 作为回退终端"; \
+        echo "--> [终端] 仓库暂无 ghostty，尝试 AUR 源码构建（zig0.15-bin + pandoc-bin + ghostty-git）..."; \
+        if useradd -m aurbuild && \
+           echo 'aurbuild ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/aurbuild && \
+           sudo -u aurbuild paru -S --noconfirm zig0.15-bin pandoc-bin && \
+           git clone --depth=1 https://aur.archlinux.org/ghostty-git.git /tmp/ghostty-aur && \
+           sed -i "s/'zig<0.16.0'//" /tmp/ghostty-aur/PKGBUILD && \
+           mkdir -p /tmp/zigshim && \
+           ln -sf /usr/bin/zig-0.15 /tmp/zigshim/zig && \
+           chown -R aurbuild:aurbuild /tmp/ghostty-aur && \
+           sudo -u aurbuild bash -c 'cd /tmp/ghostty-aur && export PATH=/tmp/zigshim:$PATH EDITOR=true && makepkg -s --noconfirm --pkg ghostty-git ghostty-shell-integration-git ghostty-terminfo-git' && \
+           pacman -U --noconfirm /tmp/ghostty-aur/*.pkg.tar.* && \
+           command -v ghostty; then \
+            echo "--> [终端] AUR 构建成功，已安装 ghostty"; \
+        else \
+            echo "--> [终端] AUR 构建失败，回退 kitty（niri 快捷键运行时自动探测）"; \
+        fi; \
+        userdel -r aurbuild 2>/dev/null || true; \
+        rm -f /etc/sudoers.d/aurbuild; \
+        pacman -Rdd --noconfirm zig0.15-bin pandoc-bin 2>/dev/null || true; \
+        rm -rf /tmp/ghostty-aur /tmp/zigshim; \
     fi && \
     # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
     # 电源信息（Noctalia 电池组件）、字体（中文环境由下方开关附带 CJK）
