@@ -1,0 +1,28 @@
+#!/bin/bash
+# lamco-start —— lamco RDP server 启动包装脚本
+# 自动检测 niri 创建的 wayland-N socket 名（与 wayvnc-start 同理），
+# 等待 socket 出现后再启动 lamco-rdp-server。
+# 供 lamco-rdp.service ExecStart 调用。
+set -euo pipefail
+
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+CONFIG="${1:-/etc/lamco/config.toml}"
+
+# 最多等待 30 秒，直到检测到 wayland-N socket
+for i in $(seq 1 30); do
+    SOCK="$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -name 'wayland-[0-9]*' -type s 2>/dev/null | head -1)"
+    if [ -n "$SOCK" ]; then
+        export WAYLAND_DISPLAY="$(basename "$SOCK")"
+        break
+    fi
+    sleep 1
+done
+
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    echo "错误: 30 秒内未在 $XDG_RUNTIME_DIR 检测到 wayland-N socket" >&2
+    echo "  请确认 niri.service 已启动且创建了 wayland socket" >&2
+    exit 1
+fi
+
+echo "lamco-start: WAYLAND_DISPLAY=$WAYLAND_DISPLAY, XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+exec /usr/bin/lamco-rdp-server --config "$CONFIG"

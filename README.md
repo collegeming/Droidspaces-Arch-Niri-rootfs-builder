@@ -90,7 +90,7 @@
 - **远程访问**（workflow 参数 `remote`，仅 Arch-Niri 适用）：
   - **`none`（默认）**：不启用远程访问。
   - **`wayvnc`（推荐）**：Wayland 原生 VNC 服务器，ALARM extra 预编译包（改动最小，~5MB），niri 已实现 wayvnc 所需全部 wlr 协议（screencopy v3 + virtual-pointer + virtual-keyboard + data-control）。PC 端用 TigerVNC/Remmina/NyaTerm 连接 `<手机IP>:5900`，**无密码**（wayvnc 0.10.1 启用密码认证时会同时提供 RSA-AES 安全类型，多数 Windows VNC 客户端不支持导致连接失败，故默认关闭认证，仅限局域网访问）。如需远程安全访问，建议通过 SSH 隧道：`ssh -L 5900:localhost:5900 colle@<手机IP>`，然后 VNC 连 `localhost:5900`。已知限制：虚拟键盘修饰键不触发 niri 自身快捷键（Super+Tab 等，niri#403），普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代。
-  - **`lamco`**：基于 IronRDP 的标准 RDP 服务端（PC 端 Windows 自带 `mstsc` 免装客户端），aarch64 需从源码构建（Rust 1.89+，约 30-60 分钟），依赖 PipeWire + dbus-broker。连接 `<手机IP>:3389`，**PAM 认证**：输入容器内系统用户名+密码（如 `colle` / `1234`）。许可证 BSL 1.1（单实例免费）。配置文件 `/etc/lamco/config.toml`（`auth_method = "pam"`）。
+  - **`lamco`**：基于 IronRDP 的标准 RDP 服务端（PC 端 Windows 自带 `mstsc` 免装客户端），aarch64 需从源码构建（Rust 1.89+，约 30-60 分钟），依赖 PipeWire + dbus-broker。连接 `<手机IP>:3389`，**无密码**（PAM 认证与 mstsc 的 NLA/CredSSP 不兼容，故关闭认证，仅限局域网访问；远程安全用 SSH 隧道）。许可证 BSL 1.1（单实例免费）。配置文件 `/etc/lamco/config.toml`（`auth_method = "none"`）。
   - 两方案不冲突（不同端口/协议），修饰键缺陷是 niri/Smithay 上游共有问题（不可在容器侧修复）。详细调研见 `remote-access-background-and-solutions.md`。
 
 #### VNC 连接操作说明（`remote=wayvnc`）
