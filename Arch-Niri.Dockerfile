@@ -58,6 +58,7 @@ COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 COPY scripts/build-ghostty.sh /usr/local/sbin/build-ghostty
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/niri/default-config.kdl /usr/share/niri/default-config.kdl
+COPY scripts/terminal/ /tmp/beautify/
 
 # Arch-Niri 限制检查与说明
 RUN if [ "$BUILD_KDE" = "mobile" ]; then \
@@ -330,6 +331,12 @@ cp -r /etc/skel/.config/fcitx5 /etc/skel/.config/gtk-3.0 /etc/skel/.config/gtk-4
 chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
 EOF_RUN
 
+# 终端美化：fish + reef + fisher + tide + Maple Mono 字体 +
+# kitty/ghostty 配置 + Nemo 中文(cinnamon-translations) + fish 设为默认 shell
+RUN chmod +x /tmp/beautify/setup-beautify.sh && \
+    /tmp/beautify/setup-beautify.sh ${USERNAME} && \
+    rm -rf /tmp/beautify
+
 # 下载 ANiri niri 二进制（固定版本 + SHA256 校验 + strip 减小体积）
 RUN echo "--> [niri] 下载 ANiri ${ANIRI_VERSION}..." && \
     curl -fL --retry 5 --retry-delay 3 \
@@ -353,6 +360,8 @@ sed -i '/Open a Terminal: ghostty/a\    Mod+E hotkey-overlay-title="Open Files: 
 if [ "$ENABLE_srf_ARG" = "true" ]; then
     printf '\n// Droidspaces: fcitx5 input method\nspawn-at-startup "fcitx5" "-d"\n' >> /tmp/config.kdl
 fi
+# 追加终端窗口背景模糊（kitty niri 原生不生效，ghostty 自带 blur 时由协议优先）
+printf '\n// Droidspaces: terminal background blur\nwindow-rule {\n    match app-id="^kitty$"\n    background-effect {\n        blur true\n    }\n}\nwindow-rule {\n    match app-id="^ghostty$"\n    background-effect {\n        blur true\n    }\n}\n' >> /tmp/config.kdl
 install -Dm644 -o ${USERNAME} -g ${USERNAME} /tmp/config.kdl /home/${USERNAME}/.config/niri/config.kdl
 install -Dm644 /tmp/config.kdl /etc/skel/.config/niri/config.kdl
 rm -f /tmp/config.kdl

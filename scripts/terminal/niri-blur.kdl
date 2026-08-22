@@ -1,0 +1,20 @@
+// niri 背景模糊配置片段 —— 加入到 ~/.config/niri/config.kdl
+// kitty 的 background_blur 在 niri(Wayland) 下不生效，模糊改由 niri 合成阶段提供。
+// Ghostty 1.1+ 原生 background-blur 走 ext-background-effect-v1，此处作兜底。
+// 前置条件：终端 background_opacity / background-opacity 设为半透明（如 0.85）。
+
+// 对 kitty 窗口启用背景模糊
+window-rule {
+    match app-id="^kitty$"
+    background-effect {
+        blur true
+    }
+}
+
+// 对 ghostty 窗口启用背景模糊（兜底，Ghostty 自带 blur 时由协议优先）
+window-rule {
+    match app-id="^ghostty$"
+    background-effect {
+        blur true
+    }
+}

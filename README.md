@@ -75,6 +75,15 @@
   - **Nemo**：GTK3 应用在 Wayland 原生运行（无需 Xwayland）；`gvfs` 提供回收站/挂载后端；目录默认打开方式设为 Nemo（`/etc/xdg/mimeapps.list`）；预置「在终端中打开」动作（走 `droidspaces-terminal` 包装脚本，ghostty 优先、回退 kitty，与 `Mod+T` 行为一致）。
   - **neovim**：预置最小 `init.lua`（UTF-8、行号、真彩色、鼠标、系统剪贴板同步）；随附 `wl-clipboard` 提供剪贴板支撑。删除 `~/.config/nvim/init.lua` 即可恢复原生默认。
   - **GTK3/GTK4 暗色主题**：与 Noctalia 深色风格一致（ghostty 与 Nemo 均读取）。
+  - **终端美化**（`scripts/terminal/setup-beautify.sh` 一键部署，写入 `/etc/skel` 并同步到用户家目录）：
+    - **fish shell**：设为默认 shell（`chsh -s /usr/bin/fish`），kitty/ghostty 的 `shell`/`command` 均指向 fish 交互登录模式。
+    - **reef + reef-tools**（AUR）：bash 兼容层 + 现代 CLI 工具替代（grep→rg, find→fd, cat→bat, ls→eza, cd→zoxide）；`conf.d/reef.fish` 在交互会话自动 `reef on`。
+    - **Fisher + Tide**：`fisher.fish` 手动下载到 functions 目录，`fisher install ilancosman/tide@v6` 预装；`tide-apply.fish` 直写 universal 变量（Lean 风格，`❯` 提示符，单行，左 os→pwd→git→newline→character，右 status/cmd_duration/context/jobs/语言运行时/time）。
+    - **Maple Mono NF CN 字体**：从 GitHub release 下载（v7.9，Nerd Font + 中文），安装到 `/usr/share/fonts/MapleMono/`，`fc-cache` 刷新。
+    - **kitty 配置**：Catppuccin Frappe 主题（`include themes/frappe.conf`）、Maple Mono NF CN 字体 14pt、Neovide 风格光标拖尾（`cursor_trail 3`）、背景半透明 0.85、无边框。
+    - **ghostty 配置**（仅 `terminal=ghostty` 时）：`theme = catppuccin-frappe`（内置）、Maple Mono NF CN 14pt、`background-blur = true`（Ghostty 1.1+ 原生 ext-background-effect-v1）、`custom-shader = shaders/cursor_warp.glsl`（克隆 `ghostty-cursor-shaders` 仓库）、背景半透明 0.85。
+    - **niri 背景模糊**：`config.kdl` 追加 `window-rule` 对 kitty/ghostty 启用 `background-effect { blur true }`（kitty 原生 blur 在 niri 不生效，ghostty 自带 blur 时由协议优先）。
+    - **Nemo 中文**：安装 `cinnamon-translations` 包（Nemo UI 翻译来源），配合已生成的 `zh_CN.UTF-8` locale 实现中文界面。
 - Noctalia Shell：niri 是其官方集成的合成器之一，通知守护/启动器/控制中心均为内置，无需额外守护进程；其自身无 polkit 认证代理（本项目内 USB Manager 走免密 sudo，不受影响）。
 - 宿主侧准备与 Wayland/Anland 配置一节相同：刷入 virtual-drm-daemon、安装 Anland App、绑定挂载 `display_daemon.sock -> /run/display.sock`、开启 GPU 访问与 SELinux 宽容，并在 Anland 中开启无障碍开关（否则 Android 会拦截 Super 键）。
 - 已知限制：ANiri 上游声明的已知问题包括 glmark2/vkmark 得分略低于 KWin、Android 悬浮窗可能引起花屏、麦克风/摄像头转发应用侧不可读；本模板未集成 Xwayland（ patched Xwayland 属于 KWin 预编译包体系）；Nemo 的「在终端中打开」动作在空白背景右键时可能不显示（对文件/文件夹右键可用）。
