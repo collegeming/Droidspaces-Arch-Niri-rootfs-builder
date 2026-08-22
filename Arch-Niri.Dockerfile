@@ -151,8 +151,10 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
         rm -rf /usr/local/lib/zig; \
         rm -rf /tmp/ghostty-pkg; \
     fi && \
-    # 中文附加字体（可选）
-    if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed noto-fonts-cjk; fi && \
+    # 中文附加字体（可选）：用思源黑体 CN（59MB）替代 noto-fonts-cjk（313MB），
+    # 省约 254MB。思源黑体 CN = Adobe Source Han Sans 简中子集，字形质量与
+    # Noto CJK 同级（同一设计），只含简中 Sans，本场景（中文桌面）完全够用。
+    if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed adobe-source-han-sans-cn-fonts; fi && \
     ############################################## 可选组件 ################################################
     # 输入法 fcitx5 + rime 雾凇拼音 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \

@@ -93,6 +93,36 @@
   - **`lamco`**：基于 IronRDP 的标准 RDP 服务端（PC 端 Windows 自带 `mstsc` 免装客户端），aarch64 需从源码构建（Rust 1.89+，约 30-60 分钟），依赖 PipeWire + dbus-broker。连接 `<手机IP>:3389`。许可证 BSL 1.1（单实例免费）。
   - 两方案不冲突（不同端口/协议），修饰键缺陷是 niri/Smithay 上游共有问题（不可在容器侧修复）。详细调研见 `remote-access-background-and-solutions.md`。
 
+#### VNC 连接操作说明（`remote=wayvnc`）
+
+**前提**：构建时选 `remote=wayvnc`；容器启动后 `wayvnc.service` 会自动监听 `0.0.0.0:5900`。
+
+**PC 端连接步骤**：
+
+1. **获取手机 IP**：在手机上查看 Droidspaces 容器使用的网络模式——
+   - **NAT 模式**：手机设置 → WLAN → 查看 IP（如 `192.168.1.100`）
+   - **主机网络模式**：与手机同一 IP
+
+2. **下载 VNC 客户端**（任选其一，免费）：
+   - **Windows**：[TigerVNC](https://tigervnc.org/)（轻量，推荐）或 [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
+   - **macOS**：自带的「屏幕共享」或 [TigerVNC](https://tigervnc.org/)
+   - **Linux**：`pacman -S tigervnc` 或 `apt install tigervnc-viewer` / Remmina
+
+3. **连接**：打开 VNC 客户端，输入地址：
+   ```
+   <手机IP>:5900
+   ```
+   例如 `192.168.1.100:5900`（TigerVNC 输入 `192.168.1.100::5900`）。
+
+4. **操作**：
+   - 连接后即可看到 niri 桌面（与手机屏幕同一画面）
+   - **鼠标**：完全可用（移动、点击、拖拽、滚轮）
+   - **键盘字符输入**：完全可用（终端打字、中文输入）
+   - **fcitx5 中文输入**：正常
+   - **窗口管理快捷键**：Super+Tab / Super+Q 等 niri 快捷键**不触发**（niri#403 上游限制），请用 Noctalia Shell 的 UI 按钮替代（切换窗口、关闭窗口、移动窗口等）
+
+5. **断开**：关闭 VNC 客户端窗口即可。wayvnc 服务仍在运行，随时可重连。
+
 ## 功能概览
 
 - 多发行版 RootFS 构建：支持 Debian、Ubuntu、Fedora、Arch、Artix 和 NixOS。
