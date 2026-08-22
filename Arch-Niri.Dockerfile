@@ -419,7 +419,7 @@ EOF_RUN
 #   普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代
 RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         mkdir -p /etc/wayvnc && \
-        printf 'address=0.0.0.0\nport=5900\nenable_auth=true\npassword=aniri1234\nmax_framerate=30\n' > /etc/wayvnc/config && \
+        printf 'address=0.0.0.0\nport=5900\nenable_auth=true\npassword=aniri123\nmax_framerate=30\n' > /etc/wayvnc/config && \
         echo "[Unit]" > /etc/systemd/system/wayvnc.service && \
         echo "Description=Wayland VNC Server" >> /etc/systemd/system/wayvnc.service && \
         echo "After=niri.service" >> /etc/systemd/system/wayvnc.service && \
