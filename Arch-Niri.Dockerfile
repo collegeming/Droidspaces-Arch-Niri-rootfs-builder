@@ -418,6 +418,8 @@ EOF_RUN
 # 已知限制（两方案共有）：虚拟键盘修饰键不触发 niri 自身快捷键（niri#403），
 #   普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代
 RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
+        mkdir -p /etc/wayvnc && \
+        printf 'address=0.0.0.0\nport=5900\nenable_auth=true\npassword=aniri1234\nmax_framerate=30\n' > /etc/wayvnc/config && \
         echo "[Unit]" > /etc/systemd/system/wayvnc.service && \
         echo "Description=Wayland VNC Server" >> /etc/systemd/system/wayvnc.service && \
         echo "After=niri.service" >> /etc/systemd/system/wayvnc.service && \
@@ -428,7 +430,7 @@ RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         echo "User=${USERNAME}" >> /etc/systemd/system/wayvnc.service && \
         echo "Environment=XDG_RUNTIME_DIR=/run/user/1000" >> /etc/systemd/system/wayvnc.service && \
         echo "ExecStartPre=/usr/bin/sleep 2" >> /etc/systemd/system/wayvnc.service && \
-        echo "ExecStart=/usr/bin/wayvnc 0.0.0.0 5900" >> /etc/systemd/system/wayvnc.service && \
+        echo "ExecStart=/usr/bin/wayvnc --config /etc/wayvnc/config" >> /etc/systemd/system/wayvnc.service && \
         echo "Restart=on-failure" >> /etc/systemd/system/wayvnc.service && \
         echo "RestartSec=5s" >> /etc/systemd/system/wayvnc.service && \
         echo "" >> /etc/systemd/system/wayvnc.service && \

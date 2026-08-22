@@ -27,6 +27,10 @@ cat > /etc/lamco/config.toml <<'CONF'
 [server]
 listen = "0.0.0.0:3389"
 
+[security]
+# PAM 认证：连接时输入容器内系统用户名+密码（如 colle / 1234）
+auth_method = "pam"
+
 [capture]
 backend = "portal"
 max_fps = 30
