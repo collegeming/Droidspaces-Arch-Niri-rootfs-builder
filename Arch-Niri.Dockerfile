@@ -127,10 +127,10 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     pacman -S --noconfirm --needed paru base-devel zig upower noto-fonts noto-fonts-emoji && \
     # 终端选择（TERMINAL_ARG）：kitty（默认，已随上面 pacman 装好，直接跳过）
     # 或 ghostty（调用 scripts/build-ghostty.sh：官方稳定版 1.3.1 PKGBUILD +
-    # 官方 zig 0.16.0 + 删 --system 改在线 fetch + pandoc 官方二进制，约 25-50
-    # 分钟，硬失败——任何错误 exit 1，不再静默回退 kitty）。脚本封装为单点
-    # 维护，Arch-Niri 与 Arch-KDE 共用。kitty 选项跳过本块，直接用已装仓库 kitty。
-    # ghostty 真实根因详见 scripts/build-ghostty.sh 顶部注释。
+    # 官方 zig 0.15.2（1.3.1 要求版本，非 0.16.0）+ 删 --system 改在线 fetch +
+    # pandoc 官方二进制，约 25-50 分钟，硬失败——任何错误 exit 1，不再静默
+    # 回退 kitty）。脚本封装为单点维护，Arch-Niri 与 Arch-KDE 共用。kitty 选项
+    # 跳过本块，直接用已装仓库 kitty。ghostty 真实根因详见脚本顶部注释。
     if [ "$TERMINAL_ARG" = "ghostty" ]; then \
         chmod +x /usr/local/sbin/build-ghostty && /usr/local/sbin/build-ghostty; \
         userdel -r aurbuild 2>/dev/null || true; \

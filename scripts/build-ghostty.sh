@@ -1,13 +1,17 @@
 #!/bin/bash
 # scripts/build-ghostty.sh
-# 构建并安装 ghostty 稳定版 1.3.1（Arch 官方 PKGBUILD + 官方 zig 0.16.0 aarch64 二进制）。
+# 构建并安装 ghostty 稳定版 1.3.1（Arch 官方 PKGBUILD + 官方 zig 0.15.2 aarch64 二进制）。
 # 供 Arch-Niri / Arch-KDE 等 Dockerfile 的 terminal=ghostty 复用，硬失败（任何错误 exit 1）。
+#
+# zig 版本：ghostty 1.3.1 稳定版 requireZig = 0.15.2（不是 0.16.0！）。
+# ALARM 仓库的 zig 是 0.16.0，触发 requireZig 版本检查失败；故下载官方 0.15.2
+# aarch64 二进制替换。0.15.2 是 1.3.1 原生 zig 版本，包哈希与 build.zig.zon 一致。
 #
 # 真实根因（Run #20 日志证实）：fetch-zig-cache.sh + --system 离线流程在 zig 0.16 下
 # 对不上——build.zig.zon.txt 清单里 uucode 列了 git URL（算出的哈希）与预打包 tarball
 # 声明哈希 ZZjBPq... 不一致，--system 按声明哈希找目录找不到。故对齐 ghostty CI
 # （nix develop -c zig build，从不用 --system）：sed 删 --system、build 前置
-# ZIG_GLOBAL_CACHE_DIR 复用 prepare() 已拉依赖、zig 0.16 在线 fetch 缺失项并按
+# ZIG_GLOBAL_CACHE_DIR 复用 prepare() 已拉依赖、zig 0.15.2 在线 fetch 缺失项并按
 # 内容哈希校验。用官方 zig 0.16.0 aarch64 二进制（ziglang.org）放 /usr/local/bin。
 set -euo pipefail
 
@@ -20,13 +24,15 @@ fi
 
 echo "--> [终端] 仓库暂无 ghostty，用官方稳定版 1.3.1 PKGBUILD + 官方 zig 构建..."
 
-# 2) 官方 zig 0.16.0 aarch64 二进制（与 ghostty CI 同源，哈希计算一致）
+# 2) 官方 zig 0.15.2 aarch64 二进制（ghostty 1.3.1 稳定版要求 0.15.2，
+#    用官方二进制确保包哈希与 build.zig.zon 声明一致——ALARM 包是 0.16.0
+#    会触发 requireZig 版本检查失败；0.15.2 官方 aarch64 二进制 ziglang 有）
 wget -q --tries=5 --waitretry=3 -O /tmp/zig-off.tar.xz \
-    https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz
+    https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz
 tar -xJf /tmp/zig-off.tar.xz -C /tmp
-install -m 755 /tmp/zig-aarch64-linux-0.16.0/zig /usr/local/bin/zig
-cp -a /tmp/zig-aarch64-linux-0.16.0/lib /usr/local/lib/zig
-rm -rf /tmp/zig-off.tar.xz /tmp/zig-aarch64-linux-0.16.0
+install -m 755 /tmp/zig-aarch64-linux-0.15.2/zig /usr/local/bin/zig
+cp -a /tmp/zig-aarch64-linux-0.15.2/lib /usr/local/lib/zig
+rm -rf /tmp/zig-off.tar.xz /tmp/zig-aarch64-linux-0.15.2
 /usr/local/bin/zig version
 
 # 3) pandoc 官方 aarch64 二进制（aarch64 无 pandoc-cli 包；cn pandoc-bin 在 arm64 InvalidExe）
