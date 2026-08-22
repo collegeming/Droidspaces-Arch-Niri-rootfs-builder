@@ -389,7 +389,8 @@ RUN <<'EOF_RUN'
 cat <<'EOF' > /etc/systemd/system/niri.service
 [Unit]
 Description=Niri Anland compositor
-After=network.target
+After=network.target user@1000.service
+Wants=user@1000.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -420,7 +421,7 @@ EOF_RUN
 #   普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代
 RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         mkdir -p /etc/wayvnc && \
-        printf 'address=0.0.0.0\nport=5900\nenable_auth=true\npassword=aniri123\nrelax_encryption=true\nallow_broken_crypto=true\n' > /etc/wayvnc/config && \
+        printf 'address=0.0.0.0\nport=5900\n' > /etc/wayvnc/config && \
         chmod +x /usr/local/sbin/wayvnc-start && \
         echo "[Unit]" > /etc/systemd/system/wayvnc.service && \
         echo "Description=Wayland VNC Server" >> /etc/systemd/system/wayvnc.service && \

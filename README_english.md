@@ -89,7 +89,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Known limitations: upstream ANiri lists a few known issues (glmark2/vkmark scores slightly below KWin, Android floating windows may cause glitches, microphone/camera forwarding is unreadable by apps); Xwayland is not integrated (the patched Xwayland belongs to the KWin prebuilt package set); the Nemo "Open in Terminal" action may not appear on an empty-background right-click (right-clicking a file or folder works).
 - **Remote access** (workflow input `remote`, Arch-Niri only):
   - **`none` (default)**: no remote access.
-  - **`wayvnc` (recommended)**: Wayland-native VNC server, ALARM extra prebuilt package (minimal change, ~5MB), niri implements all wlr protocols wayvnc needs (screencopy v3 + virtual-pointer + virtual-keyboard + data-control). Connect from PC via TigerVNC/Remmina to `<phone-ip>:5900`, **password `aniri123`** (config file `/etc/wayvnc/config`, `password=` field is editable, **VNC protocol limit ≤8 bytes**). Known limitation: virtual keyboard modifiers don't trigger niri's own keybinds (Super+Tab etc., niri#403); normal character input works; use Noctalia Shell buttons for window management.
+  - **`wayvnc` (recommended)**: Wayland-native VNC server, ALARM extra prebuilt package (minimal change, ~5MB), niri implements all wlr protocols wayvnc needs (screencopy v3 + virtual-pointer + virtual-keyboard + data-control). Connect from PC via TigerVNC/Remmina/NyaTerm to `<phone-ip>:5900`, **no password** (wayvnc 0.10.1 offers RSA-AES security type when auth is enabled, which most Windows VNC clients don't support, so auth is disabled by default — local network only). For secure remote access, use SSH tunnel: `ssh -L 5900:localhost:5900 colle@<phone-ip>`, then VNC to `localhost:5900`. Known limitation: virtual keyboard modifiers don't trigger niri's own keybinds (Super+Tab etc., niri#403); normal character input works; use Noctalia Shell buttons for window management.
   - **`lamco`**: standard RDP server based on IronRDP (PC's built-in `mstsc` needs no client install), aarch64 requires source build (Rust 1.89+, ~30-60 min), depends on PipeWire + dbus-broker. Connect to `<phone-ip>:3389`, **PAM auth**: enter the in-container system username+password (e.g. `colle` / `1234`). License BSL 1.1 (free for single instance). Config file `/etc/lamco/config.toml` (`auth_method = "pam"`).
   - The two options don't conflict (different ports/protocols); the modifier-key limitation is a shared niri/Smithay upstream issue (not fixable on the container side). Full research in `remote-access-background-and-solutions.md`.
 
@@ -114,7 +114,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
    ```
    e.g. `192.168.1.100:5900` (TigerVNC: `192.168.1.100::5900`).
 
-   **Password**: enter `aniri123` (default password, configured in the `password=` field of `/etc/wayvnc/config`, VNC protocol limit ≤8 bytes). To change it: edit that file and run `systemctl restart wayvnc`.
+   **Password**: no password (VNC auth is disabled). For secure access, use SSH tunnel: run `ssh -L 5900:localhost:5900 colle@<phone-ip>` on PC, then VNC to `localhost:5900`.
 
 4. **Usage**:
    - You'll see the niri desktop (same view as the phone screen)
