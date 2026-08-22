@@ -93,6 +93,36 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
   - **`lamco`**: standard RDP server based on IronRDP (PC's built-in `mstsc` needs no client install), aarch64 requires source build (Rust 1.89+, ~30-60 min), depends on PipeWire + dbus-broker. Connect to `<phone-ip>:3389`. License BSL 1.1 (free for single instance).
   - The two options don't conflict (different ports/protocols); the modifier-key limitation is a shared niri/Smithay upstream issue (not fixable on the container side). Full research in `remote-access-background-and-solutions.md`.
 
+#### VNC Connection Guide (`remote=wayvnc`)
+
+**Prerequisite**: Build with `remote=wayvnc`; after container start, `wayvnc.service` auto-listens on `0.0.0.0:5900`.
+
+**PC-side connection steps**:
+
+1. **Get phone IP**: Check the Droidspaces network mode on the phone —
+   - **NAT mode**: Phone Settings → WLAN → check IP (e.g. `192.168.1.100`)
+   - **Host network mode**: same IP as the phone
+
+2. **Download a VNC client** (pick one, free):
+   - **Windows**: [TigerVNC](https://tigervnc.org/) (lightweight, recommended) or [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
+   - **macOS**: built-in Screen Sharing or [TigerVNC](https://tigervnc.org/)
+   - **Linux**: `pacman -S tigervnc` or `apt install tigervnc-viewer` / Remmina
+
+3. **Connect**: Open VNC client, enter:
+   ```
+   <phone-ip>:5900
+   ```
+   e.g. `192.168.1.100:5900` (TigerVNC: `192.168.1.100::5900`).
+
+4. **Usage**:
+   - You'll see the niri desktop (same view as the phone screen)
+   - **Mouse**: fully usable (move, click, drag, scroll)
+   - **Keyboard character input**: fully usable (terminal typing, Chinese input)
+   - **fcitx5 Chinese input**: works
+   - **Window management shortcuts**: Super+Tab / Super+Q etc. do **not** trigger (niri#403 upstream limitation); use Noctalia Shell UI buttons instead (switch/close/move windows)
+
+5. **Disconnect**: Close the VNC client window. The wayvnc service keeps running; reconnect anytime.
+
 ## Feature Overview
 
 - Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, Arch, Artix, and NixOS.
