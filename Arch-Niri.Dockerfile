@@ -126,8 +126,9 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # AUR 构建链（约 25-50 分钟）：ghostty master 已要求 zig>=0.16.0
     # （AUR PKGBUILD 的 zig<0.16.0 约束已过时），直接使用仓库 zig 0.16。
     # sed 调整 PKGBUILD：移除 'zig<0.16.0' 与 pandoc-cli 两项 makedepend
-    # （aarch64 仓库无 pandoc-cli 包名，pandoc 二进制由 cn 仓库 pandoc-bin
-    # 提供路径）与 nautilus 子包（避免拖入 nautilus-python）。
+    # （aarch64 仓库无 pandoc-cli 包名；pandoc 用官方 aarch64 预编译二进制，
+    # cn 的 pandoc-bin 在 arm64 上 InvalidExe 无法执行）与 nautilus 子包
+    # （避免拖入 nautilus-python）。
     # 关键：删除 build() 的 `--system "$srcdir/zig-global-cache/p"` 离线标志，
     # 对齐 ghostty CI（nix develop -c zig build，从不用 --system）。AUR 的
     # fetch-zig-cache.sh + build.zig.zon.txt 手工清单在 zig 0.16 下对不上
@@ -138,10 +139,13 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     if pacman -S --noconfirm --needed ghostty; then \
         echo "--> [终端] 已从 ALARM 仓库安装 ghostty"; \
     else \
-        echo "--> [终端] 仓库暂无 ghostty，尝试 AUR 源码构建（zig 0.16 + pandoc-bin + ghostty-git）..."; \
+        echo "--> [终端] 仓库暂无 ghostty，尝试 AUR 源码构建（zig 0.16 + 官方 pandoc + ghostty-git）..."; \
         if useradd -m aurbuild && \
            echo 'aurbuild ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/aurbuild && \
-           sudo -u aurbuild paru -S --noconfirm pandoc-bin && \
+           wget -q --tries=5 --waitretry=3 -O /tmp/pandoc.tar.gz https://github.com/jgm/pandoc/releases/download/3.10.2/pandoc-3.10.2-linux-arm64.tar.gz && \
+           tar -xzf /tmp/pandoc.tar.gz -C /tmp && \
+           install -m 755 /tmp/pandoc-*/bin/pandoc /usr/local/bin/pandoc && \
+           rm -rf /tmp/pandoc.tar.gz /tmp/pandoc-3* && \
            git clone --depth=1 https://aur.archlinux.org/ghostty-git.git /tmp/ghostty-aur && \
            sed -i "s/'zig<0.16.0'//" /tmp/ghostty-aur/PKGBUILD && \
            sed -i '/^[[:space:]]*pandoc-cli[[:space:]]*$/d' /tmp/ghostty-aur/PKGBUILD && \
@@ -158,7 +162,8 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
         fi; \
         userdel -r aurbuild 2>/dev/null || true; \
         rm -f /etc/sudoers.d/aurbuild; \
-        pacman -Rdd --noconfirm zig pandoc-bin 2>/dev/null || true; \
+        pacman -Rdd --noconfirm zig 2>/dev/null || true; \
+        rm -f /usr/local/bin/pandoc; \
         rm -rf /tmp/ghostty-aur; \
     fi && \
     # 中文附加字体（可选）
