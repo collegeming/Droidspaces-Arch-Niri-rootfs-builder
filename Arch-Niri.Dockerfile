@@ -118,12 +118,9 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     else \
         echo "--> [提示] ghostty 尚未进入 aarch64 仓库，保留 kitty 作为回退终端"; \
     fi && \
-    # AUR 助手 paru（来自 archlinuxcn aarch64；容器内以普通用户运行）
-    paru \
-    # 电源信息（Noctalia 电池组件）
-    upower \
-    # 字体（中文环境附带 CJK）
-    noto-fonts noto-fonts-emoji && \
+    # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
+    # 电源信息（Noctalia 电池组件）、字体（中文环境由下方开关附带 CJK）
+    pacman -S --noconfirm --needed paru upower noto-fonts noto-fonts-emoji && \
     # 中文附加字体（可选）
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed noto-fonts-cjk; fi && \
     ############################################## 可选组件 ################################################
