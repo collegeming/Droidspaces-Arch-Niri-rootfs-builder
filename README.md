@@ -97,8 +97,12 @@
 
 - 多发行版 RootFS 构建：支持 Debian、Ubuntu、Fedora、Arch、Artix 和 NixOS。
 - KDE 桌面可裁剪：支持命令行 RootFS、最小 KDE、精简 KDE 和移动版 KDE。
-- 无 KDE 的 niri 桌面：`Arch-Niri` 目标提供最小化 Arch + niri（ANiri anland 后端）+ Noctalia Shell。
-- 桌面自动启动与故障恢复：X11、Plasma Wayland 和 Plasma Mobile 使用统一的 systemd 服务模板，异常退出后会限频自动重启。
+- 无 KDE 的 niri 桌面：`Arch-Niri` 目标提供最小化 Arch + niri（ANiri anland 后端）+ Noctalia Shell，**不含任何 KDE 组件**。
+- 终端选择参数化（`terminal`）：Arch-Niri/Arch-KDE 可选 kitty（仓库直装）、ghostty（官方稳定版 1.3.1 源码构建）、konsole（KDE 自带）、both（同时出 kitty+ghostty 两版 rootfs 到一个 release）。
+- 终端美化预配置：fish shell（默认 shell）+ reef/reef-tools（bash 兼容层）+ Fisher + Tide v6（Classic Powerline 双行样式）+ Maple Mono NF CN 字体 + Catppuccin Frappe 主题 + 光标拖尾 + 背景半透明 + niri 背景模糊 window-rule。
+- Nemo 中文：安装 cinnamon-translations 包，配合 zh_CN.UTF-8 locale 实现 Nemo 中文界面。
+- 远程访问参数化（`remote`）：Arch-Niri 可选 wayvnc（VNC 5900，推荐）或 lamco（RDP 3389，mstsc 免装客户端），从 PC 远程访问手机容器桌面。
+- 桌面自动启动与故障恢复：X11、Plasma Wayland 和 Plasma Mobile 使用统一的 systemd 服务模板，异常退出后会限频自动重启。niri 自启动由 `niri.service`（`dbus-run-session` 包裹）实现。
 - Termux:X11 桌面启动：X11 模式下默认使用 `DISPLAY=:5`。
 - PulseAudio 音频转发：支持 Unix socket、TCP 和关闭音频转发。
 - 中文环境：可选启用 `zh_CN.UTF-8` 和 `Asia/Shanghai` 时区。
@@ -140,6 +144,8 @@ GitHub Actions 的主要输入项如下：
 | 压缩工具集成 (`enable_zip`) | `true`、`false` | `true` | 安装常用压缩工具。 |
 | Docker 集成 (`enable_docker`) | `true`、`false` | `false` | 在 RootFS 内安装 Docker 相关包。 |
 | 构建 Wayland 预编译包 (`build_wayland_packages`) | `true`、`false` | `false` | 构建 RootFS 前触发 KWin/Xwayland 预编译包更新流程。 |
+| 终端选择 (`terminal`) | `kitty`、`ghostty`、`konsole`、`both` | `kitty` | Arch-Niri/Arch-KDE 的终端。`both` 同时构建 kitty+ghostty 两个 rootfs 到一个 release。 |
+| 远程访问 (`remote`) | `none`、`wayvnc`、`lamco` | `none` | Arch-Niri 远程访问方案。`wayvnc`=VNC 5900（推荐，改动最小）；`lamco`=RDP 3389（mstsc 免装客户端，需源码构建）。 |
 
 KDE 模式说明：
 
