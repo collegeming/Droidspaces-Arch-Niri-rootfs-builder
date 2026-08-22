@@ -114,9 +114,10 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 音频栈（Anland App 负责转发，容器内安装客户端库）
     pipewire libpipewire pipewire-pulse wireplumber \
     noctalia fuzzel kitty && \
-    # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
+    # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行；
+    # fakeroot 为 makepkg 打包必需，完整 base-devel 体积大、由用户按需自装）、
     # 电源信息（Noctalia 电池组件）、字体（中文环境由下方开关附带 CJK）
-    pacman -S --noconfirm --needed paru upower noto-fonts noto-fonts-emoji && \
+    pacman -S --noconfirm --needed paru fakeroot upower noto-fonts noto-fonts-emoji && \
     # 终端 ghostty 三层保障：ALARM 仓库 → AUR 源码构建 → kitty 回退
     # AUR 构建链（约 25-50 分钟）：
     #   * zig0.15-bin (0.15.2) 提供 /usr/bin/zig-0.15（不覆盖系统 zig）
