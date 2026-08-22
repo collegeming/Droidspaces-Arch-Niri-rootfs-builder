@@ -121,7 +121,7 @@ on:
         type: boolean
         default: false
       terminal:
-        description: '终端选择（kitty-仓库直装稳定快速；ghostty-官方稳定版 1.3.1 源码构建约 25-50 分钟硬失败；konsole-KDE 自带，仅 Arch-KDE 适用）'
+        description: '终端选择（kitty-仓库直装稳定快速；ghostty-官方稳定版 1.3.1 源码构建约 25-50 分钟硬失败；konsole-KDE 自带仅 Arch-KDE 适用；both-同时构建 kitty+ghostty 两个 rootfs 到一个 release）'
         required: true
         type: choice
         default: 'kitty'
@@ -129,6 +129,7 @@ on:
           - 'kitty'
           - 'ghostty'
           - 'konsole'
+          - 'both'
 
 jobs:
   # --------------------------------------------------------
@@ -138,6 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
+      terminals: ${{ steps.find-templates.outputs.terminals }}
       wayland_enabled: ${{ steps.find-templates.outputs.wayland_enabled }}
       wayland_package_target: ${{ steps.find-templates.outputs.wayland_package_target }}
       pulseaudio_effective: ${{ steps.find-templates.outputs.pulseaudio_effective }}
@@ -236,6 +238,16 @@ jobs:
           echo "wayland_enabled=$ENABLE_ANLAND_KDE" >> $GITHUB_OUTPUT
           echo "wayland_package_target=$WAYLAND_PACKAGE_TARGET" >> $GITHUB_OUTPUT
           echo "pulseaudio_effective=$PULSE_AUDIO" >> $GITHUB_OUTPUT
+
+          # terminal 维度：both 时展开为 kitty+ghostty 两 job（仅对支持 terminal 选择
+          # 的模板有意义；其他模板 build 脚本 -T 参数被 Dockerfile 忽略）
+          TERMINAL_INPUT="${{ github.event.inputs.terminal }}"
+          if [ "$TERMINAL_INPUT" = "both" ]; then
+            TERMINALS='["kitty","ghostty"]'
+          else
+            TERMINALS=$(jq -n -c --arg t "$TERMINAL_INPUT" '[$t]')
+          fi
+          echo "terminals=$TERMINALS" >> $GITHUB_OUTPUT
           echo "最终决定的构建矩阵: $TEMPLATES"
           echo "Wayland 支持最终值: $ENABLE_ANLAND_KDE"
           echo "KDE Wayland 预编译包目标: ${WAYLAND_PACKAGE_TARGET:-none}"
@@ -337,6 +349,7 @@ jobs:
       fail-fast: false
       matrix:
         template: ${{ fromJson(needs.setup.outputs.templates) }}
+        terminal: ${{ fromJson(needs.setup.outputs.terminals) }}
     steps:
       - name: 检出代码库
         uses: actions/checkout@v5
@@ -454,12 +467,12 @@ jobs:
             -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}" \
-            -T "${{ inputs.terminal }}"
+            -T "${{ matrix.terminal }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.template }}-rootfs
+          name: ${{ matrix.template }}-${{ matrix.terminal }}-rootfs
           path: "*.tar.xz"
           retention-days: 1
 
