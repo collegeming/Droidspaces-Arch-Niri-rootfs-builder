@@ -6,6 +6,12 @@
 set -euo pipefail
 
 echo "==> [远程] 克隆并构建 Lamco RDP Server..."
+
+# 确保构建依赖（libspa-sys 的 bindgen 需要 libclang，找不到 stdbool.h）
+for dep in clang pkg-config; do
+    command -v "$dep" >/dev/null 2>&1 || pacman -S --noconfirm --needed "$dep"
+done
+
 git clone --depth=1 https://github.com/lamco-admin/lamco-rdp-server.git /tmp/lamco
 cd /tmp/lamco
 
