@@ -508,8 +508,9 @@ jobs:
 
             构建选项:
             - **自定义用户名**: ${{ github.event.inputs.custom_username }}
-            - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}
-            - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}
+            - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}（Arch-Niri 为 niri+Noctalia，此项被忽略）
+            - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}（Arch-Niri 时为 niri 自启动）
+            - **终端**: ${{ github.event.inputs.terminal }}
             - **Wayland 支持**: ${{ needs.setup.outputs.wayland_enabled }}
             - KDE Wayland 预编译包目标: ${{ needs.setup.outputs.wayland_package_target || 'none' }}
             - PulseAudio 音频转发: ${{ needs.setup.outputs.pulseaudio_effective }}

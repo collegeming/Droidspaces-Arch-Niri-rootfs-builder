@@ -508,8 +508,9 @@ jobs:
 
             Build Options:
             - **Custom Username**: ${{ github.event.inputs.custom_username }}
-            - **KDE Desktop**: ${{ github.event.inputs.build_KDE }}
-            - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }}
+            - **KDE Desktop**: ${{ github.event.inputs.build_KDE }} (Arch-Niri uses niri+Noctalia; this is ignored)
+            - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }} (for Arch-Niri, this auto-starts niri)
+            - **Terminal**: ${{ github.event.inputs.terminal }}
             - **Wayland support**: ${{ needs.setup.outputs.wayland_enabled }}
             - KDE Wayland package target: ${{ needs.setup.outputs.wayland_package_target || 'none' }}
             - PulseAudio Audio Forwarding: ${{ needs.setup.outputs.pulseaudio_effective }}
