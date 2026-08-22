@@ -128,6 +128,12 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # sed 调整 PKGBUILD：移除 'zig<0.16.0' 与 pandoc-cli 两项 makedepend
     # （aarch64 仓库无 pandoc-cli 包名，pandoc 二进制由 cn 仓库 pandoc-bin
     # 提供路径）与 nautilus 子包（避免拖入 nautilus-python）。
+    # 关键：删除 build() 的 `--system "$srcdir/zig-global-cache/p"` 离线标志，
+    # 对齐 ghostty CI（nix develop -c zig build，从不用 --system）。AUR 的
+    # fetch-zig-cache.sh + build.zig.zon.txt 手工清单在 zig 0.16 下对不上
+    # （uucode 等依赖找不到），改让 zig 0.16 在线 fetch 全部依赖并按内容
+    # 哈希校验（哈希 arch 无关，与 ghostty 声明一致）；build 命令前置
+    # ZIG_GLOBAL_CACHE_DIR 复用 prepare() 已拉的依赖，仅在线补缺。
     # paru 拒绝以 root 运行，构建使用临时 aurbuild 用户（免密 sudo 供依赖安装）
     if pacman -S --noconfirm --needed ghostty; then \
         echo "--> [终端] 已从 ALARM 仓库安装 ghostty"; \
@@ -140,6 +146,8 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
            sed -i "s/'zig<0.16.0'//" /tmp/ghostty-aur/PKGBUILD && \
            sed -i '/^[[:space:]]*pandoc-cli[[:space:]]*$/d' /tmp/ghostty-aur/PKGBUILD && \
            sed -i 's/ \$_pkgbase-nautilus-git//' /tmp/ghostty-aur/PKGBUILD && \
+           sed -i '/--system/d' /tmp/ghostty-aur/PKGBUILD && \
+           sed -i 's#DESTDIR=build zig build#ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache" DESTDIR=build zig build#' /tmp/ghostty-aur/PKGBUILD && \
            chown -R aurbuild:aurbuild /tmp/ghostty-aur && \
            sudo -u aurbuild bash -c 'cd /tmp/ghostty-aur && export EDITOR=true && makepkg -s --noconfirm' && \
            pacman -U --noconfirm /tmp/ghostty-aur/*.pkg.tar.* && \
