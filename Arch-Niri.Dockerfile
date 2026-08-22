@@ -132,7 +132,7 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 维护，Arch-Niri 与 Arch-KDE 共用。kitty 选项跳过本块，直接用已装仓库 kitty。
     # ghostty 真实根因详见 scripts/build-ghostty.sh 顶部注释。
     if [ "$TERMINAL_ARG" = "ghostty" ]; then \
-        /usr/local/sbin/build-ghostty; \
+        chmod +x /usr/local/sbin/build-ghostty && /usr/local/sbin/build-ghostty; \
         userdel -r aurbuild 2>/dev/null || true; \
         rm -f /etc/sudoers.d/aurbuild; \
         pacman -Rdd --noconfirm zig 2>/dev/null || true; \

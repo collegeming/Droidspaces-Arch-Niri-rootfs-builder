@@ -88,7 +88,7 @@ RUN chmod +x /usr/local/sbin/install-anland-kde && \
         pacman -S --noconfirm --needed kitty && \
         printf '[General]\nTerminalApplication=kitty\n' > /etc/xdg/kdeglobals; \
     elif [ "$TERMINAL_ARG" = "ghostty" ]; then \
-        /usr/local/sbin/build-ghostty && \
+        chmod +x /usr/local/sbin/build-ghostty && /usr/local/sbin/build-ghostty && \
         printf '[General]\nTerminalApplication=ghostty\n' > /etc/xdg/kdeglobals; \
         userdel -r aurbuild 2>/dev/null || true; \
         rm -f /etc/sudoers.d/aurbuild; \
