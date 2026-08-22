@@ -97,8 +97,12 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 
 - Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, Arch, Artix, and NixOS.
 - Scalable KDE desktop profiles, from command-line only to minimal, compact, and mobile KDE.
-- KDE-free niri desktop: the `Arch-Niri` target provides minimal Arch + niri (ANiri anland backend) + Noctalia Shell.
-- Desktop auto-start and failure recovery using shared systemd service templates for X11, Plasma Wayland, and Plasma Mobile, with rate-limited automatic restarts after failures.
+- KDE-free niri desktop: the `Arch-Niri` target provides minimal Arch + niri (ANiri anland backend) + Noctalia Shell, **with no KDE components**.
+- Terminal choice (`terminal`): Arch-Niri/Arch-KDE can pick kitty (repo install), ghostty (official stable 1.3.1 source build), konsole (KDE built-in), or both (kitty+ghostty rootfs in one release).
+- Terminal beautification preconfigured: fish shell (default shell) + reef/reef-tools (bash compat) + Fisher + Tide v6 (Classic Powerline double-line) + Maple Mono NF CN font + Catppuccin Frappe theme + cursor trail + translucent background + niri blur window-rule.
+- Nemo Chinese: installs cinnamon-translations for Nemo Chinese UI, alongside zh_CN.UTF-8 locale.
+- Remote access (`remote`): Arch-Niri can enable wayvnc (VNC 5900, recommended) or lamco (RDP 3389, mstsc no client needed) for PC-to-phone desktop access.
+- Desktop auto-start and failure recovery using shared systemd service templates for X11, Plasma Wayland, and Plasma Mobile, with rate-limited automatic restarts after failures. niri auto-starts via `niri.service` (wrapped in `dbus-run-session`).
 - Termux:X11 desktop startup support. X11 mode defaults to `DISPLAY=:5`.
 - PulseAudio forwarding through Unix socket, TCP, or disabled mode.
 - Optional Chinese locale with `zh_CN.UTF-8` and `Asia/Shanghai` timezone.
@@ -140,6 +144,8 @@ The main GitHub Actions inputs are:
 | Compression tools integration (`enable_zip`) | `true`, `false` | `true` | Installs common compression tools. |
 | Docker integration (`enable_docker`) | `true`, `false` | `false` | Installs Docker-related packages inside the RootFS. |
 | Build Wayland prebuilt packages (`build_wayland_packages`) | `true`, `false` | `false` | Triggers the KWin/Xwayland prebuilt package workflow before building the RootFS. |
+| Terminal (`terminal`) | `kitty`, `ghostty`, `konsole`, `both` | `kitty` | Terminal for Arch-Niri/Arch-KDE. `both` builds kitty+ghostty rootfs to one release. |
+| Remote access (`remote`) | `none`, `wayvnc`, `lamco` | `none` | Arch-Niri remote access. `wayvnc`=VNC 5900 (recommended, minimal); `lamco`=RDP 3389 (mstsc, source build). |
 
 KDE mode details:
 
