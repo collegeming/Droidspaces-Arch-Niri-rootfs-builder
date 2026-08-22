@@ -119,52 +119,43 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     noctalia fuzzel kitty && \
     # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
     # base-devel 全组（makepkg 与源码构建必需，容器内 AUR 构建完全可用；
-    # 增加约 250MB 体积）、zig 0.16（ghostty master 的最低要求版本，构建后
-    # 随工具链清理）、电源信息、字体
+    # 增加约 250MB 体积）、zig 0.16（官方稳定版 PKGBUILD 无约束，0.16 满足；
+    # 构建后随工具链清理）、电源信息、字体
     pacman -S --noconfirm --needed paru base-devel zig upower noto-fonts noto-fonts-emoji && \
-    # 终端 ghostty 三层保障：ALARM 仓库 → AUR 源码构建 → kitty 回退
-    # AUR 构建链（约 25-50 分钟）：ghostty master 已要求 zig>=0.16.0
-    # （AUR PKGBUILD 的 zig<0.16.0 约束已过时），直接使用仓库 zig 0.16。
-    # sed 调整 PKGBUILD：移除 'zig<0.16.0' 与 pandoc-cli 两项 makedepend
-    # （aarch64 仓库无 pandoc-cli 包名；pandoc 用官方 aarch64 预编译二进制，
-    # cn 的 pandoc-bin 在 arm64 上 InvalidExe 无法执行）与 nautilus 子包
-    # （避免拖入 nautilus-python）。
-    # 关键：删除 build() 的 `--system "$srcdir/zig-global-cache/p"` 离线标志，
-    # 对齐 ghostty CI（nix develop -c zig build，从不用 --system）。AUR 的
-    # fetch-zig-cache.sh + build.zig.zon.txt 手工清单在 zig 0.16 下对不上
-    # （uucode 等依赖找不到），改让 zig 0.16 在线 fetch 全部依赖并按内容
-    # 哈希校验（哈希 arch 无关，与 ghostty 声明一致）；build 命令前置
-    # ZIG_GLOBAL_CACHE_DIR 复用 prepare() 已拉的依赖，仅在线补缺。
-    # paru 拒绝以 root 运行，构建使用临时 aurbuild 用户（免密 sudo 供依赖安装）
+    # 终端 ghostty 三层保障：ALARM 仓库 → 官方稳定版源码构建 → kitty 回退
+    # 用 Arch 官方稳定版 1.3.1 PKGBUILD（gitlab.archlinux.org）：zig 无版本
+    # 约束（ALARM 0.16.0 直接满足）、--system 离线流程在稳定版与 build.zig.zon
+    # 一致可跑（官方包就是这么构建的，不像 AUR ghostty-git master 的 .zon/.txt
+    # 不一致导致 uucode 找不到）。仅 1 处适配：pandoc-cli 在 aarch64 无包，
+    # sed 删该 makedepend，改用 pandoc 官方 aarch64 预编译二进制（3.10.2；
+    # cn 的 pandoc-bin 在 arm64 上 InvalidExe）；-Demit-docs 正常生成 man 页。
+    # paru 拒绝以 root 运行，构建用临时 aurbuild 用户（免密 sudo 供依赖安装）
     if pacman -S --noconfirm --needed ghostty; then \
         echo "--> [终端] 已从 ALARM 仓库安装 ghostty"; \
     else \
-        echo "--> [终端] 仓库暂无 ghostty，尝试 AUR 源码构建（zig 0.16 + 官方 pandoc + ghostty-git）..."; \
+        echo "--> [终端] 仓库暂无 ghostty，用官方稳定版 1.3.1 PKGBUILD 构建..."; \
         if useradd -m aurbuild && \
            echo 'aurbuild ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/aurbuild && \
            wget -q --tries=5 --waitretry=3 -O /tmp/pandoc.tar.gz https://github.com/jgm/pandoc/releases/download/3.10.2/pandoc-3.10.2-linux-arm64.tar.gz && \
            tar -xzf /tmp/pandoc.tar.gz -C /tmp && \
            install -m 755 /tmp/pandoc-*/bin/pandoc /usr/local/bin/pandoc && \
            rm -rf /tmp/pandoc.tar.gz /tmp/pandoc-3* && \
-           git clone --depth=1 https://aur.archlinux.org/ghostty-git.git /tmp/ghostty-aur && \
-           sed -i "s/'zig<0.16.0'//" /tmp/ghostty-aur/PKGBUILD && \
-           sed -i '/^[[:space:]]*pandoc-cli[[:space:]]*$/d' /tmp/ghostty-aur/PKGBUILD && \
-           sed -i 's/ \$_pkgbase-nautilus-git//' /tmp/ghostty-aur/PKGBUILD && \
-           sed -i '/--system/d' /tmp/ghostty-aur/PKGBUILD && \
-           sed -i 's#DESTDIR=build zig build#ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache" DESTDIR=build zig build#' /tmp/ghostty-aur/PKGBUILD && \
-           chown -R aurbuild:aurbuild /tmp/ghostty-aur && \
-           sudo -u aurbuild bash -c 'cd /tmp/ghostty-aur && export EDITOR=true && makepkg -s --noconfirm' && \
-           pacman -U --noconfirm /tmp/ghostty-aur/*.pkg.tar.* && \
+           install -d /tmp/ghostty-pkg && \
+           wget -q --tries=5 --waitretry=3 -O /tmp/ghostty-pkg/PKGBUILD https://gitlab.archlinux.org/archlinux/packaging/packages/ghostty/-/raw/main/PKGBUILD && \
+           sed -i '/pandoc-cli/d' /tmp/ghostty-pkg/PKGBUILD && \
+           chown -R aurbuild:aurbuild /tmp/ghostty-pkg && \
+           sudo -u aurbuild bash -c 'cd /tmp/ghostty-pkg && export EDITOR=true && makepkg -s --noconfirm' && \
+           pacman -U --noconfirm /tmp/ghostty-pkg/*.pkg.tar.* && \
            command -v ghostty; then \
-            echo "--> [终端] AUR 构建成功，已安装 ghostty"; \
+            echo "--> [终端] 官方稳定版 1.3.1 构建成功，已安装 ghostty"; \
         else \
-            echo "--> [终端] AUR 构建失败，回退 kitty（niri 快捷键运行时自动探测）"; \
+            echo "--> [终端] 构建失败，回退 kitty（niri 快捷键运行时自动探测）"; \
         fi; \
         userdel -r aurbuild 2>/dev/null || true; \
         rm -f /etc/sudoers.d/aurbuild; \
         pacman -Rdd --noconfirm zig 2>/dev/null || true; \
         rm -f /usr/local/bin/pandoc; \
-        rm -rf /tmp/ghostty-aur; \
+        rm -rf /tmp/ghostty-pkg; \
     fi && \
     # 中文附加字体（可选）
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed noto-fonts-cjk; fi && \
