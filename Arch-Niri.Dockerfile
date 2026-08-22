@@ -371,7 +371,7 @@ install -Dm644 /usr/share/niri/default-config.kdl /tmp/config.kdl
 sed -i 's/spawn-at-startup "waybar"/spawn-at-startup "noctalia"/' /tmp/config.kdl
 sed -i 's#spawn "alacritty"#spawn-sh "command -v ghostty >/dev/null 2>\&1 \&\& exec ghostty || exec kitty"#' /tmp/config.kdl
 sed -i 's/Open a Terminal: alacritty/Open a Terminal: ghostty (fallback kitty)/' /tmp/config.kdl
-sed -i '/Open a Terminal: ghostty/a\    Mod+E hotkey-overlay-title="Open Files: nemo" { spawn "nemo"; }' /tmp/config.kdl
+sed -i '/Open a Terminal: ghostty/a\    Alt+E hotkey-overlay-title="Open Files: nemo" { spawn "nemo"; }' /tmp/config.kdl
 if [ "$ENABLE_srf_ARG" = "true" ]; then
     printf '\n// Droidspaces: fcitx5 input method\nspawn-at-startup "fcitx5" "-d"\n' >> /tmp/config.kdl
 fi
