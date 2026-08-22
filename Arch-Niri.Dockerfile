@@ -123,19 +123,27 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 构建后随工具链清理）、电源信息、字体
     pacman -S --noconfirm --needed paru base-devel zig upower noto-fonts noto-fonts-emoji && \
     # 终端 ghostty 三层保障：ALARM 仓库 → 官方稳定版源码构建 → kitty 回退
-    # 用 Arch 官方稳定版 1.3.1 PKGBUILD（gitlab.archlinux.org）：zig 无版本
-    # 约束（ALARM 0.16.0 直接满足）、--system 离线流程在稳定版与 build.zig.zon
-    # 一致可跑（官方包就是这么构建的，不像 AUR ghostty-git master 的 .zon/.txt
-    # 不一致导致 uucode 找不到）。仅 1 处适配：pandoc-cli 在 aarch64 无包，
-    # sed 删该 makedepend，改用 pandoc 官方 aarch64 预编译二进制（3.10.2；
-    # cn 的 pandoc-bin 在 arm64 上 InvalidExe）；-Demit-docs 正常生成 man 页。
+    # 用 Arch 官方稳定版 1.3.1 PKGBUILD（gitlab.archlinux.org）。关键根因：
+    # ALARM 源码编译的 zig 0.16.0 与 ziglang 官方 0.16.0 二进制在包哈希计算
+    # 上有差异——build.zig.zon 声明的依赖哈希（如 uucode）只有官方二进制算
+    # 得出（ghostty CI 用 mitchellh/zig-overlay 0.16.0 = 官方二进制）。故
+    # 构建阶段下载官方 zig 0.16.0 aarch64 二进制（ziglang.org），放 /usr/local/bin
+    # 优先于 ALARM 的 /usr/bin/zig，让 makepkg 的 zig build/fetch 用官方二进制。
+    # 另 1 处适配：pandoc-cli 在 aarch64 无包，sed 删该 makedepend，改装 pandoc
+    # 官方 aarch64 预编译二进制（3.10.2；cn pandoc-bin 在 arm64 InvalidExe）。
     # paru 拒绝以 root 运行，构建用临时 aurbuild 用户（免密 sudo 供依赖安装）
     if pacman -S --noconfirm --needed ghostty; then \
         echo "--> [终端] 已从 ALARM 仓库安装 ghostty"; \
     else \
-        echo "--> [终端] 仓库暂无 ghostty，用官方稳定版 1.3.1 PKGBUILD 构建..."; \
+        echo "--> [终端] 仓库暂无 ghostty，用官方稳定版 1.3.1 PKGBUILD + 官方 zig 构建..."; \
         if useradd -m aurbuild && \
            echo 'aurbuild ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/aurbuild && \
+           wget -q --tries=5 --waitretry=3 -O /tmp/zig-off.tar.xz https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz && \
+           tar -xJf /tmp/zig-off.tar.xz -C /tmp && \
+           install -m 755 /tmp/zig-aarch64-linux-0.16.0/zig /usr/local/bin/zig && \
+           cp -a /tmp/zig-aarch64-linux-0.16.0/lib /usr/local/lib/zig && \
+           rm -rf /tmp/zig-off.tar.xz /tmp/zig-aarch64-linux-0.16.0 && \
+           /usr/local/bin/zig version && \
            wget -q --tries=5 --waitretry=3 -O /tmp/pandoc.tar.gz https://github.com/jgm/pandoc/releases/download/3.10.2/pandoc-3.10.2-linux-arm64.tar.gz && \
            tar -xzf /tmp/pandoc.tar.gz -C /tmp && \
            install -m 755 /tmp/pandoc-*/bin/pandoc /usr/local/bin/pandoc && \
@@ -144,7 +152,7 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
            wget -q --tries=5 --waitretry=3 -O /tmp/ghostty-pkg/PKGBUILD https://gitlab.archlinux.org/archlinux/packaging/packages/ghostty/-/raw/main/PKGBUILD && \
            sed -i '/pandoc-cli/d' /tmp/ghostty-pkg/PKGBUILD && \
            chown -R aurbuild:aurbuild /tmp/ghostty-pkg && \
-           sudo -u aurbuild bash -c 'cd /tmp/ghostty-pkg && export EDITOR=true && makepkg -s --noconfirm' && \
+           sudo -u aurbuild bash -c 'export PATH=/usr/local/bin:$PATH; cd /tmp/ghostty-pkg && export EDITOR=true && makepkg -s --noconfirm' && \
            pacman -U --noconfirm /tmp/ghostty-pkg/*.pkg.tar.* && \
            command -v ghostty; then \
             echo "--> [终端] 官方稳定版 1.3.1 构建成功，已安装 ghostty"; \
@@ -154,7 +162,8 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
         userdel -r aurbuild 2>/dev/null || true; \
         rm -f /etc/sudoers.d/aurbuild; \
         pacman -Rdd --noconfirm zig 2>/dev/null || true; \
-        rm -f /usr/local/bin/pandoc; \
+        rm -f /usr/local/bin/pandoc /usr/local/bin/zig; \
+        rm -rf /usr/local/lib/zig; \
         rm -rf /tmp/ghostty-pkg; \
     fi && \
     # 中文附加字体（可选）
