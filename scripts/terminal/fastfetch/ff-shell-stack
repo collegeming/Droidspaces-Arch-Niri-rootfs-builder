@@ -1,0 +1,19 @@
+#!/bin/bash
+# ff-shell-stack —— 输出 shell 栈（shell + 终端复用器），供 fastfetch command 模块调用
+# 输出示例: "fish" / "fish (tmux)" / "bash (screen)"
+
+shell_name="$(basename "${SHELL:-/bin/sh}")"
+stack="$shell_name"
+
+# 检测终端复用器
+if [ -n "$TMUX" ]; then
+    stack="$stack (tmux)"
+elif [ -n "$STY" ]; then
+    stack="$stack (screen)"
+elif [ -n "$ZELLIJ" ]; then
+    stack="$stack (zellij)"
+elif [ -n "$TERM_PROGRAM" ] && [ "$TERM_PROGRAM" = "WezTerm" ]; then
+    : # wezterm 不算复用器，跳过
+fi
+
+printf '%s' "$stack"

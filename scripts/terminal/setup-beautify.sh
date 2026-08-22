@@ -8,8 +8,8 @@ set -euo pipefail
 USERNAME="${1:-Gold}"
 USERHOME="/home/${USERNAME}"
 
-echo "==> [美化] 1. 安装 fish + cinnamon-translations（Nemo 中文翻译）"
-pacman -S --noconfirm --needed fish cinnamon-translations unzip
+echo "==> [美化] 1. 安装 fish + cinnamon-translations + fastfetch"
+pacman -S --noconfirm --needed fish cinnamon-translations unzip fastfetch
 
 echo "==> [美化] 2. 下载安装 Maple Mono NF CN 字体"
 wget -q --tries=5 --waitretry=3 -O /tmp/MapleMono-NF-CN.zip \
@@ -37,6 +37,7 @@ install -Dm644 /tmp/beautify/fish/config.fish        /etc/skel/.config/fish/conf
 install -Dm644 /tmp/beautify/fish/conf.d/reef.fish   /etc/skel/.config/fish/conf.d/reef.fish
 install -Dm644 /tmp/beautify/fish/conf.d/theme.fish  /etc/skel/.config/fish/conf.d/theme.fish
 install -Dm644 /tmp/beautify/fish/conf.d/mirrors.fish /etc/skel/.config/fish/conf.d/mirrors.fish
+install -Dm644 /tmp/beautify/fish/conf.d/fastfetch.fish /etc/skel/.config/fish/conf.d/fastfetch.fish
 install -Dm644 /tmp/beautify/fish/tide-apply.fish    /etc/skel/.config/fish/tide-apply.fish
 
 echo "==> [美化] 5. 下载 fisher（fish 插件管理器）"
@@ -61,15 +62,25 @@ else
     echo "    ghostty 未安装，跳过 ghostty 配置"
 fi
 
-echo "==> [美化] 8. 同步到用户家目录"
+echo "==> [美化] 8. 部署 fastfetch 配置 + 辅助脚本"
+# fastfetch config.jsonc（系统信息展示样式）
+install -d /etc/skel/.config/fastfetch
+install -Dm644 /tmp/beautify/fastfetch/config.jsonc /etc/skel/.config/fastfetch/config.jsonc
+# ff-shell-stack：检测 shell 栈（shell + 终端复用器），供 config 的 command 模块调用
+install -Dm755 /tmp/beautify/fastfetch/ff-shell-stack /usr/local/bin/ff-shell-stack
+# ff-sdks：检测已安装的开发工具及版本
+install -Dm755 /tmp/beautify/fastfetch/ff-sdks /usr/local/bin/ff-sdks
+
+echo "==> [美化] 9. 同步到用户家目录"
 cp -r /etc/skel/.config/fish  "${USERHOME}/.config/"
 cp -r /etc/skel/.config/kitty "${USERHOME}/.config/"
+cp -r /etc/skel/.config/fastfetch "${USERHOME}/.config/"
 if [ -d /etc/skel/.config/ghostty ]; then
     cp -r /etc/skel/.config/ghostty "${USERHOME}/.config/"
 fi
 chown -R "${USERNAME}:${USERNAME}" "${USERHOME}/.config"
 
-echo "==> [美化] 9. 安装 Tide 提示符 + 应用配置（以用户身份运行 fish）"
+echo "==> [美化] 10. 安装 Tide 提示符 + 应用配置（以用户身份运行 fish）"
 sudo -u "${USERNAME}" env HOME="${USERHOME}" fish -c \
     'fisher install ilancosman/tide@v6' 2>&1 || \
     echo "警告: tide 安装失败，可运行后手动 fish -c 'fisher install ilancosman/tide@v6'"
@@ -79,7 +90,7 @@ sudo -u "${USERNAME}" env HOME="${USERHOME}" fish \
     "${USERHOME}/.config/fish/tide-apply.fish" 2>&1 || \
     echo "警告: tide-apply 执行失败"
 
-echo "==> [美化] 10. 设 fish 为默认 shell"
+echo "==> [美化] 11. 设 fish 为默认 shell"
 chsh -s /usr/bin/fish "${USERNAME}" 2>/dev/null || \
     echo "警告: chsh 失败，用户可运行 chsh -s /usr/bin/fish 手动设置"
 
@@ -88,4 +99,5 @@ echo "  - fish + reef + fisher + tide 已配置"
 echo "  - Maple Mono NF CN 字体已安装"
 echo "  - kitty 配置（Catppuccin Frappe + 光标拖尾）已部署"
 [ -d /etc/skel/.config/ghostty ] && echo "  - ghostty 配置（含 background-blur + shader）已部署"
+echo "  - fastfetch 配置 + ff-shell-stack/ff-sdks 脚本已部署（交互登录自动显示）"
 echo "  - fish 已设为默认 shell"

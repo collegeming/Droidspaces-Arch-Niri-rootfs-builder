@@ -89,7 +89,7 @@
 - 已知限制：ANiri 上游声明的已知问题包括 glmark2/vkmark 得分略低于 KWin、Android 悬浮窗可能引起花屏、麦克风/摄像头转发应用侧不可读；本模板未集成 Xwayland（ patched Xwayland 属于 KWin 预编译包体系）；Nemo 的「在终端中打开」动作在空白背景右键时可能不显示（对文件/文件夹右键可用）。
 - **远程访问**（workflow 参数 `remote`，仅 Arch-Niri 适用）：
   - **`none`（默认）**：不启用远程访问。
-  - **`wayvnc`（推荐）**：Wayland 原生 VNC 服务器，ALARM extra 预编译包（改动最小，~5MB），niri 已实现 wayvnc 所需全部 wlr 协议（screencopy v3 + virtual-pointer + virtual-keyboard + data-control）。PC 端用 TigerVNC/Remmina 连接 `<手机IP>:5900`，**密码 `aniri1234`**（配置文件 `/etc/wayvnc/config`，`password=` 字段可改）。已知限制：虚拟键盘修饰键不触发 niri 自身快捷键（Super+Tab 等，niri#403），普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代。
+  - **`wayvnc`（推荐）**：Wayland 原生 VNC 服务器，ALARM extra 预编译包（改动最小，~5MB），niri 已实现 wayvnc 所需全部 wlr 协议（screencopy v3 + virtual-pointer + virtual-keyboard + data-control）。PC 端用 TigerVNC/Remmina 连接 `<手机IP>:5900`，**密码 `aniri123`**（配置文件 `/etc/wayvnc/config`，`password=` 字段可改，**VNC 协议限制 ≤8 字节**）。已知限制：虚拟键盘修饰键不触发 niri 自身快捷键（Super+Tab 等，niri#403），普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代。
   - **`lamco`**：基于 IronRDP 的标准 RDP 服务端（PC 端 Windows 自带 `mstsc` 免装客户端），aarch64 需从源码构建（Rust 1.89+，约 30-60 分钟），依赖 PipeWire + dbus-broker。连接 `<手机IP>:3389`，**PAM 认证**：输入容器内系统用户名+密码（如 `colle` / `1234`）。许可证 BSL 1.1（单实例免费）。配置文件 `/etc/lamco/config.toml`（`auth_method = "pam"`）。
   - 两方案不冲突（不同端口/协议），修饰键缺陷是 niri/Smithay 上游共有问题（不可在容器侧修复）。详细调研见 `remote-access-background-and-solutions.md`。
 
@@ -114,7 +114,7 @@
    ```
    例如 `192.168.1.100:5900`（TigerVNC 输入 `192.168.1.100::5900`）。
 
-   **密码**：连接时输入 `aniri1234`（默认密码，配置在 `/etc/wayvnc/config` 的 `password=` 字段）。修改密码：编辑该文件后 `systemctl restart wayvnc`。
+   **密码**：连接时输入 `aniri123`（默认密码，配置在 `/etc/wayvnc/config` 的 `password=` 字段，VNC 协议限制 ≤8 字节）。修改密码：编辑该文件后 `systemctl restart wayvnc`。
 
 4. **操作**：
    - 连接后即可看到 niri 桌面（与手机屏幕同一画面）
