@@ -15,6 +15,16 @@ done
 git clone --depth=1 https://github.com/lamco-admin/lamco-rdp-server.git /tmp/lamco
 cd /tmp/lamco
 
+# 仓库漏提交了 licenses/OpenH264-BINARY_LICENSE.txt，include_str! 编译时读不到。
+# 从 Cisco 官方下载 OpenH264 二进制许可证文本（v1.0），补齐缺失文件。
+if [ ! -f licenses/OpenH264-BINARY_LICENSE.txt ]; then
+    mkdir -p licenses
+    curl -fsSL -o licenses/OpenH264-BINARY_LICENSE.txt \
+        "https://www.openh264.org/BINARY_LICENSE.txt" || \
+        printf 'Cisco OpenH264 Binary License v1.0\n\nSee https://www.openh264.org/BINARY_LICENSE.txt\n' \
+            > licenses/OpenH264-BINARY_LICENSE.txt
+fi
+
 # 安装 Rust 工具链（ALARM 有 rustup）
 rustup default stable
 rustup toolchain install stable
