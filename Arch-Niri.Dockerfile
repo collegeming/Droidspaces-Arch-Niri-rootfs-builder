@@ -134,7 +134,7 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         pacman -S --noconfirm --needed wayvnc; \
     elif [ "$REMOTE_ARG" = "lamco" ]; then \
-        pacman -S --noconfirm --needed pipewire wireplumber dbus-broker rustup nasm openssl clang pkg-config && \
+        pacman -S --noconfirm --needed pipewire wireplumber dbus-broker rustup nasm openssl clang pkg-config cmake && \
         chmod +x /usr/local/sbin/build-remote-lamco && /usr/local/sbin/build-remote-lamco; \
     fi && \
     # 终端选择（TERMINAL_ARG）：kitty（默认，已随上面 pacman 装好，直接跳过）
