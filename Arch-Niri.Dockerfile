@@ -74,6 +74,9 @@ RUN if [ "$BUILD_KDE" = "mobile" ]; then \
 
 RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
+    # 本地构建包（pacman -U / paru AUR 安装）无签名，显式放开本地文件签名要求；
+    # 仓库包签名校验不受影响
+    sed -i '/^ParallelDownloads/a LocalFileSigLevel = PackageOptional' /etc/pacman.conf && \
     sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
     sed -i '/NoExtract.*i18n/d' /etc/pacman.conf && \
     # pacman 清华镜像置顶，官方 ALARM 源保留为回退
