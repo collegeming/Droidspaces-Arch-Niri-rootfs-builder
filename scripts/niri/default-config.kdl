@@ -12,13 +12,10 @@ input {
             // You can set rules, model, layout, variant and options.
             // For more information, see xkeyboard-config(7).
 
-            // For example:
-            // layout "us,ru"
+            // 必须显式设置 layout，否则 Super/Mod 修饰键不被识别，
+            // niri 快捷键（Mod+T 等）不生效（localectl 在容器内可能未设 X11 布局）
+            layout "us"
             // options "grp:win_space_toggle,compose:ralt,ctrl:nocaps"
-
-            // If this section is empty, niri will fetch xkb settings
-            // from org.freedesktop.locale1. You can control these using
-            // localectl set-x11-keymap.
         }
 
         // Enable numlock on startup, omitting this setting disables it.
