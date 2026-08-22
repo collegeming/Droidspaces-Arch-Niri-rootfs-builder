@@ -121,7 +121,7 @@ on:
         type: boolean
         default: false
       terminal:
-        description: 'Terminal choice (kitty - repo install, stable and fast; ghostty - build official stable 1.3.1 from source, ~25-50 min, hard-fail; konsole - KDE built-in, Arch-KDE only)'
+        description: 'Terminal choice (kitty - repo install, stable and fast; ghostty - build official stable 1.3.1 from source, ~25-50 min, hard-fail; konsole - KDE built-in, Arch-KDE only; both - build kitty+ghostty as two rootfs in one release)'
         required: true
         type: choice
         default: 'kitty'
@@ -129,6 +129,7 @@ on:
           - 'kitty'
           - 'ghostty'
           - 'konsole'
+          - 'both'
 
 jobs:
   # --------------------------------------------------------
@@ -138,6 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
+      terminals: ${{ steps.find-templates.outputs.terminals }}
       wayland_enabled: ${{ steps.find-templates.outputs.wayland_enabled }}
       wayland_package_target: ${{ steps.find-templates.outputs.wayland_package_target }}
       pulseaudio_effective: ${{ steps.find-templates.outputs.pulseaudio_effective }}
@@ -236,6 +238,16 @@ jobs:
           echo "wayland_enabled=$ENABLE_ANLAND_KDE" >> $GITHUB_OUTPUT
           echo "wayland_package_target=$WAYLAND_PACKAGE_TARGET" >> $GITHUB_OUTPUT
           echo "pulseaudio_effective=$PULSE_AUDIO" >> $GITHUB_OUTPUT
+
+          # terminal dimension: both expands to kitty+ghostty two jobs
+          TERMINAL_INPUT="${{ github.event.inputs.terminal }}"
+          if [ "$TERMINAL_INPUT" = "both" ]; then
+            TERMINALS='["kitty","ghostty"]'
+          else
+            TERMINALS=$(jq -n -c --arg t "$TERMINAL_INPUT" '[$t]')
+          fi
+          echo "terminals=$TERMINALS" >> $GITHUB_OUTPUT
+
           echo "Final decided build matrix: $TEMPLATES"
           echo "Final Wayland support value: $ENABLE_ANLAND_KDE"
           echo "Final KDE Wayland package target: ${WAYLAND_PACKAGE_TARGET:-none}"
@@ -337,6 +349,7 @@ jobs:
       fail-fast: false
       matrix:
         template: ${{ fromJson(needs.setup.outputs.templates) }}
+        terminal: ${{ fromJson(needs.setup.outputs.terminals) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -454,12 +467,12 @@ jobs:
             -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}" \
-            -T "${{ inputs.terminal }}"
+            -T "${{ matrix.terminal }}"
 
-      - name: Upload build artifacts
+      - name: 上传构建产物
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.template }}-rootfs
+          name: ${{ matrix.template }}-${{ matrix.terminal }}-rootfs
           path: "*.tar.xz"
           retention-days: 1
 
