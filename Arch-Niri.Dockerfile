@@ -310,6 +310,7 @@ Extensions=any;
 Dependencies=nemo;
 EOF
 
+install -d -o ${USERNAME} -g ${USERNAME} -m 755 /home/${USERNAME}/.config
 cp -r /etc/skel/.config/fcitx5 /etc/skel/.config/gtk-3.0 /etc/skel/.config/gtk-4.0 /etc/skel/.config/nvim /home/${USERNAME}/.config/
 chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
 EOF_RUN
