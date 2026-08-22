@@ -7,8 +7,8 @@ set -euo pipefail
 
 echo "==> [远程] 克隆并构建 Lamco RDP Server..."
 
-# 确保构建依赖（libspa-sys 的 bindgen 需要 libclang，找不到 stdbool.h）
-for dep in clang pkg-config; do
+# 确保构建依赖（libspa-sys 的 bindgen 需要 libclang，libopus_sys 需要 cmake）
+for dep in clang pkg-config cmake; do
     command -v "$dep" >/dev/null 2>&1 || pacman -S --noconfirm --needed "$dep"
 done
 
