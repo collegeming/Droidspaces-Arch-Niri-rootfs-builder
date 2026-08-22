@@ -62,7 +62,7 @@
 ### Arch-Niri 说明（无 KDE 最小化 + niri + Noctalia Shell）
 
 - 定位：**不含任何 KDE 组件的最小化 Arch**，桌面为滚动平铺 Wayland 合成器 [niri](https://github.com/niri-wm/niri)（通过 [ANiri](https://github.com/Celvra/ANiri) 的 anland 后端适配 Android）+ [Noctalia Shell](https://github.com/noctalia-dev/noctalia) 桌面外壳，启动器为 fuzzel。
-- 终端为 **ghostty 优先**（三层保障）：① ALARM 仓库收录后直接安装；② 未收录时用 Arch 官方**稳定版 1.3.1 PKGBUILD** 源码构建（仓库 `zig` 0.16.0 无版本约束直接满足；仅 sed 删 `pandoc-cli` makedepend + 装官方 aarch64 pandoc 二进制以生成 man 页；约增加 25-50 分钟构建时间）；③ 任一环节失败回退 kitty。niri 终端快捷键（Mod+T）通过 `spawn-sh` 运行时探测，两个终端任一存在即可用。
+- 终端由 workflow 启动参数 `terminal` 选择：**`kitty`（默认）** 直接从仓库安装，稳定快速；**`ghostty`** 用 Arch 官方稳定版 1.3.1 PKGBUILD 源码构建（约 25-50 分钟，用官方 zig 0.16.0 + 在线 fetch 绕 `--system` 离线清单缺陷；ghostty 构建失败即硬失败，不再静默回退 kitty）。niri 终端快捷键（Mod+T）通过 `spawn-sh` 运行时探测已装终端。
 - 构建逻辑：以上游 `Droidspaces-rootfs-builder` 的 Arch-Minimal 为基础（最小包集合、iptables-legacy 兼容、`ds-aliases` 别名），叠加本项目的中文环境、用户创建、`enable_systemd257` 旧内核兼容（4.19 设备建议开启）、fcitx5、高通 GPU 定制 Mesa（`enable_mesa`，ANiri 的 kgsl 渲染依赖它）、binfmt、NAT/硬件识别门控、USB Manager 与各可选组件。
 - 软件源与工具链：pacman 配置 **TUNA 清华镜像置顶**（官方 ALARM 源保留回退），附加 **archlinuxcn aarch64 仓库**（TUNA 优先、官方回退，keyring 引导安装后恢复签名校验），内置 **paru**（AUR 助手，容器内以普通用户运行）；编辑器为 neovim，文件管理器为 Nemo（niri 快捷键 `Mod+E`）。
 - niri 二进制固定从 ANiri Releases 下载（当前 `v0.2.0`，SHA256 校验 + strip），内核要求 ≥3.7，4.19 完全兼容；ANiri 不依赖本项目的 patched KWin 预编译包。
