@@ -55,6 +55,7 @@ ARG ANIRI_SHA256=9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6e
 
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
+COPY scripts/build-ghostty.sh /usr/local/sbin/build-ghostty
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/niri/default-config.kdl /usr/share/niri/default-config.kdl
 
@@ -124,52 +125,19 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 构建后随工具链清理）、电源信息、字体
     pacman -S --noconfirm --needed paru base-devel zig upower noto-fonts noto-fonts-emoji && \
     # 终端选择（TERMINAL_ARG）：kitty（默认，已随上面 pacman 装好，直接跳过）
-    # 或 ghostty（官方稳定版 1.3.1 PKGBUILD 源码构建，约 25-50 分钟）。
-    # ghostty 真实根因（Run #20 日志证实）：fetch-zig-cache.sh + --system 离线
-    # 流程在 zig 0.16 下对不上——build.zig.zon.txt 清单里 uucode 列了 git URL
-    # （算出的哈希）与预打包 tarball 声明哈希 ZZjBPq... 不一致，--system 按声明
-    # 哈希找目录找不到（与用哪个 zig 无关，官方 0.16.0 二进制已验证仍失败）。故
-    # 对齐 ghostty CI（nix develop -c zig build，从不用 --system）：sed 删
-    # --system、build 前置 ZIG_GLOBAL_CACHE_DIR 复用 prepare() 已拉依赖、zig 0.16
-    # 在线 fetch 缺失项并按内容哈希校验。用官方 zig 0.16.0 aarch64 二进制
-    # （ziglang.org）放 /usr/local/bin 优先于 ALARM 包，与 ghostty CI 同源。
-    # pandoc-cli 在 aarch64 无包，sed 删该 makedepend，改装 pandoc 官方 aarch64
-    # 预编译二进制（3.10.2；cn pandoc-bin 在 arm64 InvalidExe）。
-    # ghostty 构建失败=硬失败（不再静默回退 kitty，让失败显式暴露）。
+    # 或 ghostty（调用 scripts/build-ghostty.sh：官方稳定版 1.3.1 PKGBUILD +
+    # 官方 zig 0.16.0 + 删 --system 改在线 fetch + pandoc 官方二进制，约 25-50
+    # 分钟，硬失败——任何错误 exit 1，不再静默回退 kitty）。脚本封装为单点
+    # 维护，Arch-Niri 与 Arch-KDE 共用。kitty 选项跳过本块，直接用已装仓库 kitty。
+    # ghostty 真实根因详见 scripts/build-ghostty.sh 顶部注释。
     if [ "$TERMINAL_ARG" = "ghostty" ]; then \
-        if pacman -S --noconfirm --needed ghostty; then \
-            echo "--> [终端] 已从 ALARM 仓库安装 ghostty"; \
-        else \
-            echo "--> [终端] 仓库暂无 ghostty，用官方稳定版 1.3.1 PKGBUILD + 官方 zig 构建（失败即硬失败）..."; \
-            useradd -m aurbuild && \
-            echo 'aurbuild ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/aurbuild && \
-            wget -q --tries=5 --waitretry=3 -O /tmp/zig-off.tar.xz https://ziglang.org/download/0.16.0/zig-aarch64-linux-0.16.0.tar.xz && \
-            tar -xJf /tmp/zig-off.tar.xz -C /tmp && \
-            install -m 755 /tmp/zig-aarch64-linux-0.16.0/zig /usr/local/bin/zig && \
-            cp -a /tmp/zig-aarch64-linux-0.16.0/lib /usr/local/lib/zig && \
-            rm -rf /tmp/zig-off.tar.xz /tmp/zig-aarch64-linux-0.16.0 && \
-            /usr/local/bin/zig version && \
-            wget -q --tries=5 --waitretry=3 -O /tmp/pandoc.tar.gz https://github.com/jgm/pandoc/releases/download/3.10.2/pandoc-3.10.2-linux-arm64.tar.gz && \
-            tar -xzf /tmp/pandoc.tar.gz -C /tmp && \
-            install -m 755 /tmp/pandoc-*/bin/pandoc /usr/local/bin/pandoc && \
-            rm -rf /tmp/pandoc.tar.gz /tmp/pandoc-3* && \
-            install -d /tmp/ghostty-pkg && \
-            wget -q --tries=5 --waitretry=3 -O /tmp/ghostty-pkg/PKGBUILD https://gitlab.archlinux.org/archlinux/packaging/packages/ghostty/-/raw/main/PKGBUILD && \
-            sed -i '/pandoc-cli/d' /tmp/ghostty-pkg/PKGBUILD && \
-            sed -i '/--system/d' /tmp/ghostty-pkg/PKGBUILD && \
-            sed -i 's#DESTDIR=build zig build#ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache" DESTDIR=build zig build#' /tmp/ghostty-pkg/PKGBUILD && \
-            chown -R aurbuild:aurbuild /tmp/ghostty-pkg && \
-            sudo -u aurbuild bash -c 'export PATH=/usr/local/bin:$PATH; cd /tmp/ghostty-pkg && export EDITOR=true && makepkg -s --noconfirm' && \
-            pacman -U --noconfirm /tmp/ghostty-pkg/*.pkg.tar.* && \
-            command -v ghostty && \
-            echo "--> [终端] 官方稳定版 1.3.1 构建成功，已安装 ghostty"; \
-            userdel -r aurbuild 2>/dev/null || true; \
-            rm -f /etc/sudoers.d/aurbuild; \
-            pacman -Rdd --noconfirm zig 2>/dev/null || true; \
-            rm -f /usr/local/bin/pandoc /usr/local/bin/zig; \
-            rm -rf /usr/local/lib/zig; \
-            rm -rf /tmp/ghostty-pkg; \
-        fi; \
+        /usr/local/sbin/build-ghostty; \
+        userdel -r aurbuild 2>/dev/null || true; \
+        rm -f /etc/sudoers.d/aurbuild; \
+        pacman -Rdd --noconfirm zig 2>/dev/null || true; \
+        rm -f /usr/local/bin/pandoc /usr/local/bin/zig; \
+        rm -rf /usr/local/lib/zig; \
+        rm -rf /tmp/ghostty-pkg; \
     fi && \
     # 中文附加字体（可选）
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed noto-fonts-cjk; fi && \
