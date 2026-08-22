@@ -59,6 +59,7 @@ COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 COPY scripts/build-ghostty.sh /usr/local/sbin/build-ghostty
 COPY scripts/build-remote-lamco.sh /usr/local/sbin/build-remote-lamco
 COPY scripts/wayvnc-start /usr/local/sbin/wayvnc-start
+COPY scripts/lamco-start /usr/local/sbin/lamco-start
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/niri/default-config.kdl /usr/share/niri/default-config.kdl
 COPY scripts/terminal/ /tmp/beautify/
@@ -135,7 +136,7 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
         pacman -S --noconfirm --needed wayvnc; \
     elif [ "$REMOTE_ARG" = "lamco" ]; then \
         pacman -S --noconfirm --needed pipewire wireplumber dbus-broker rustup nasm openssl clang pkg-config cmake && \
-        chmod +x /usr/local/sbin/build-remote-lamco && /usr/local/sbin/build-remote-lamco; \
+        chmod +x /usr/local/sbin/build-remote-lamco && /usr/local/sbin/build-remote-lamco ${USERNAME}; \
     fi && \
     # 终端选择（TERMINAL_ARG）：kitty（默认，已随上面 pacman 装好，直接跳过）
     # 或 ghostty（调用 scripts/build-ghostty.sh：官方稳定版 1.3.1 PKGBUILD +
@@ -442,6 +443,7 @@ RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         mkdir -p /etc/systemd/system/multi-user.target.wants && \
         ln -sf /etc/systemd/system/wayvnc.service /etc/systemd/system/multi-user.target.wants/wayvnc.service; \
     elif [ "$REMOTE_ARG" = "lamco" ]; then \
+        chmod +x /usr/local/sbin/lamco-start && \
         echo "[Unit]" > /etc/systemd/system/lamco-rdp.service && \
         echo "Description=Lamco RDP Server" >> /etc/systemd/system/lamco-rdp.service && \
         echo "After=niri.service" >> /etc/systemd/system/lamco-rdp.service && \
@@ -452,7 +454,7 @@ RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         echo "User=${USERNAME}" >> /etc/systemd/system/lamco-rdp.service && \
         echo "Environment=XDG_RUNTIME_DIR=/run/user/1000" >> /etc/systemd/system/lamco-rdp.service && \
         echo "ExecStartPre=/usr/bin/sleep 3" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "ExecStart=/usr/bin/lamco-rdp-server --config /etc/lamco/config.toml" >> /etc/systemd/system/lamco-rdp.service && \
+        echo "ExecStart=/usr/local/sbin/lamco-start /etc/lamco/config.toml" >> /etc/systemd/system/lamco-rdp.service && \
         echo "Restart=on-failure" >> /etc/systemd/system/lamco-rdp.service && \
         echo "RestartSec=5s" >> /etc/systemd/system/lamco-rdp.service && \
         echo "" >> /etc/systemd/system/lamco-rdp.service && \
