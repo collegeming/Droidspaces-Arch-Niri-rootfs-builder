@@ -130,6 +130,15 @@ on:
           - 'ghostty'
           - 'konsole'
           - 'both'
+      remote:
+        description: 'Remote access (none - disabled; wayvnc - VNC 5900 recommended, minimal change; lamco - RDP 3389, PC mstsc no client needed, requires source build ~30-60 min)'
+        required: true
+        type: choice
+        default: 'none'
+        options:
+          - 'none'
+          - 'wayvnc'
+          - 'lamco'
 
 jobs:
   # --------------------------------------------------------
@@ -467,7 +476,8 @@ jobs:
             -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}" \
-            -T "${{ matrix.terminal }}"
+            -T "${{ matrix.terminal }}" \
+            -R "${{ inputs.remote }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v6
@@ -524,6 +534,7 @@ jobs:
             - **KDE Desktop**: ${{ github.event.inputs.build_KDE }} (Arch-Niri uses niri+Noctalia; this is ignored)
             - **KDE Auto-start**: ${{ github.event.inputs.build_KDE_plus }} (for Arch-Niri, this auto-starts niri)
             - **Terminal**: ${{ github.event.inputs.terminal }}
+            - **Remote Access**: ${{ github.event.inputs.remote }}
             - **Wayland support**: ${{ needs.setup.outputs.wayland_enabled }}
             - KDE Wayland package target: ${{ needs.setup.outputs.wayland_package_target || 'none' }}
             - PulseAudio Audio Forwarding: ${{ needs.setup.outputs.pulseaudio_effective }}
