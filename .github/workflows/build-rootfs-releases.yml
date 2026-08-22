@@ -130,6 +130,15 @@ on:
           - 'ghostty'
           - 'konsole'
           - 'both'
+      remote:
+        description: '远程访问方案（none-不启用；wayvnc-VNC 5900 推荐，改动最小；lamco-RDP 3389 PC 端 mstsc 免装客户端，需源码构建约 30-60 分钟）'
+        required: true
+        type: choice
+        default: 'none'
+        options:
+          - 'none'
+          - 'wayvnc'
+          - 'lamco'
 
 jobs:
   # --------------------------------------------------------
@@ -467,7 +476,8 @@ jobs:
             -t "${{ inputs.enable_8gen2_wayland }}" \
             -A "${{ needs.setup.outputs.wayland_enabled }}" \
             -u "${{ inputs.custom_username }}" \
-            -T "${{ matrix.terminal }}"
+            -T "${{ matrix.terminal }}" \
+            -R "${{ inputs.remote }}"
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v6
@@ -524,6 +534,7 @@ jobs:
             - **KDE 桌面**: ${{ github.event.inputs.build_KDE }}（Arch-Niri 为 niri+Noctalia，此项被忽略）
             - **KDE 开机自启动**: ${{ github.event.inputs.build_KDE_plus }}（Arch-Niri 时为 niri 自启动）
             - **终端**: ${{ github.event.inputs.terminal }}
+            - **远程访问**: ${{ github.event.inputs.remote }}
             - **Wayland 支持**: ${{ needs.setup.outputs.wayland_enabled }}
             - KDE Wayland 预编译包目标: ${{ needs.setup.outputs.wayland_package_target || 'none' }}
             - PulseAudio 音频转发: ${{ needs.setup.outputs.pulseaudio_effective }}
