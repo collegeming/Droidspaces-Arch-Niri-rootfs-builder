@@ -113,7 +113,11 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     xkeyboard-config \
     # 音频栈（Anland App 负责转发，容器内安装客户端库）
     pipewire libpipewire pipewire-pulse wireplumber \
-    # 桌面外壳与启动器；终端 ghostty 三层保障：ALARM 仓库 → AUR 源码构建 → kitty 回退
+    noctalia fuzzel kitty && \
+    # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
+    # 电源信息（Noctalia 电池组件）、字体（中文环境由下方开关附带 CJK）
+    pacman -S --noconfirm --needed paru upower noto-fonts noto-fonts-emoji && \
+    # 终端 ghostty 三层保障：ALARM 仓库 → AUR 源码构建 → kitty 回退
     # AUR 构建链（约 25-50 分钟）：
     #   * zig0.15-bin (0.15.2) 提供 /usr/bin/zig-0.15（不覆盖系统 zig）
     #   * pandoc-bin 提供 pandoc-cli（官方 arm64 二进制，免 Haskell 编译）
@@ -121,7 +125,6 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     #     （PATH 无法满足 pacman 依赖声明），PATH shim 将 zig 指向 zig-0.15
     #     （同时覆盖 fetch-zig-cache.sh 内部的 zig 调用）
     # paru 拒绝以 root 运行，构建使用临时 aurbuild 用户（免密 sudo 供依赖安装）
-    noctalia fuzzel kitty && \
     if pacman -S --noconfirm --needed ghostty; then \
         echo "--> [终端] 已从 ALARM 仓库安装 ghostty"; \
     else \
@@ -146,9 +149,6 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
         pacman -Rdd --noconfirm zig0.15-bin pandoc-bin 2>/dev/null || true; \
         rm -rf /tmp/ghostty-aur /tmp/zigshim; \
     fi && \
-    # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
-    # 电源信息（Noctalia 电池组件）、字体（中文环境由下方开关附带 CJK）
-    pacman -S --noconfirm --needed paru upower noto-fonts noto-fonts-emoji && \
     # 中文附加字体（可选）
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed noto-fonts-cjk; fi && \
     ############################################## 可选组件 ################################################
