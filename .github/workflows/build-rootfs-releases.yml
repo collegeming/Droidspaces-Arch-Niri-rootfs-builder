@@ -158,6 +158,35 @@ jobs:
       - name: 检出代码库
         uses: actions/checkout@v5
 
+      - name: 打印本次 workflow_dispatch 全部输入参数
+        run: |
+          echo "=============================================="
+          echo "本次构建输入参数（workflow_dispatch inputs）"
+          echo "=============================================="
+          echo "build_target            = ${{ github.event.inputs.build_target }}"
+          echo "custom_username         = ${{ github.event.inputs.custom_username }}"
+          echo "build_KDE               = ${{ github.event.inputs.build_KDE }}"
+          echo "build_KDE_plus          = ${{ github.event.inputs.build_KDE_plus }}"
+          echo "enable_anland_kde       = ${{ github.event.inputs.enable_anland_kde }}"
+          echo "PulseAudio              = ${{ github.event.inputs.PulseAudio }}"
+          echo "enable_zh_tz            = ${{ github.event.inputs.enable_zh_tz }}"
+          echo "enable_mesa             = ${{ github.event.inputs.enable_mesa }}"
+          echo "enable_8gen2_wayland    = ${{ github.event.inputs.enable_8gen2_wayland }}"
+          echo "enable_tmoe             = ${{ github.event.inputs.enable_tmoe }}"
+          echo "nosnap                  = ${{ github.event.inputs.nosnap }}"
+          echo "enable_systemd257       = ${{ github.event.inputs.enable_systemd257 }}"
+          echo "enable_srf              = ${{ github.event.inputs.enable_srf }}"
+          echo "enable_binfmt           = ${{ github.event.inputs.enable_binfmt }}"
+          echo "enable_yj               = ${{ github.event.inputs.enable_yj }}"
+          echo "enable_kfgj             = ${{ github.event.inputs.enable_kfgj }}"
+          echo "enable_zip              = ${{ github.event.inputs.enable_zip }}"
+          echo "enable_docker           = ${{ github.event.inputs.enable_docker }}"
+          echo "build_wayland_packages  = ${{ github.event.inputs.build_wayland_packages }}"
+          echo "terminal                = ${{ github.event.inputs.terminal }}"
+          echo "remote                  = ${{ github.event.inputs.remote }}"
+          echo "head_sha                = ${{ github.sha }}"
+          echo "=============================================="
+
       - name: 解析用户的构建选择
         id: find-templates
         run: |
