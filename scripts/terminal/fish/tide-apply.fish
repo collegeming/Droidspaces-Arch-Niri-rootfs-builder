@@ -1,6 +1,6 @@
 #!/usr/bin/env fish
 # tide-apply.fish —— 直接写入 Tide v6 universal 变量，免去 tide configure 向导
-# 样式: Lean (Classic 风格 Powerline) | 双行 | 启用 frame
+# 样式: Classic Powerline 双行 | 启用 frame | Powerline 分隔符
 # 左: os → pwd → git → newline → character
 # 右: status, cmd_duration, context, jobs, direnv, bun, node, python, rustc, java,
 #     php, pulumi, ruby, go, gcloud, kubectl, distrobox, toolbox, terraform, aws,
@@ -225,7 +225,7 @@ set -U tide_vi_mode_icon_visual       'V'
 set -U VIRTUAL_ENV_DISABLE_PROMPT true
 
 echo "✓ Tide v6 配置已写入 universal 变量"
-echo "  样式: Lean (Classic Powerline) | 双行 frame"
+echo "  样式: Classic Powerline 双行 frame"
 echo "  左: os → pwd → git → newline → character (❯)"
 echo "  右: status, cmd_duration, context, jobs, direnv, bun, node, python, rustc, java,"
 echo "      php, pulumi, ruby, go, gcloud, kubectl, distrobox, toolbox, terraform, aws,"
