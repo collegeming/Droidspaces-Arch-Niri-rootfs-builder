@@ -79,8 +79,8 @@ sudo -u aurbuild bash -c 'export PATH=/usr/local/bin:$PATH; cd /tmp/ghostty-pkg 
 mapfile -t packages < <(
     find /tmp/ghostty-pkg -maxdepth 1 -type f \
         \( -name 'ghostty-[0-9]*-aarch64.pkg.tar.*' \
-        -o -name 'ghostty-shell-integration-*-any.pkg.tar.*' \
-        -o -name 'ghostty-terminfo-*-any.pkg.tar.*' \) \
+        -o -name 'ghostty-shell-integration-*-aarch64.pkg.tar.*' \
+        -o -name 'ghostty-terminfo-*-aarch64.pkg.tar.*' \) \
         -print | sort
 )
 [[ "${#packages[@]}" -eq 3 ]] || {

@@ -185,7 +185,8 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 回退 kitty）。脚本封装为单点维护，Arch-Niri 与 Arch-KDE 共用。kitty 选项
     # 跳过本块，直接用已装仓库 kitty。ghostty 真实根因详见脚本顶部注释。
     if [ "$TERMINAL_ARG" = "ghostty" ]; then \
-        chmod +x /usr/local/sbin/build-ghostty && /usr/local/sbin/build-ghostty; \
+        chmod +x /usr/local/sbin/build-ghostty; \
+        /usr/local/sbin/build-ghostty || exit 1; \
         userdel -r aurbuild 2>/dev/null || true; \
         rm -f /etc/sudoers.d/aurbuild; \
         pacman -Rdd --noconfirm zig 2>/dev/null || true; \

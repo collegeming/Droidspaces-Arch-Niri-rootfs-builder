@@ -406,6 +406,16 @@ jobs:
           tar -tJf "$archive" > "$entries"
           test -s "$entries"
 
+          require_single_entry() {
+            local required=$1
+            local count
+            count="$(grep -Fxc "$required" "$entries" || true)"
+            if [[ "$count" -ne 1 ]]; then
+              echo "expected exactly one RootFS entry '$required', found $count" >&2
+              exit 1
+            fi
+          }
+
           for required in \
             usr/bin/niri \
             usr/bin/lamco-anland-bridge \
@@ -413,11 +423,11 @@ jobs:
             usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt \
             usr/share/doc/droidspaces-arch-niri/BUILD-COMPATIBILITY.txt
           do
-            test "$(grep -Fxc "$required" "$entries")" -eq 1
+            require_single_entry "$required"
           done
           case "$TERMINAL_VARIANT" in
-            kitty) test "$(grep -Fxc usr/bin/kitty "$entries")" -eq 1 ;;
-            ghostty) test "$(grep -Fxc usr/bin/ghostty "$entries")" -eq 1 ;;
+            kitty) require_single_entry usr/bin/kitty ;;
+            ghostty) require_single_entry usr/bin/ghostty ;;
           esac
 
           forbidden_entries='[.]apk$|anland-daemon[.]zip$|(^|/)display_daemon$|(^|/)module[.]prop$|(^|/)libopenh264([.]so|/)|(^|/)libavcodec([.]so|/)|(^|/)libx264([.]so|/)|(^|/)usr/bin/(ffmpeg|x264)$|(^|/)var/lib/pacman/local/(ffmpeg|x264)-|(^|/)[.]cargo/|(^|/)target/(debug|release)/|(^|/)tmp/ghostty-pkg/'
