@@ -1,0 +1,589 @@
+name: Build and release Droidspaces Arch-Niri RootFS
+run-name: Arch-Niri ${{ inputs.version }} / ${{ inputs.remote }} / ${{ inputs.terminal }} / ${{ inputs.build_mode }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Safe artifact version; keep candidate for non-release builds
+        required: true
+        type: string
+        default: candidate
+      publish_release:
+        description: Publish an immutable tag and Release after all checks
+        required: true
+        type: boolean
+        default: false
+      build_mode:
+        description: Native ARM64 runner or explicit QEMU ARM64 build on x86_64
+        required: true
+        type: choice
+        default: native-arm64
+        options:
+          - native-arm64
+          - qemu-x86_64
+      username:
+        description: RootFS desktop username
+        required: true
+        type: string
+        default: droid
+      terminal:
+        description: Terminal variant; both creates separate kitty and ghostty RootFS archives
+        required: true
+        type: choice
+        default: kitty
+        options:
+          - kitty
+          - ghostty
+          - both
+      remote:
+        description: Remote access variant
+        required: true
+        type: choice
+        default: none
+        options:
+          - none
+          - wayvnc
+          - lamco
+      niri_autostart:
+        description: Auto-start niri
+        required: true
+        type: boolean
+        default: true
+      enable_zh_locale:
+        description: Chinese locale and Asia/Shanghai timezone
+        required: true
+        type: boolean
+        default: true
+      enable_fcitx_rime:
+        description: Fcitx5 and Rime-Ice
+        required: true
+        type: boolean
+        default: true
+      enable_qualcomm_mesa:
+        description: Qualcomm KGSL Mesa
+        required: true
+        type: boolean
+        default: true
+      enable_systemd257:
+        description: systemd 257 compatibility runtime for old kernels
+        required: true
+        type: boolean
+        default: true
+      enable_usb_manager:
+        description: Droidspaces USB manager
+        required: true
+        type: boolean
+        default: true
+      enable_firmware:
+        description: Linux firmware packages
+        required: true
+        type: boolean
+        default: false
+      enable_binfmt:
+        description: In-RootFS binfmt helpers
+        required: true
+        type: boolean
+        default: false
+      enable_container_integration:
+        description: Droidspaces hardware and network integration
+        required: true
+        type: boolean
+        default: true
+      enable_8gen2_wayland:
+        description: Snapdragon 8 Gen 2 UBWC hint
+        required: true
+        type: boolean
+        default: false
+      enable_dev_tools:
+        description: Development toolchain
+        required: true
+        type: boolean
+        default: false
+      enable_compression_tools:
+        description: Additional compression tools
+        required: true
+        type: boolean
+        default: true
+      enable_docker:
+        description: Docker packages inside the RootFS
+        required: true
+        type: boolean
+        default: false
+      enable_tmoe:
+        description: TMOE integration
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arch-niri-rootfs-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  ACTIVE_DOCKERFILE: Droidspaces-Arch-Niri.Dockerfile
+  ANIRI_REPOSITORY: Celvra/ANiri
+  ANIRI_TAG: v0.2.0
+  ANIRI_COMMIT: cfd31db9c79c681a11ebc1afdb80fa7b31c4f7e0
+  ANIRI_ASSET: niri-arm64-linux-bin
+  ANIRI_SHA256: 9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6eb
+  ANLAND_REPOSITORY: collegeming/anland-bridge
+  ANLAND_COMMIT: 95b2d73ff799639ce8576ff908f13f5a31e024a1
+  LAMCO_REPOSITORY: collegeming/lamco-anland-bridge
+  LAMCO_TAG: anland-v0.2.0
+  LAMCO_COMMIT: 03902875622f04c8c64ab52fd4dc72981bb93e64
+  LAMCO_ASSET: lamco-anland-bridge-0.2.0-aarch64-unknown-linux-gnu.tar.xz
+  LAMCO_SHA256: 593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea
+
+jobs:
+  prepare:
+    name: Validate active Arch-Niri request
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.request.outputs.matrix }}
+      version: ${{ steps.request.outputs.version }}
+      variant_count: ${{ steps.request.outputs.variant_count }}
+    steps:
+      - name: Check out the requested Builder commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Validate request and create the build matrix
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_INPUT: ${{ inputs.version }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          BUILD_MODE: ${{ inputs.build_mode }}
+          TERMINAL_INPUT: ${{ inputs.terminal }}
+          USERNAME_INPUT: ${{ inputs.username }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f "$ACTIVE_DOCKERFILE"
+          test "$(find . -maxdepth 1 -type f -name '*.Dockerfile' -printf '%f\n')" = "$ACTIVE_DOCKERFILE"
+          test "$(find .github/workflows -maxdepth 1 -type f -name '*.yml' -printf '%f\n')" = build-arch-niri-rootfs.yml
+
+          case "$USERNAME_INPUT" in
+            ''|*[!A-Za-z0-9_-]*|[0-9-]*)
+              echo 'username must begin with a letter or underscore and contain only letters, digits, underscores, or hyphens' >&2
+              exit 1
+              ;;
+          esac
+          case "$VERSION_INPUT" in
+            candidate)
+              version="candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+              ;;
+            ''|*[!A-Za-z0-9._-]*|[.-]*)
+              echo 'version contains unsafe filename or tag characters' >&2
+              exit 1
+              ;;
+            *)
+              version="$VERSION_INPUT"
+              ;;
+          esac
+
+          case "$BUILD_MODE" in
+            native-arm64)
+              runner=ubuntu-24.04-arm
+              script=build_rootfs-native.sh
+              ;;
+            qemu-x86_64)
+              runner=ubuntu-24.04
+              script=build_rootfs-qemu-aarch64.sh
+              ;;
+            *)
+              echo "unsupported build mode: $BUILD_MODE" >&2
+              exit 1
+              ;;
+          esac
+
+          case "$TERMINAL_INPUT" in
+            kitty|ghostty)
+              matrix="$(jq -cn \
+                --arg terminal "$TERMINAL_INPUT" \
+                --arg runner "$runner" \
+                --arg script "$script" \
+                --arg mode "$BUILD_MODE" \
+                '{include: [{terminal: $terminal, runner: $runner, script: $script, mode: $mode}]}')"
+              variant_count=1
+              ;;
+            both)
+              matrix="$(jq -cn \
+                --arg runner "$runner" \
+                --arg script "$script" \
+                --arg mode "$BUILD_MODE" \
+                '{include: [
+                  {terminal: "kitty", runner: $runner, script: $script, mode: $mode},
+                  {terminal: "ghostty", runner: $runner, script: $script, mode: $mode}
+                ]}')"
+              variant_count=2
+              ;;
+            *)
+              echo "unsupported terminal: $TERMINAL_INPUT" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "$PUBLISH_RELEASE" == true ]]; then
+            if [[ "$VERSION_INPUT" == candidate ]]; then
+              echo 'publish_release=true requires an explicit immutable version' >&2
+              exit 1
+            fi
+            if [[ "$GITHUB_REF_TYPE" != branch || "$GITHUB_REF_NAME" != main ]]; then
+              echo 'release publication is allowed only from main' >&2
+              exit 1
+            fi
+
+            set +e
+            git ls-remote --exit-code --tags origin "refs/tags/$VERSION_INPUT" >/dev/null 2>&1
+            tag_status=$?
+            set -e
+            case "$tag_status" in
+              0) echo "refusing to overwrite existing tag: $VERSION_INPUT" >&2; exit 1 ;;
+              2) ;;
+              *) echo 'unable to verify remote tag absence' >&2; exit 1 ;;
+            esac
+
+            release_error="$RUNNER_TEMP/release-lookup-error"
+            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION_INPUT" \
+                --silent 2>"$release_error"; then
+              echo "refusing to overwrite existing Release: $VERSION_INPUT" >&2
+              exit 1
+            fi
+            if ! grep -Fq 'HTTP 404' "$release_error"; then
+              echo 'unable to verify Release absence' >&2
+              exit 1
+            fi
+          fi
+
+          {
+            echo "matrix=$matrix"
+            echo "version=$version"
+            echo "variant_count=$variant_count"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.terminal }} (${{ matrix.mode }})
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Check out the exact Builder commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify the selected host architecture
+        env:
+          BUILD_MODE: ${{ matrix.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_arch="$(uname -m)"
+          case "$BUILD_MODE:$host_arch" in
+            native-arm64:aarch64|native-arm64:arm64|qemu-x86_64:x86_64|qemu-x86_64:amd64) ;;
+            *) echo "runner architecture $host_arch does not match build mode $BUILD_MODE" >&2; exit 1 ;;
+          esac
+
+      - name: Build the ARM64 Arch-Niri RootFS
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUILD_SCRIPT: ${{ matrix.script }}
+          BUILD_VERSION: ${{ needs.prepare.outputs.version }}
+          TERMINAL_VARIANT: ${{ matrix.terminal }}
+          REMOTE_VARIANT: ${{ inputs.remote }}
+          ROOTFS_USERNAME: ${{ inputs.username }}
+          BUILDER_REPOSITORY: ${{ github.repository }}
+          BUILDER_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x "$BUILD_SCRIPT"
+          "./$BUILD_SCRIPT" \
+            -i "$ACTIVE_DOCKERFILE" \
+            -v "$BUILD_VERSION" \
+            -u "$ROOTFS_USERNAME" \
+            -T "$TERMINAL_VARIANT" \
+            -R "$REMOTE_VARIANT" \
+            -N "${{ inputs.niri_autostart }}" \
+            -g "${{ inputs.enable_zh_locale }}" \
+            -h "${{ inputs.enable_fcitx_rime }}" \
+            -c "${{ inputs.enable_qualcomm_mesa }}" \
+            -S "${{ inputs.enable_systemd257 }}" \
+            -U "${{ inputs.enable_usb_manager }}" \
+            -F "${{ inputs.enable_firmware }}" \
+            -a "${{ inputs.enable_binfmt }}" \
+            -b "${{ inputs.enable_container_integration }}" \
+            -t "${{ inputs.enable_8gen2_wayland }}" \
+            -d "${{ inputs.enable_dev_tools }}" \
+            -e "${{ inputs.enable_compression_tools }}" \
+            -f "${{ inputs.enable_docker }}" \
+            -j "${{ inputs.enable_tmoe }}"
+
+      - name: Verify and describe the variant output
+        env:
+          BUILD_MODE: ${{ matrix.mode }}
+          BUILD_VERSION: ${{ needs.prepare.outputs.version }}
+          TERMINAL_VARIANT: ${{ matrix.terminal }}
+          REMOTE_VARIANT: ${{ inputs.remote }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="Droidspaces-Arch-Niri-Anland-aarch64-${BUILD_VERSION}-${REMOTE_VARIANT}-${TERMINAL_VARIANT}.tar.xz"
+          test -f "$archive"
+          test "$(find . -maxdepth 1 -type f -name 'Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz' | wc -l)" -eq 1
+          xz -t "$archive"
+          tar -tJf "$archive" >/dev/null
+          sha256sum "$archive" > "${archive}.sha256"
+          cat > "${archive}.BUILD-METADATA.txt" <<EOF
+          format=1
+          builder_repository=$GITHUB_REPOSITORY
+          builder_commit=$GITHUB_SHA
+          workflow_run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          workflow_attempt=$GITHUB_RUN_ATTEMPT
+          architecture=aarch64
+          build_mode=$BUILD_MODE
+          version=$BUILD_VERSION
+          remote=$REMOTE_VARIANT
+          terminal=$TERMINAL_VARIANT
+          archive=$archive
+          aniri_repository=$ANIRI_REPOSITORY
+          aniri_tag=$ANIRI_TAG
+          aniri_commit=$ANIRI_COMMIT
+          aniri_asset=$ANIRI_ASSET
+          aniri_sha256=$ANIRI_SHA256
+          aniri_status=temporary-upstream-baseline-until-tuned-release-exists
+          android_anland_repository=$ANLAND_REPOSITORY
+          android_anland_commit=$ANLAND_COMMIT
+          android_anland_release=unpublished-device-side-prerequisite
+          android_anland_checksum=unavailable-until-release-exists
+          lamco_repository=$LAMCO_REPOSITORY
+          lamco_tag=$LAMCO_TAG
+          lamco_commit=$LAMCO_COMMIT
+          lamco_asset=$LAMCO_ASSET
+          lamco_sha256=$LAMCO_SHA256
+          niri_autostart=${{ inputs.niri_autostart }}
+          enable_zh_locale=${{ inputs.enable_zh_locale }}
+          enable_fcitx_rime=${{ inputs.enable_fcitx_rime }}
+          enable_qualcomm_mesa=${{ inputs.enable_qualcomm_mesa }}
+          enable_systemd257=${{ inputs.enable_systemd257 }}
+          enable_usb_manager=${{ inputs.enable_usb_manager }}
+          enable_firmware=${{ inputs.enable_firmware }}
+          enable_binfmt=${{ inputs.enable_binfmt }}
+          enable_container_integration=${{ inputs.enable_container_integration }}
+          enable_8gen2_wayland=${{ inputs.enable_8gen2_wayland }}
+          enable_dev_tools=${{ inputs.enable_dev_tools }}
+          enable_compression_tools=${{ inputs.enable_compression_tools }}
+          enable_docker=${{ inputs.enable_docker }}
+          enable_tmoe=${{ inputs.enable_tmoe }}
+          EOF
+
+      - name: Upload the verified variant
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: rootfs-${{ matrix.terminal }}
+          path: |
+            Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz
+            Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz.sha256
+            Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz.BUILD-METADATA.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    name: Verify candidate asset set
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download every variant
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: rootfs-*
+          path: variant-artifacts
+
+      - name: Assemble checksums and build metadata
+        env:
+          BUILD_VERSION: ${{ needs.prepare.outputs.version }}
+          EXPECTED_VARIANTS: ${{ needs.prepare.outputs.variant_count }}
+          REMOTE_VARIANT: ${{ inputs.remote }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          mapfile -t archives < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz' -print | sort)
+          mapfile -t checksum_files < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz.sha256' -print | sort)
+          mapfile -t metadata_files < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz.BUILD-METADATA.txt' -print | sort)
+          test "${#archives[@]}" -eq "$EXPECTED_VARIANTS"
+          test "${#checksum_files[@]}" -eq "$EXPECTED_VARIANTS"
+          test "${#metadata_files[@]}" -eq "$EXPECTED_VARIANTS"
+
+          for checksum_file in "${checksum_files[@]}"; do
+            variant_dir="$(dirname "$checksum_file")"
+            (cd "$variant_dir" && sha256sum -c "$(basename "$checksum_file")")
+          done
+          for archive in "${archives[@]}"; do
+            xz -t "$archive"
+            tar -tJf "$archive" >/dev/null
+            mv "$archive" release-assets/
+          done
+
+          {
+            echo 'format=1'
+            echo "builder_repository=$GITHUB_REPOSITORY"
+            echo "builder_commit=$GITHUB_SHA"
+            echo "workflow_run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "version=$BUILD_VERSION"
+            echo "remote=$REMOTE_VARIANT"
+            echo "variant_count=$EXPECTED_VARIANTS"
+            for metadata_file in "${metadata_files[@]}"; do
+              echo
+              echo '--- variant ---'
+              cat "$metadata_file"
+            done
+          } > release-assets/BUILD-METADATA.txt
+          (cd release-assets && sha256sum ./*.tar.xz > SHA256SUMS)
+
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq "$((EXPECTED_VARIANTS + 2))"
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          grep -Fxq "builder_commit=$GITHUB_SHA" release-assets/BUILD-METADATA.txt
+          grep -Fxq "version=$BUILD_VERSION" release-assets/BUILD-METADATA.txt
+
+      - name: Upload the complete candidate asset set
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: Droidspaces-Arch-Niri-RootFS-${{ needs.prepare.outputs.version }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish immutable Arch-Niri Release
+    if: ${{ inputs.publish_release == true }}
+    needs: [prepare, build, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the exact Builder commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Download the verified release asset set
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: Droidspaces-Arch-Niri-RootFS-${{ needs.prepare.outputs.version }}
+          path: release-assets
+
+      - name: Refuse replacement and publish only the exact asset set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.version }}
+          REMOTE_VARIANT: ${{ inputs.remote }}
+          TERMINAL_INPUT: ${{ inputs.terminal }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = branch
+          test "$GITHUB_REF_NAME" = main
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+
+          expected=(BUILD-METADATA.txt SHA256SUMS)
+          case "$TERMINAL_INPUT" in
+            kitty|ghostty) terminals=("$TERMINAL_INPUT") ;;
+            both) terminals=(kitty ghostty) ;;
+            *) echo "unsupported terminal: $TERMINAL_INPUT" >&2; exit 1 ;;
+          esac
+          for terminal in "${terminals[@]}"; do
+            expected+=("Droidspaces-Arch-Niri-Anland-aarch64-${RELEASE_TAG}-${REMOTE_VARIANT}-${terminal}.tar.xz")
+          done
+          printf '%s\n' "${expected[@]}" | sort > "$RUNNER_TEMP/expected-assets"
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort > "$RUNNER_TEMP/local-assets"
+          diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/local-assets"
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          grep -Fxq "builder_commit=$GITHUB_SHA" release-assets/BUILD-METADATA.txt
+
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1
+          tag_status=$?
+          set -e
+          case "$tag_status" in
+            0) echo "refusing to overwrite existing tag: $RELEASE_TAG" >&2; exit 1 ;;
+            2) ;;
+            *) echo 'unable to verify remote tag absence' >&2; exit 1 ;;
+          esac
+
+          release_error="$RUNNER_TEMP/release-lookup-error"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+              --silent 2>"$release_error"; then
+            echo "refusing to overwrite existing Release or assets: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if ! grep -Fq 'HTTP 404' "$release_error"; then
+            echo 'unable to verify Release absence' >&2
+            exit 1
+          fi
+
+          cat > "$RUNNER_TEMP/release-body.md" <<EOF
+          Automated ARM64 Droidspaces Arch-Niri RootFS build.
+
+          Build provenance
+          - Builder commit: $GITHUB_SHA
+          - Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          - Version/tag: $RELEASE_TAG
+          - Build mode: ${{ inputs.build_mode }}
+          - Terminal request: $TERMINAL_INPUT
+          - Remote variant: $REMOTE_VARIANT
+
+          Pinned components
+          - ANiri baseline: $ANIRI_REPOSITORY tag $ANIRI_TAG, commit $ANIRI_COMMIT, asset $ANIRI_ASSET, SHA256 $ANIRI_SHA256. This remains the verified upstream baseline because ANiri-anland-tuned has no consumable Release; no fictitious tuned pin is used.
+          - Android anland-bridge prerequisite: $ANLAND_REPOSITORY commit $ANLAND_COMMIT. No tagged device-side Release/checksum is available yet: https://github.com/$ANLAND_REPOSITORY/tree/$ANLAND_COMMIT
+          - Lamco: $LAMCO_REPOSITORY tag $LAMCO_TAG, commit $LAMCO_COMMIT, asset $LAMCO_ASSET, SHA256 $LAMCO_SHA256.
+
+          Runtime boundary
+          - ARM64 only. Native builds run on an ARM64 runner; QEMU builds explicitly target linux/arm64 from x86_64.
+          - Droidspaces is a privileged namespace + pivot_root container sharing the Android kernel, not PRoot. systemd 257 compatibility is intended for old kernels including 4.19.
+          - Android APK, root helper, Surface and MediaCodec components are device-side prerequisites and are not installed into this Linux RootFS.
+          - Lamco setup requires TLS, independent strong RDP credentials, a dedicated no-login user, and a bind-mounted private socket directory. No Lamco token or RDP credentials are embedded in this image.
+          - Hardware MediaCodec H.264 is the only H.264 path; there is no software fallback.
+
+          Verification boundary
+          - The workflow verifies archive integrity, exact filenames, checksums, metadata, and publication asset set.
+          - Device import, target-phone graphics, Android viewer lifecycle, mstsc interoperability, thermals, and power have not been validated by this workflow.
+          EOF
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$RELEASE_TAG" "$GITHUB_SHA" \
+            -m "Droidspaces Arch-Niri RootFS $RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
+          remote_peeled="$(git ls-remote --tags origin "refs/tags/${RELEASE_TAG}^{}" | cut -f1)"
+          test "$remote_peeled" = "$GITHUB_SHA"
+
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --draft \
+            --verify-tag \
+            --latest=false \
+            --title "Droidspaces Arch-Niri RootFS $RELEASE_TAG" \
+            --notes-file "$RUNNER_TEMP/release-body.md"
+
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .draft)" = true
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq '.assets[].name' | sort > "$RUNNER_TEMP/remote-assets"
+          diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/remote-assets"
+
+          gh release edit "$RELEASE_TAG" --draft=false --latest=false
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .draft)" = false
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq '.assets[].name' | sort > "$RUNNER_TEMP/published-assets"
+          diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/published-assets"

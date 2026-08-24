@@ -31,7 +31,7 @@ RUN printf '%s\n' \
 
 # 优先复制自定义脚本
 COPY scripts/download-firmware /usr/local/bin/
-COPY scripts/nosnap.sh /usr/local/sbin/nosnap
+COPY legacy/scripts/nosnap.sh /usr/local/sbin/nosnap
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 
 # 将自定义的 bashrc 脚本复制到根文件系统的 profile 目录
