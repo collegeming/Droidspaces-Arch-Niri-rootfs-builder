@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Docker stuff
 # List running containers (pretty)
 alias dps="docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'"
@@ -91,8 +92,7 @@ transfer() {
     fi
 
     # Perform the transfer recursively (works for files and folders)
-    scp -r "$SRC" "$DEST":"$REMOTE_PATH"
-    if [ $? -eq 0 ]; then
+    if scp -r "$SRC" "$DEST":"$REMOTE_PATH"; then
         echo "Transfer complete: $SRC -> $DEST:$REMOTE_PATH"
     else
         echo "Transfer failed!"

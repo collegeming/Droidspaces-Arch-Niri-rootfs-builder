@@ -9,11 +9,12 @@ XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
 CONFIG="${1:-/etc/wayvnc/config}"
 
 # 最多等待 30 秒，直到检测到 wayland-N socket
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
     # 查找 wayland-N socket（排除 .lock 文件）
     SOCK="$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -name 'wayland-[0-9]*' -type s 2>/dev/null | head -1)"
     if [ -n "$SOCK" ]; then
-        export WAYLAND_DISPLAY="$(basename "$SOCK")"
+        WAYLAND_DISPLAY="$(basename "$SOCK")"
+        export WAYLAND_DISPLAY
         break
     fi
     sleep 1

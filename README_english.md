@@ -15,9 +15,9 @@ Droidspaces is a privileged container using namespaces and `pivot_root` on the s
 
 | Project | Responsibility | Current Builder status |
 | --- | --- | --- |
-| [niri](https://github.com/niri-wm/niri) / [Celvra/ANiri](https://github.com/Celvra/ANiri) | Linux Wayland compositor and Anland display backend | Temporarily consumes the verified upstream ANiri `v0.2.0` ARM64 asset. |
-| [collegeming/ANiri-anland-tuned](https://github.com/collegeming/ANiri-anland-tuned) | Anland-specific Linux compositor, input, clipboard, and polling improvements | Tuned commits exist, but no consumable immutable ARM64 Release exists yet. The Builder has **not invented or prematurely switched a pin**. |
-| [superturtlee/anland](https://github.com/superturtlee/anland) / [collegeming/anland-bridge](https://github.com/collegeming/anland-bridge) | Android Surface, `local|remote|both` state, MediaCodec, FD/root helper | Device-side prerequisite. APK, daemon, and Magisk assets do not enter the RootFS. A candidate build succeeded, but no public immutable Release/checksum is available yet. |
+| [niri](https://github.com/niri-wm/niri) / [Celvra/ANiri](https://github.com/Celvra/ANiri) | Upstream niri and historical source of the Anland backend | The Builder consumes the tuned fork's final immutable Release listed below. |
+| [collegeming/ANiri-anland-tuned](https://github.com/collegeming/ANiri-anland-tuned) | Linux compositor, input, `CF_UNICODETEXT` clipboard, and Anland polling improvements | The RootFS pins final ARM64 Release `v26.4.0-anland.1`; its source commit contains the `74ce2a9…` implementation baseline plus only the minimal strict-Clippy fixes required by the final build. |
+| [superturtlee/anland](https://github.com/superturtlee/anland) / [collegeming/anland-bridge](https://github.com/collegeming/anland-bridge) | Android Surface, `local|remote|both` state, MediaCodec, FD/root helper | Final device-side prerequisite `anland-v5.19.3`. APK, daemon, and Magisk assets are installed only on the Android host/root side and never enter the RootFS. |
 | [collegeming/lamco-anland-bridge](https://github.com/collegeming/lamco-anland-bridge) | Linux RDP/TLS/EGFX, input, CLIPRDR, and private UDS listener | `remote=lamco` consumes a pinned, verified ARM64 binary Release. Rust is not built inside the RootFS. |
 | This Builder | Combines and pins the Linux RootFS, emits variants/checksums/metadata, and records Android prerequisites | One active Dockerfile and workflow; old KDE content is preserved only under `legacy/`. |
 
@@ -59,13 +59,25 @@ The Builder's `remote=none|wayvnc|lamco` only determines which remote service, i
 
 ## Exact version and compatibility matrix
 
-| Component | Repository / tag | Source commit | Asset / SHA-256 | Status |
+| Component | Repository / annotated tag | Source commit / baseline | Asset / SHA-256 | Status |
 | --- | --- | --- | --- | --- |
-| ANiri baseline | `Celvra/ANiri` / `v0.2.0` | `cfd31db9c79c681a11ebc1afdb80fa7b31c4f7e0` | `niri-arm64-linux-bin` / `9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6eb` | Actually consumed by the current RootFS. |
-| ANiri tuned | `collegeming/ANiri-anland-tuned` / branch `anland-poll-optimize` | `74ce2a92eb2151d729818a784ced605ec950b56c` | No Release asset/checksum yet | Not consumed. Wait for a real immutable Release before changing the pin. |
-| Android anland bridge | `collegeming/anland-bridge` / branch `bridge-service-toggle` | `95b2d73ff799639ce8576ff908f13f5a31e024a1` | Candidate succeeded; public Release/checksum not yet available | Device-side prerequisite; never included in the RootFS. |
-| Lamco | `collegeming/lamco-anland-bridge` / `anland-v0.2.0` | `03902875622f04c8c64ab52fd4dc72981bb93e64` | `lamco-anland-bridge-0.2.0-aarch64-unknown-linux-gnu.tar.xz` / `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea` | Actually consumed by `remote=lamco`. |
-| Lamco IronRDP pin | `collegeming/IronRDP` / branch `anland-preauth-timeout` | `33fc287b83af35ba3650519fe059db99d1cdf131` | Recorded in Lamco metadata | Pinned by the Lamco Release. |
+| ANiri tuned | [`collegeming/ANiri-anland-tuned` / `v26.4.0-anland.1`](https://github.com/collegeming/ANiri-anland-tuned/releases/tag/v26.4.0-anland.1), tag object `8abf6ac37eb9e3775dc2150abdfe406e4a857e0f` | source `1999f7cfb9c7ffdd02d79edf35fdf98df7eafe18`; implementation baseline `74ce2a92eb2151d729818a784ced605ec950b56c` | [`niri-arm64-linux-bin`](https://github.com/collegeming/ANiri-anland-tuned/releases/download/v26.4.0-anland.1/niri-arm64-linux-bin) / `9970f367377bab96f6ae714ed524a16cec8427c505b5de22ae01a0a97c8e44e3` | Actually consumed by the RootFS; [successful build run](https://github.com/collegeming/ANiri-anland-tuned/actions/runs/32749084441). The source contains the `74ce2a9…` implementation plus minimal strict-Clippy fixes. |
+| Android anland bridge | [`collegeming/anland-bridge` / `anland-v5.19.3`](https://github.com/collegeming/anland-bridge/releases/tag/anland-v5.19.3), tag object `1d912e982a8f35e90e81255afd9f8444cd319295` | source `e26a080e990d0c9fc18d64b35e161d134bc51e63`; feature baseline `95b2d73ff799639ce8576ff908f13f5a31e024a1` | plain APK, Tracy APK, `anland-daemon.zip`, and `SHA256SUMS`; see below | Final device-side prerequisite; [successful build run](https://github.com/collegeming/anland-bridge/actions/runs/32751299809). Never downloaded or installed into the RootFS. |
+| Lamco | `collegeming/lamco-anland-bridge` / `anland-v0.2.0` | `03902875622f04c8c64ab52fd4dc72981bb93e64` | `lamco-anland-bridge-0.2.0-aarch64-unknown-linux-gnu.tar.xz` / `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea` | Actually consumed by `remote=lamco`; pin unchanged. |
+| Lamco IronRDP pin | `collegeming/IronRDP` / branch `anland-preauth-timeout` | `33fc287b83af35ba3650519fe059db99d1cdf131` | Recorded in Lamco metadata | Pinned by the Lamco Release; unchanged. |
+
+The ANiri Release also provides `BUILD-METADATA.txt` (SHA-256 `43b59e66a8cd01c7bd32f1351a9b7890aa5de96c13d804dde24c7042bdfe4cbd`) and the CycloneDX SBOM `ANiri-SBOM.cdx.json` (SHA-256 `078456261cb4c2b594d01f261bce6457f85bc44a94923e110723718a9b286ab3`).
+
+Android `anland-v5.19.3` device-side assets:
+
+| Asset | Role | SHA-256 / download |
+| --- | --- | --- |
+| `anland-bridge-5.19.3-plain-release-arm64-v8a.apk` | Normal device installation; recommended default | `f7d698d17a3611f8cb4a0af5c1f1d5781c8c84731f656de744b4251fab5b4c38` / [download](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/anland-bridge-5.19.3-plain-release-arm64-v8a.apk) |
+| `anland-bridge-5.19.3-tracy-profiling-release-arm64-v8a.apk` | Tracy profiling only | `983e2a03aac1f0d56dda2fb9e3ac7048e8d37051492714dd1c918a2e19fe2d29` / [download](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/anland-bridge-5.19.3-tracy-profiling-release-arm64-v8a.apk) |
+| `anland-daemon.zip` | Android host/root Magisk module and daemon | `a258b4a5de851f24cd94fe1232528de2d56d525ea54f0ec478592772da6f6df4` / [download](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/anland-daemon.zip) |
+| `SHA256SUMS` | Release checksum manifest | file SHA-256 `63b82e1e64c3574c94d3d7381fc44ac00df9bbfff5659ea36dad25702a43cc95` / [download](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/SHA256SUMS) |
+
+These APK/ZIP assets are **for the Android host/root side only**. The Dockerfile, workflow, and RootFS do not download, `COPY`, or install them. `anland-v5.19.2` is not recommended because its Tracy `versionName` was dirty; the final pin is only `anland-v5.19.3`.
 
 The RootFS records `/usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt` and `BUILD-COMPATIBILITY.txt`. The workflow also emits external `BUILD-METADATA.txt` and `SHA256SUMS`. The Builder commit comes from the exact runtime `github.sha`; mutable `latest` is not used.
 
@@ -79,7 +91,7 @@ The RootFS records `/usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt` and `BUI
 - Optional development tools, compression tools, Docker, and TMOE.
 - `remote=none|wayvnc|lamco`.
 
-The default Linux user is `droid` and can be changed at build time. The image currently initializes the Linux account password as `1234`; change it immediately with `passwd` after import. Lamco never reuses this password and requires independent strong RDP credentials.
+The default Linux user is `colle` and can be changed at build time. The image currently initializes the Linux account password as `1234`; change it immediately with `passwd` after import. Lamco never reuses this password and requires independent strong RDP credentials.
 
 ## GitHub Actions build
 
@@ -92,7 +104,7 @@ Main inputs:
 | `version` | Safe version/filename label; `candidate` receives run id/attempt suffixes | `candidate` |
 | `publish_release` | Publish an immutable tag and Release | `false` |
 | `build_mode` | `native-arm64` or `qemu-x86_64` | `native-arm64` |
-| `username` | RootFS user | `droid` |
+| `username` | RootFS user | `colle` |
 | `terminal` | `kitty|ghostty|both` | `kitty` |
 | `remote` | `none|wayvnc|lamco` | `none` |
 | `niri_autostart` | Auto-start niri | `true` |
@@ -137,7 +149,7 @@ Native ARM64 host:
 ./build_rootfs-native.sh \
   -i Droidspaces-Arch-Niri.Dockerfile \
   -v local \
-  -u droid \
+  -u colle \
   -T both \
   -R lamco \
   -N true -g true -h true -c true -S true \
@@ -151,7 +163,7 @@ An x86_64 host must use the explicit QEMU script:
 ./build_rootfs-qemu-aarch64.sh \
   -i Droidspaces-Arch-Niri.Dockerfile \
   -v local \
-  -u droid \
+  -u colle \
   -T kitty \
   -R none \
   -N true -g true -h true -c true -S true \
@@ -166,7 +178,7 @@ The scripts reject the wrong host architecture, a non-canonical Dockerfile, unsa
 1. Import the `.tar.xz` into a privileged Droidspaces container. Do not follow PRoot setup instructions.
 2. Enable GPU and required hardware access for Qualcomm Mesa/niri.
 3. Keep `enable_systemd257=true` for 4.19 kernels. `enable_binfmt` is useful only when the target kernel enables `CONFIG_BINFMT_MISC`.
-4. Configure the Android Anland side and make the local display socket available at `/run/display.sock`. Android assets should come from the device-side `anland-bridge` Release; do not search for APKs or daemons inside the RootFS.
+4. Configure the Android Anland side from final Release [`anland-v5.19.3`](https://github.com/collegeming/anland-bridge/releases/tag/anland-v5.19.3) and make the local display socket available at `/run/display.sock`. These are Android host/root assets; do not search for APKs, daemons, or Magisk ZIPs inside the RootFS.
 5. `niri.service` auto-starts by default. Inspect it with:
 
    ```bash

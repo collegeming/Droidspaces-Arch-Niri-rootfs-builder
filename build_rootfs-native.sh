@@ -3,7 +3,7 @@ set -euo pipefail
 
 VERSION="${VERSION:-dev}"
 DOCKERFILE="Droidspaces-Arch-Niri.Dockerfile"
-USERNAME="droid"
+USERNAME="colle"
 TERMINAL="kitty"
 REMOTE="none"
 NIRI_AUTOSTART="true"

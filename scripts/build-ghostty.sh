@@ -55,6 +55,7 @@ sed -i '/pandoc-cli/d' /tmp/ghostty-pkg/PKGBUILD
 # 删 --system 离线标志，改在线 fetch（对齐 ghostty CI，绕 build.zig.zon.txt 清单缺陷）
 sed -i '/--system/d' /tmp/ghostty-pkg/PKGBUILD
 # build 前置 ZIG_GLOBAL_CACHE_DIR 复用 prepare() 已拉依赖，仅在线补缺
+# shellcheck disable=SC2016 # $srcdir must remain literal in the generated PKGBUILD.
 sed -i 's#DESTDIR=build zig build#ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache" DESTDIR=build zig build#' /tmp/ghostty-pkg/PKGBUILD
 
 chown -R aurbuild:aurbuild /tmp/ghostty-pkg

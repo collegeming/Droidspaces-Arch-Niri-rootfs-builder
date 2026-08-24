@@ -26,7 +26,7 @@ on:
         description: RootFS desktop username
         required: true
         type: string
-        default: droid
+        default: colle
       terminal:
         description: Terminal variant; both creates separate kitty and ghostty RootFS archives
         required: true
@@ -125,13 +125,34 @@ concurrency:
 
 env:
   ACTIVE_DOCKERFILE: Droidspaces-Arch-Niri.Dockerfile
-  ANIRI_REPOSITORY: Celvra/ANiri
-  ANIRI_TAG: v0.2.0
-  ANIRI_COMMIT: cfd31db9c79c681a11ebc1afdb80fa7b31c4f7e0
+  ANIRI_REPOSITORY: collegeming/ANiri-anland-tuned
+  ANIRI_TAG: v26.4.0-anland.1
+  ANIRI_TAG_OBJECT: 8abf6ac37eb9e3775dc2150abdfe406e4a857e0f
+  ANIRI_SOURCE_COMMIT: 1999f7cfb9c7ffdd02d79edf35fdf98df7eafe18
+  ANIRI_IMPLEMENTATION_BASELINE: 74ce2a92eb2151d729818a784ced605ec950b56c
   ANIRI_ASSET: niri-arm64-linux-bin
-  ANIRI_SHA256: 9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6eb
+  ANIRI_SHA256: 9970f367377bab96f6ae714ed524a16cec8427c505b5de22ae01a0a97c8e44e3
+  ANIRI_BUILD_METADATA: BUILD-METADATA.txt
+  ANIRI_BUILD_METADATA_SHA256: 43b59e66a8cd01c7bd32f1351a9b7890aa5de96c13d804dde24c7042bdfe4cbd
+  ANIRI_SBOM: ANiri-SBOM.cdx.json
+  ANIRI_SBOM_SHA256: 078456261cb4c2b594d01f261bce6457f85bc44a94923e110723718a9b286ab3
+  ANIRI_RELEASE_URL: https://github.com/collegeming/ANiri-anland-tuned/releases/tag/v26.4.0-anland.1
+  ANIRI_BUILD_RUN_URL: https://github.com/collegeming/ANiri-anland-tuned/actions/runs/32749084441
   ANLAND_REPOSITORY: collegeming/anland-bridge
-  ANLAND_COMMIT: 95b2d73ff799639ce8576ff908f13f5a31e024a1
+  ANLAND_TAG: anland-v5.19.3
+  ANLAND_TAG_OBJECT: 1d912e982a8f35e90e81255afd9f8444cd319295
+  ANLAND_SOURCE_COMMIT: e26a080e990d0c9fc18d64b35e161d134bc51e63
+  ANLAND_FEATURE_BASELINE: 95b2d73ff799639ce8576ff908f13f5a31e024a1
+  ANLAND_RELEASE_URL: https://github.com/collegeming/anland-bridge/releases/tag/anland-v5.19.3
+  ANLAND_BUILD_RUN_URL: https://github.com/collegeming/anland-bridge/actions/runs/32751299809
+  ANLAND_PLAIN_APK: anland-bridge-5.19.3-plain-release-arm64-v8a.apk
+  ANLAND_PLAIN_APK_SHA256: f7d698d17a3611f8cb4a0af5c1f1d5781c8c84731f656de744b4251fab5b4c38
+  ANLAND_TRACY_APK: anland-bridge-5.19.3-tracy-profiling-release-arm64-v8a.apk
+  ANLAND_TRACY_APK_SHA256: 983e2a03aac1f0d56dda2fb9e3ac7048e8d37051492714dd1c918a2e19fe2d29
+  ANLAND_DAEMON_ZIP: anland-daemon.zip
+  ANLAND_DAEMON_ZIP_SHA256: a258b4a5de851f24cd94fe1232528de2d56d525ea54f0ec478592772da6f6df4
+  ANLAND_SHA256SUMS: SHA256SUMS
+  ANLAND_SHA256SUMS_SHA256: 63b82e1e64c3574c94d3d7381fc44ac00df9bbfff5659ea36dad25702a43cc95
   LAMCO_REPOSITORY: collegeming/lamco-anland-bridge
   LAMCO_TAG: anland-v0.2.0
   LAMCO_COMMIT: 03902875622f04c8c64ab52fd4dc72981bb93e64
@@ -258,9 +279,22 @@ jobs:
               exit 1
             fi
             if ! grep -Fq 'HTTP 404' "$release_error"; then
-              echo 'unable to verify Release absence' >&2
+              echo 'unable to verify Release absence through the tag endpoint' >&2
               exit 1
             fi
+
+            existing_releases="$RUNNER_TEMP/existing-releases"
+            if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+                --jq '.[] | [.id, .tag_name, .draft] | @tsv' > "$existing_releases"; then
+              echo 'unable to list existing Releases, including drafts' >&2
+              exit 1
+            fi
+            while IFS=$'\t' read -r existing_id existing_tag existing_draft; do
+              if [[ "$existing_tag" == "$VERSION_INPUT" ]]; then
+                echo "refusing existing Release id=$existing_id tag=$existing_tag draft=$existing_draft" >&2
+                exit 1
+              fi
+            done < "$existing_releases"
           fi
 
           {
@@ -359,14 +393,39 @@ jobs:
           archive=$archive
           aniri_repository=$ANIRI_REPOSITORY
           aniri_tag=$ANIRI_TAG
-          aniri_commit=$ANIRI_COMMIT
+          aniri_tag_object=$ANIRI_TAG_OBJECT
+          aniri_source_commit=$ANIRI_SOURCE_COMMIT
+          aniri_implementation_baseline=$ANIRI_IMPLEMENTATION_BASELINE
+          aniri_release_url=$ANIRI_RELEASE_URL
+          aniri_build_run_url=$ANIRI_BUILD_RUN_URL
           aniri_asset=$ANIRI_ASSET
+          aniri_asset_url=https://github.com/$ANIRI_REPOSITORY/releases/download/$ANIRI_TAG/$ANIRI_ASSET
           aniri_sha256=$ANIRI_SHA256
-          aniri_status=temporary-upstream-baseline-until-tuned-release-exists
+          aniri_build_metadata=$ANIRI_BUILD_METADATA
+          aniri_build_metadata_sha256=$ANIRI_BUILD_METADATA_SHA256
+          aniri_sbom=$ANIRI_SBOM
+          aniri_sbom_sha256=$ANIRI_SBOM_SHA256
           android_anland_repository=$ANLAND_REPOSITORY
-          android_anland_commit=$ANLAND_COMMIT
-          android_anland_release=unpublished-device-side-prerequisite
-          android_anland_checksum=unavailable-until-release-exists
+          android_anland_tag=$ANLAND_TAG
+          android_anland_tag_object=$ANLAND_TAG_OBJECT
+          android_anland_source_commit=$ANLAND_SOURCE_COMMIT
+          android_anland_feature_baseline=$ANLAND_FEATURE_BASELINE
+          android_anland_release_url=$ANLAND_RELEASE_URL
+          android_anland_build_run_url=$ANLAND_BUILD_RUN_URL
+          android_anland_plain_apk=$ANLAND_PLAIN_APK
+          android_anland_plain_apk_sha256=$ANLAND_PLAIN_APK_SHA256
+          android_anland_plain_apk_url=https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_PLAIN_APK
+          android_anland_tracy_apk=$ANLAND_TRACY_APK
+          android_anland_tracy_apk_sha256=$ANLAND_TRACY_APK_SHA256
+          android_anland_tracy_apk_url=https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_TRACY_APK
+          android_anland_daemon_zip=$ANLAND_DAEMON_ZIP
+          android_anland_daemon_zip_sha256=$ANLAND_DAEMON_ZIP_SHA256
+          android_anland_daemon_zip_url=https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_DAEMON_ZIP
+          android_anland_sha256sums=$ANLAND_SHA256SUMS
+          android_anland_sha256sums_sha256=$ANLAND_SHA256SUMS_SHA256
+          android_anland_sha256sums_url=https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_SHA256SUMS
+          android_anland_assets_role=device-side-prerequisite-only
+          android_anland_assets_in_rootfs=false
           lamco_repository=$LAMCO_REPOSITORY
           lamco_tag=$LAMCO_TAG
           lamco_commit=$LAMCO_COMMIT
@@ -530,9 +589,22 @@ jobs:
             exit 1
           fi
           if ! grep -Fq 'HTTP 404' "$release_error"; then
-            echo 'unable to verify Release absence' >&2
+            echo 'unable to verify Release absence through the tag endpoint' >&2
             exit 1
           fi
+
+          existing_releases="$RUNNER_TEMP/existing-releases"
+          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '.[] | [.id, .tag_name, .draft] | @tsv' > "$existing_releases"; then
+            echo 'unable to list existing Releases, including drafts' >&2
+            exit 1
+          fi
+          while IFS=$'\t' read -r existing_id existing_tag existing_draft; do
+            if [[ "$existing_tag" == "$RELEASE_TAG" ]]; then
+              echo "refusing existing Release id=$existing_id tag=$existing_tag draft=$existing_draft" >&2
+              exit 1
+            fi
+          done < "$existing_releases"
 
           cat > "$RUNNER_TEMP/release-body.md" <<EOF
           Automated ARM64 Droidspaces Arch-Niri RootFS build.
@@ -546,8 +618,13 @@ jobs:
           - Remote variant: $REMOTE_VARIANT
 
           Pinned components
-          - ANiri baseline: $ANIRI_REPOSITORY tag $ANIRI_TAG, commit $ANIRI_COMMIT, asset $ANIRI_ASSET, SHA256 $ANIRI_SHA256. This remains the verified upstream baseline because ANiri-anland-tuned has no consumable Release; no fictitious tuned pin is used.
-          - Android anland-bridge prerequisite: $ANLAND_REPOSITORY commit $ANLAND_COMMIT. No tagged device-side Release/checksum is available yet: https://github.com/$ANLAND_REPOSITORY/tree/$ANLAND_COMMIT
+          - ANiri tuned: $ANIRI_REPOSITORY annotated tag $ANIRI_TAG (tag object $ANIRI_TAG_OBJECT), source commit $ANIRI_SOURCE_COMMIT, implementation baseline $ANIRI_IMPLEMENTATION_BASELINE, asset $ANIRI_ASSET, SHA256 $ANIRI_SHA256. The source contains the 74ce2a9 Anland implementation plus only the minimal strict-Clippy fixes required for the final release build. Release: $ANIRI_RELEASE_URL
+          - ANiri provenance: build metadata $ANIRI_BUILD_METADATA (SHA256 $ANIRI_BUILD_METADATA_SHA256), SBOM $ANIRI_SBOM (SHA256 $ANIRI_SBOM_SHA256), successful build $ANIRI_BUILD_RUN_URL
+          - Android anland-bridge device-side prerequisite: $ANLAND_REPOSITORY annotated tag $ANLAND_TAG (tag object $ANLAND_TAG_OBJECT), source commit $ANLAND_SOURCE_COMMIT, feature baseline $ANLAND_FEATURE_BASELINE. Release: $ANLAND_RELEASE_URL; successful build: $ANLAND_BUILD_RUN_URL
+          - Android plain APK: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_PLAIN_APK (SHA256 $ANLAND_PLAIN_APK_SHA256)
+          - Android Tracy profiling APK: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_TRACY_APK (SHA256 $ANLAND_TRACY_APK_SHA256)
+          - Android daemon/Magisk ZIP: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_DAEMON_ZIP (SHA256 $ANLAND_DAEMON_ZIP_SHA256)
+          - Android checksum manifest: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_SHA256SUMS (SHA256 $ANLAND_SHA256SUMS_SHA256)
           - Lamco: $LAMCO_REPOSITORY tag $LAMCO_TAG, commit $LAMCO_COMMIT, asset $LAMCO_ASSET, SHA256 $LAMCO_SHA256.
 
           Runtime boundary
@@ -577,13 +654,62 @@ jobs:
             --title "Droidspaces Arch-Niri RootFS $RELEASE_TAG" \
             --notes-file "$RUNNER_TEMP/release-body.md"
 
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .draft)" = true
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
-            --jq '.assets[].name' | sort > "$RUNNER_TEMP/remote-assets"
+          draft_releases="$RUNNER_TEMP/draft-releases"
+          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '.[] | select(.draft == true) | [.id, .tag_name] | @tsv' \
+              > "$draft_releases"; then
+            echo 'unable to list draft Releases after creation' >&2
+            exit 1
+          fi
+          draft_ids=()
+          while IFS=$'\t' read -r candidate_id candidate_tag; do
+            if [[ "$candidate_tag" == "$RELEASE_TAG" ]]; then
+              draft_ids+=("$candidate_id")
+            fi
+          done < "$draft_releases"
+          if [[ "${#draft_ids[@]}" -ne 1 ]]; then
+            echo "expected exactly one draft Release for $RELEASE_TAG, found ${#draft_ids[@]}" >&2
+            exit 1
+          fi
+          release_id="${draft_ids[0]}"
+          [[ "$release_id" =~ ^[0-9]+$ ]]
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq .draft)" = true
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq .tag_name)" = "$RELEASE_TAG"
+
+          draft_assets="$RUNNER_TEMP/draft-assets"
+          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
+              --jq '.[] | [.id, .name, .size] | @tsv' > "$draft_assets"; then
+            echo 'unable to list draft Release assets' >&2
+            exit 1
+          fi
+          mkdir "$RUNNER_TEMP/downloaded-release-assets"
+          : > "$RUNNER_TEMP/remote-assets"
+          while IFS=$'\t' read -r asset_id asset_name asset_size; do
+            [[ "$asset_id" =~ ^[0-9]+$ ]]
+            [[ "$asset_size" =~ ^[0-9]+$ ]]
+            grep -Fxq "$asset_name" "$RUNNER_TEMP/expected-assets"
+            test "$asset_size" = "$(stat -c '%s' "release-assets/$asset_name")"
+            printf '%s\n' "$asset_name" >> "$RUNNER_TEMP/remote-assets"
+            gh api \
+              -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+              > "$RUNNER_TEMP/downloaded-release-assets/$asset_name"
+            cmp -- \
+              "release-assets/$asset_name" \
+              "$RUNNER_TEMP/downloaded-release-assets/$asset_name"
+            test "$(sha256sum "release-assets/$asset_name" | cut -d' ' -f1)" = \
+              "$(sha256sum "$RUNNER_TEMP/downloaded-release-assets/$asset_name" | cut -d' ' -f1)"
+          done < "$draft_assets"
+          sort -o "$RUNNER_TEMP/remote-assets" "$RUNNER_TEMP/remote-assets"
           diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/remote-assets"
 
-          gh release edit "$RELEASE_TAG" --draft=false --latest=false
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false \
+            -f make_latest=false \
+            --silent
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .id)" = "$release_id"
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .draft)" = false
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
-            --jq '.assets[].name' | sort > "$RUNNER_TEMP/published-assets"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .tag_name)" = "$RELEASE_TAG"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
+            --jq '.[].name' | sort > "$RUNNER_TEMP/published-assets"
           diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/published-assets"
