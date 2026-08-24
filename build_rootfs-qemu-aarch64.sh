@@ -9,8 +9,9 @@ ENABLE_nosnap="false"
 ENABLE_8gen2_wayland="false"
 ENABLE_systemd257="false"
 ENABLE_anland_kde="false"
+REMOTE="none"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:" opt; do
+while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:R:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; 
     v) VERSION="$OPTARG" ;;    
@@ -31,7 +32,8 @@ while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:" opt; do
     t) ENABLE_8gen2_wayland="$OPTARG" ;; # 修复骁龙8 Gen 2 Wayland 花屏
     u) USERNAME="$OPTARG" ;; 
     A) ENABLE_anland_kde="$OPTARG" ;; # anland_kde 支持
-    *) echo "用法: $0 -i <template.Dockerfile> [-v <version>] [-S <true|false>]" ; exit 1 ;;
+    R) REMOTE="$OPTARG" ;; # 远程访问（none/wayvnc/lamco）
+    *) echo "用法: $0 -i <template.Dockerfile> [-v <version>] [-S <true|false>] [-R <none|wayvnc|lamco>]" ; exit 1 ;;
   esac
 done
 
@@ -73,7 +75,16 @@ if [ ! -f "$DOCKERFILE" ]; then
 fi
 
 # 提取前缀名称
-PREFIX=$(echo "$DOCKERFILE" | sed 's/\.Dockerfile//')
+PREFIX=$(basename "$DOCKERFILE" .Dockerfile)
+
+case "$REMOTE" in
+  none|wayvnc|lamco) ;;
+  *) echo "错误：REMOTE 必须是 none、wayvnc 或 lamco。" >&2; exit 1 ;;
+esac
+if [ "$REMOTE" != "none" ] && [ "$PREFIX" != "Arch-Niri" ]; then
+  echo "错误：远程访问参数仅支持 Arch-Niri。" >&2
+  exit 1
+fi
 
 echo "========================================================="
 echo " 开始构建项目 : $PREFIX"
@@ -177,6 +188,7 @@ docker buildx build \
   --build-arg ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
   --build-arg ANLAND_KDE_PACKAGE_REVISION="$ANLAND_KDE_PACKAGE_REVISION" \
   --build-arg USERNAME="$USERNAME" \
+  --build-arg REMOTE_ARG="$REMOTE" \
   -f "$DOCKERFILE" \
   .
 

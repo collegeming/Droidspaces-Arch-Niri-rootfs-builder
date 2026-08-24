@@ -75,7 +75,20 @@ if [ ! -f "$DOCKERFILE" ]; then
 fi
 
 # 提取前缀名称（例如：从 Debian-13-KDE.Dockerfile 中提取出 Debian-13-KDE）
-PREFIX=$(echo "$DOCKERFILE" | sed 's/\.Dockerfile//')
+PREFIX=$(basename "$DOCKERFILE" .Dockerfile)
+
+case "$REMOTE" in
+  none|wayvnc|lamco) ;;
+  *) echo "错误：REMOTE 必须是 none、wayvnc 或 lamco。" >&2; exit 1 ;;
+esac
+if [ "$REMOTE" != "none" ] && [ "$PREFIX" != "Arch-Niri" ]; then
+  echo "错误：远程访问参数仅支持 Arch-Niri。" >&2
+  exit 1
+fi
+case "$ARCH" in
+  aarch64|arm64) ;;
+  *) echo "错误：原生构建仅支持 ARM64 主机；请改用 QEMU arm64 构建脚本。" >&2; exit 1 ;;
+esac
 
 echo "========================================================="
 echo " 开始构建项目 : $PREFIX"

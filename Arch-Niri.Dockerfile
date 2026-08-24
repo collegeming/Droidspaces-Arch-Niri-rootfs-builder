@@ -57,15 +57,25 @@ ARG ANIRI_SHA256=9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6e
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 COPY scripts/build-ghostty.sh /usr/local/sbin/build-ghostty
-COPY scripts/build-remote-lamco.sh /usr/local/sbin/build-remote-lamco
+COPY scripts/install-lamco-anland-bridge.sh /usr/local/sbin/install-lamco-anland-bridge
+COPY scripts/setup-lamco-anland-bridge.sh /usr/local/sbin/setup-lamco-anland-bridge
+COPY scripts/check-lamco-anland-bridge.sh /usr/local/sbin/check-lamco-anland-bridge
+COPY scripts/lamco-anland-bridge.service /usr/lib/systemd/system/lamco-anland-bridge.service
 COPY scripts/wayvnc-start /usr/local/sbin/wayvnc-start
-COPY scripts/lamco-start /usr/local/sbin/lamco-start
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/niri/default-config.kdl /usr/share/niri/default-config.kdl
 COPY scripts/terminal/ /tmp/beautify/
 
 # Arch-Niri 限制检查与说明
-RUN if [ "$BUILD_KDE" = "mobile" ]; then \
+RUN case "$REMOTE_ARG" in \
+        none|wayvnc|lamco) ;; \
+        *) echo "错误: REMOTE_ARG 必须是 none、wayvnc 或 lamco" >&2; exit 1 ;; \
+    esac && \
+    case "$USERNAME" in \
+        ''|*[!A-Za-z0-9_-]*|[0-9-]*) \
+            echo "错误: USERNAME 包含不安全字符" >&2; exit 1 ;; \
+    esac && \
+    if [ "$BUILD_KDE" = "mobile" ]; then \
         echo "错误: Arch-Niri 不支持 mobile 模式（该选项属于 KDE Plasma Mobile）" >&2; \
         exit 1; \
     fi && \
@@ -131,12 +141,14 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     pacman -S --noconfirm --needed paru base-devel zig upower noto-fonts noto-fonts-emoji && \
     # 远程访问方案（REMOTE_ARG）：none（默认）/ wayvnc（VNC 5900）/ lamco（RDP 3389）
     # wayvnc：ALARM extra 预编译包，Wayland 原生 VNC，改动最小
-    # lamco：IronRDP 标准协议，PC 端 mstsc 免装客户端，需源码构建（Rust）
+    # lamco：固定下载并校验 anland-v0.2.0 ARM64 Release，不在镜像内编译 Rust
     if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         pacman -S --noconfirm --needed wayvnc; \
     elif [ "$REMOTE_ARG" = "lamco" ]; then \
-        pacman -S --noconfirm --needed pipewire wireplumber dbus-broker rustup nasm openssl clang pkg-config cmake && \
-        chmod +x /usr/local/sbin/build-remote-lamco && /usr/local/sbin/build-remote-lamco ${USERNAME}; \
+        pacman -S --noconfirm --needed xz && \
+        chmod +x /usr/local/sbin/install-lamco-anland-bridge && \
+        /usr/local/sbin/install-lamco-anland-bridge && \
+        rm -f /usr/local/sbin/install-lamco-anland-bridge; \
     fi && \
     # 终端选择（TERMINAL_ARG）：kitty（默认，已随上面 pacman 装好，直接跳过）
     # 或 ghostty（调用 scripts/build-ghostty.sh：官方稳定版 1.3.1 PKGBUILD +
@@ -416,10 +428,9 @@ fi
 EOF_RUN
 
 # 远程访问服务（REMOTE_ARG）：wayvnc（VNC 5900）或 lamco（RDP 3389）
-# wayvnc：Wayland 原生 VNC，niri 已支持全部 wlr 协议，仅 1 个包 + 1 个服务
-# lamco：标准 RDP（PC mstsc 免装客户端），需 PipeWire + dbus-broker
-# 已知限制（两方案共有）：虚拟键盘修饰键不触发 niri 自身快捷键（niri#403），
-#   普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代
+# wayvnc：Wayland 原生 VNC，niri 已支持全部 wlr 协议，仅 1 个包 + 1 个服务。
+# lamco：Android 专用硬件 H.264 bridge；导入后必须先绑定目录并运行 setup helper，
+# 成功写入 mode 0600 的 token/凭据配置后才启用服务。
 RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         mkdir -p /etc/wayvnc && \
         printf 'address=0.0.0.0\nport=5900\n' > /etc/wayvnc/config && \
@@ -443,25 +454,32 @@ RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         mkdir -p /etc/systemd/system/multi-user.target.wants && \
         ln -sf /etc/systemd/system/wayvnc.service /etc/systemd/system/multi-user.target.wants/wayvnc.service; \
     elif [ "$REMOTE_ARG" = "lamco" ]; then \
-        chmod +x /usr/local/sbin/lamco-start && \
-        echo "[Unit]" > /etc/systemd/system/lamco-rdp.service && \
-        echo "Description=Lamco RDP Server" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "After=niri.service" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "Requires=niri.service" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "[Service]" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "Type=simple" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "User=${USERNAME}" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "Environment=XDG_RUNTIME_DIR=/run/user/1000" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "ExecStartPre=/usr/bin/sleep 3" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "ExecStart=/usr/local/sbin/lamco-start /etc/lamco/config.toml" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "Restart=on-failure" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "RestartSec=5s" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "[Install]" >> /etc/systemd/system/lamco-rdp.service && \
-        echo "WantedBy=multi-user.target" >> /etc/systemd/system/lamco-rdp.service && \
-        mkdir -p /etc/systemd/system/multi-user.target.wants && \
-        ln -sf /etc/systemd/system/lamco-rdp.service /etc/systemd/system/multi-user.target.wants/lamco-rdp.service; \
+        useradd --system --user-group --no-create-home \
+            --home-dir /nonexistent --shell /usr/bin/nologin lamco-anland-bridge && \
+        test "$(id -Gn lamco-anland-bridge)" = "lamco-anland-bridge" && \
+        awk -F: '$1 == "lamco-anland-bridge" && $2 ~ /^!/ { found = 1 } END { exit !found }' \
+            /etc/shadow && \
+        test "$(getent passwd lamco-anland-bridge | cut -d: -f6-7)" = "/nonexistent:/usr/bin/nologin" && \
+        chmod 0755 \
+            /usr/local/sbin/setup-lamco-anland-bridge \
+            /usr/local/sbin/check-lamco-anland-bridge && \
+        chmod 0644 /usr/lib/systemd/system/lamco-anland-bridge.service; \
+    else \
+        rm -f \
+            /usr/local/sbin/install-lamco-anland-bridge \
+            /usr/local/sbin/setup-lamco-anland-bridge \
+            /usr/local/sbin/check-lamco-anland-bridge \
+            /usr/lib/systemd/system/lamco-anland-bridge.service; \
+    fi && \
+    if [ "$REMOTE_ARG" != "wayvnc" ]; then \
+        rm -f /usr/local/sbin/wayvnc-start; \
+    fi && \
+    if [ "$REMOTE_ARG" != "lamco" ]; then \
+        rm -f \
+            /usr/local/sbin/install-lamco-anland-bridge \
+            /usr/local/sbin/setup-lamco-anland-bridge \
+            /usr/local/sbin/check-lamco-anland-bridge \
+            /usr/lib/systemd/system/lamco-anland-bridge.service; \
     fi
 
 # 注入 binfmt 服务脚本（与 Arch-KDE 相同的 systemd 方案）

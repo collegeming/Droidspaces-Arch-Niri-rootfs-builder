@@ -15,6 +15,7 @@
 - [导入 Droidspaces](#导入-droidspaces)
 - [启动 KDE 桌面](#启动-kde-桌面)
 - [Wayland 和 Anland 配置](#wayland-和-anland-配置)
+- [Lamco Anland RDP 配置](#lamco-anland-rdp-配置)
 - [Droidspaces USB Manager](#droidspaces-usb-manager)
 - [账户、密码和用户名修改](#账户密码和用户名修改)
 - [本地构建](#本地构建)
@@ -89,9 +90,9 @@
 - 已知限制：ANiri 上游声明的已知问题包括 glmark2/vkmark 得分略低于 KWin、Android 悬浮窗可能引起花屏、麦克风/摄像头转发应用侧不可读；本模板未集成 Xwayland（ patched Xwayland 属于 KWin 预编译包体系）；Nemo 的「在终端中打开」动作在空白背景右键时可能不显示（对文件/文件夹右键可用）。
 - **远程访问**（workflow 参数 `remote`，仅 Arch-Niri 适用）：
   - **`none`（默认）**：不启用远程访问。
-  - **`wayvnc`（推荐）**：Wayland 原生 VNC 服务器，ALARM extra 预编译包（改动最小，~5MB），niri 已实现 wayvnc 所需全部 wlr 协议（screencopy v3 + virtual-pointer + virtual-keyboard + data-control）。PC 端用 TigerVNC/Remmina/NyaTerm 连接 `<手机IP>:5900`，**无密码**（wayvnc 0.10.1 启用密码认证时会同时提供 RSA-AES 安全类型，多数 Windows VNC 客户端不支持导致连接失败，故默认关闭认证，仅限局域网访问）。如需远程安全访问，建议通过 SSH 隧道：`ssh -L 5900:localhost:5900 colle@<手机IP>`，然后 VNC 连 `localhost:5900`。已知限制：虚拟键盘修饰键不触发 niri 自身快捷键（Super+Tab 等，niri#403），普通字符输入正常，窗口管理用 Noctalia Shell 按钮替代。
-  - **`lamco`**：基于 IronRDP 的标准 RDP 服务端（PC 端 Windows 自带 `mstsc` 免装客户端），aarch64 需从源码构建（Rust 1.89+，约 30-60 分钟），依赖 PipeWire + dbus-broker。连接 `<手机IP>:3389`，**无密码**（PAM 认证与 mstsc 的 NLA/CredSSP 不兼容，故关闭认证，仅限局域网访问；远程安全用 SSH 隧道）。许可证 BSL 1.1（单实例免费）。配置文件 `/etc/lamco/config.toml`（`auth_method = "none"`）。
-  - 两方案不冲突（不同端口/协议），修饰键缺陷是 niri/Smithay 上游共有问题（不可在容器侧修复）。详细调研见 `remote-access-background-and-solutions.md`。
+  - **`wayvnc`**：Wayland 原生 VNC 服务器，ALARM extra 预编译包（改动最小，约 5MB），使用 screencopy/virtual-input/data-control。PC 端需另装 VNC 客户端；host/shared network 使用 `<手机 WLAN IP>:5900`，isolated/NAT 使用 Droidspaces 实际发布的 host endpoint。默认无密码，只适合受信任局域网；虚拟键盘修饰键触发 niri 快捷键仍受 niri#403 限制。
+  - **`lamco`**：本项目场景专用的标准 RDP 服务端，PC 端直接使用 Windows 自带 `mstsc`。RootFS 固定下载 `collegeming/lamco-anland-bridge` 的 `anland-v0.2.0` ARM64 Release，并以 SHA-256 `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea` 校验；不在镜像内编译 Rust，不包含 OpenH264、x264 或 FFmpeg 软件编码器。Android 只把 ANiri/anland 桌面送入 MediaCodec 硬件 H.264 Surface encoder；不捕获整个 Android 屏幕。RDP 对外使用 TLS 和独立用户名/密码，Win/Super 原样转发给 niri，不做 Win→Alt 映射。导入后必须完成下文的目录绑定和交互式安全配置。
+  - 两个实现使用不同协议和端口，构建时选择其一；`remote` 不是 `none` 时必须单独选择 `Arch-Niri`，workflow 会拒绝其他目标和聚合目标。
 
 #### VNC 连接操作说明（`remote=wayvnc`）
 
@@ -99,22 +100,18 @@
 
 **PC 端连接步骤**：
 
-1. **获取手机 IP**：在手机上查看 Droidspaces 容器使用的网络模式——
-   - **NAT 模式**：手机设置 → WLAN → 查看 IP（如 `192.168.1.100`）
-   - **主机网络模式**：与手机同一 IP
+1. **确认网络入口**：
+   - **host/shared network**：使用手机 WLAN IP，VNC 端口为 5900。
+   - **isolated/NAT network**：必须先在 Droidspaces 中把 guest TCP 5900 发布到一个 host TCP 端口，再使用 Droidspaces 实际显示的 host address 和 host port。未配置发布时，手机 WLAN IP 不能直接访问 guest 的 5900。
 
 2. **下载 VNC 客户端**（任选其一，免费）：
    - **Windows**：[TigerVNC](https://tigervnc.org/)（轻量，推荐）或 [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
    - **macOS**：自带的「屏幕共享」或 [TigerVNC](https://tigervnc.org/)
    - **Linux**：`pacman -S tigervnc` 或 `apt install tigervnc-viewer` / Remmina
 
-3. **连接**：打开 VNC 客户端，输入地址：
-   ```
-   <手机IP>:5900
-   ```
-   例如 `192.168.1.100:5900`（TigerVNC 输入 `192.168.1.100::5900`）。
+3. **连接**：host/shared network 输入 `<手机 WLAN IP>:5900`；isolated/NAT 输入 Droidspaces 实际发布的 `<host address>:<host port>`。例如 host/shared network 可使用 `192.168.1.100:5900`（TigerVNC 写作 `192.168.1.100::5900`）。
 
-   **密码**：无密码（VNC 认证已关闭）。如需安全访问，建议通过 SSH 隧道：先在 PC 端运行 `ssh -L 5900:localhost:5900 colle@<手机IP>`，然后 VNC 连 `localhost:5900`。
+   **密码**：无密码（VNC 认证已关闭）。host/shared network 可通过 SSH 隧道保护：先在 PC 端运行 `ssh -L 5900:localhost:5900 colle@<手机 WLAN IP>`，然后 VNC 连 `localhost:5900`。isolated/NAT 必须改用 Droidspaces 实际发布的 SSH host endpoint；未发布 SSH 时不能套用该示例。
 
 4. **操作**：
    - 连接后即可看到 niri 桌面（与手机屏幕同一画面）
@@ -177,7 +174,7 @@ GitHub Actions 的主要输入项如下：
 | Docker 集成 (`enable_docker`) | `true`、`false` | `false` | 在 RootFS 内安装 Docker 相关包。 |
 | 构建 Wayland 预编译包 (`build_wayland_packages`) | `true`、`false` | `false` | 构建 RootFS 前触发 KWin/Xwayland 预编译包更新流程。 |
 | 终端选择 (`terminal`) | `kitty`、`ghostty`、`konsole`、`both` | `kitty` | Arch-Niri/Arch-KDE 的终端。`both` 同时构建 kitty+ghostty 两个 rootfs 到一个 release。 |
-| 远程访问 (`remote`) | `none`、`wayvnc`、`lamco` | `none` | Arch-Niri 远程访问方案。`wayvnc`=VNC 5900（推荐，改动最小）；`lamco`=RDP 3389（mstsc 免装客户端，需源码构建）。 |
+| 远程访问 (`remote`) | `none`、`wayvnc`、`lamco` | `none` | Arch-Niri 远程访问方案。`wayvnc`=VNC 5900；`lamco`=RDP 3389，使用固定校验的 ARM64 Release，导入后需绑定私有目录并运行安全配置助手。 |
 
 KDE 模式说明：
 
@@ -396,6 +393,49 @@ startplasma-wayland
 
 如果选择 `mobile`，工作流会强制启用 Wayland，因为 Plasma Mobile 在本项目中按 Wayland 路径配置。
 
+## Lamco Anland RDP 配置
+
+此功能仅随 `Arch-Niri` 且 `remote=lamco` 的 RootFS 安装。它不是 Portal、PipeWire、screencopy 或 Android MediaProjection 桌面捕获：anland 的 dmabuf/FD 显示链直接进入 Android consumer，Android 使用硬件 MediaCodec H.264 Surface encoder，Lamco 只把这一路 ANiri 桌面封装为 `mstsc` 可用的 RDP EGFX AVC420。viewer 不存在或长期最小化且没有本地 Surface 时，Android 会停止 encoder 与图形消费链。
+
+1. 在 Android 宿主创建私有目录 `/data/local/tmp/anland-rdp`，然后在 Droidspaces 高级配置中把**目录**绑定到容器 `/run/anland-rdp`：
+
+   ```text
+   /data/local/tmp/anland-rdp -> /run/anland-rdp
+   ```
+
+   不要绑定单个 `bridge.sock` inode。Rust 重启时会安全地 unlink/rebind socket，只有目录绑定才能继续看到新 inode。不要使用 `chmod 777`，也不要把该路径映射到网络。setup helper 会把该 bind source/target 改为专用无登录账号 `lamco-anland-bridge` 的 UID/GID、mode `0700`；Android root helper 以 root 身份连接 mode `0600` 的 socket。
+
+2. 启动容器后，先确认绑定真实存在：
+
+   ```bash
+   findmnt --task 1 --mountpoint /run/anland-rdp --output TARGET,FSROOT
+   ```
+
+3. 在 Anland Android App 中选择 `remote` 或 `both`，复制 App 显示的 32 位小写十六进制 bridge token。随后在容器中运行：
+
+   ```bash
+   sudo setup-lamco-anland-bridge
+   ```
+
+   助手会关闭 shell xtrace、隐藏读取 token 和 RDP 密码，要求密码至少 12 个字符，并要求输入独立的 RDP 用户名；它不会生成密码，也不会使用 RootFS 默认密码。成功后原子写入专用无登录服务用户持有、mode `0600` 的 `/etc/lamco-anland-bridge/config.toml`，准备 mode `0700` 的 TLS 目录，启动成功后才启用 `lamco-anland-bridge.service`。私钥由服务首次启动时以 mode `0600` 生成。配置、token、密码均不在镜像、命令行参数或环境变量中预置。
+
+4. 检查服务：
+
+   ```bash
+   systemctl status lamco-anland-bridge.service
+   journalctl -u lamco-anland-bridge.service
+   ```
+
+   缺少 config、目录绑定、正确 owner/mode、有效 token 或用户名/密码时，preflight 会拒绝启动。首次使用自签名 TLS 证书时，`mstsc` 会显示证书信任提示；应核对设备身份，生产使用可替换为受信任的证书和匹配私钥。
+
+5. 网络路径：
+
+   - Droidspaces **host/shared network**：`mstsc` 连接 `<手机 WLAN IP>:3389`。
+   - Droidspaces **isolated/NAT network**：在容器网络配置中只把 guest TCP 3389 发布到选定的 host TCP 端口，并连接 Droidspaces 实际显示的 `<host address>:<host port>`。只有明确发布为 host 3389 且 host address 是手机 WLAN IP 时，入口才是 `<手机 WLAN IP>:3389`。具体 UI/命令随 Droidspaces 版本变化，本项目不写死未经确认的端口参数语法。
+   - host/shared network 的防火墙应限制 TCP 3389；isolated/NAT 应限制实际发布的 host TCP 端口。两者都只允许目标 PC 或受信任子网访问。绝不能转发 `/run/anland-rdp/bridge.sock`，也不能暴露兼容调试用 TCP 33910。
+
+Windows 登录必须使用 setup 中设置的精确 RDP 用户名和密码；Win/Super、键盘、鼠标按钮、移动与滚轮按原始 RDP 输入转发给 niri。剪贴板仅支持 `CF_UNICODETEXT` 文本（含 CJK、emoji、换行和清空），不支持图片、文件、HTML 或 RTF。当前没有 RDPSND，因此 PC 端无 RDP 音频；本地 Android 音频链与此独立。硬件 H.264/EGFX 不可用时会失败或无视频，不会回退 OpenH264、x264 或 FFmpeg。
+
 ## Droidspaces USB Manager
 
 除 NixOS 外的 9 个发行版模板都会通过 `scripts/install-usb-manager.sh` 安装 [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager)（NixOS 的声明式体系暂未集成，见上文说明）。安装器会自动识别 Debian/Ubuntu、Fedora 或 Arch 系（含 Artix）系统，使用 APT、DNF 或 Pacman 安装对应的 PyQt5、ADB、udev、NTFS 和 exFAT 依赖，并修正上游代码中仅适用于 Debian 的命令路径。
@@ -428,6 +468,7 @@ sudo ./scripts/install-usb-manager.sh --user "$USER"
 - Docker
 - Docker Buildx
 - `xz`
+- `build_rootfs-native.sh` 仅允许 ARM64 主机；x86_64 主机必须使用 QEMU arm64 脚本
 - 如果要跨架构构建，需要可用的 QEMU/binfmt 环境
 
 原生架构构建示例：
@@ -453,7 +494,8 @@ chmod +x build_rootfs-native.sh
   -S false \
   -t false \
   -u Gold \
-  -A false
+  -A false \
+  -R none
 ```
 
 使用 QEMU 构建 arm64 RootFS 示例：
@@ -479,7 +521,8 @@ chmod +x build_rootfs-qemu-aarch64.sh
   -S false \
   -t false \
   -u Gold \
-  -A true
+  -A true \
+  -R none
 ```
 
 构建完成后会生成类似下面的文件：
@@ -525,6 +568,10 @@ sudo download-firmware
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── install-anland-kde.sh
+│   ├── install-lamco-anland-bridge.sh
+│   ├── setup-lamco-anland-bridge.sh
+│   ├── check-lamco-anland-bridge.sh
+│   ├── lamco-anland-bridge.service
 │   ├── niri/
 │   │   └── default-config.kdl
 │   ├── nosnap.sh
@@ -554,7 +601,7 @@ KDE 包只作为 GitHub Release 资产发布。手动运行 `build-kde-wayland.y
 - 启用 Anland 后，工作流会关闭 PulseAudio 转发，因为 Anland App 自带音频路径。
 - Fedora 在部分设备上需要硬件访问，否则可能闪屏或崩溃。
 - Ubuntu 和 Debian 在未启用 `noseccomp` 或内核缺少 `USER_NS` 时，可能出现卡顿。
-- 默认密码为 `1234`，导入后应立即修改。
+- RootFS Linux 系统账户的默认密码为 `1234`，导入后应立即修改；Lamco RDP 不使用该密码，必须通过 setup helper 单独设置强凭据。
 - 本项目内置的预编译 Wayland 包与上游 anland 的兼容性取决于构建时的上游状态。
 
 ## 致谢

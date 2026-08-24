@@ -131,7 +131,7 @@ on:
           - 'konsole'
           - 'both'
       remote:
-        description: 'Remote access (none - disabled; wayvnc - VNC 5900 recommended, minimal change; lamco - RDP 3389, PC mstsc no client needed, requires source build ~30-60 min)'
+        description: 'Remote access (none - disabled; wayvnc - VNC 5900; lamco - RDP 3389 using pinned verified anland-v0.2.0 ARM64 Release, secure setup required after import)'
         required: true
         type: choice
         default: 'none'
@@ -166,7 +166,13 @@ jobs:
           ENABLE_ANLAND_KDE="${{ github.event.inputs.enable_anland_kde }}"
           BUILD_WAYLAND_PACKAGES="${{ github.event.inputs.build_wayland_packages }}"
           PULSE_AUDIO="${{ github.event.inputs.PulseAudio }}"
+          REMOTE="${{ github.event.inputs.remote }}"
           WAYLAND_PACKAGE_TARGET=""
+
+          if [ "$REMOTE" != "none" ] && [ "$TARGET" != "Arch-Niri" ]; then
+            echo "Error: remote=wayvnc/lamco only supports an individual Arch-Niri build; all, all-wayland, and every other target require remote=none" >&2
+            exit 1
+          fi
           
           case "$TARGET" in
             all)

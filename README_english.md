@@ -15,6 +15,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - [Import into Droidspaces](#import-into-droidspaces)
 - [Start KDE Desktop](#start-kde-desktop)
 - [Wayland and Anland Setup](#wayland-and-anland-setup)
+- [Lamco Anland RDP Setup](#lamco-anland-rdp-setup)
 - [Droidspaces USB Manager](#droidspaces-usb-manager)
 - [Account, Password, and Username Changes](#account-password-and-username-changes)
 - [Local Build](#local-build)
@@ -89,9 +90,9 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Known limitations: upstream ANiri lists a few known issues (glmark2/vkmark scores slightly below KWin, Android floating windows may cause glitches, microphone/camera forwarding is unreadable by apps); Xwayland is not integrated (the patched Xwayland belongs to the KWin prebuilt package set); the Nemo "Open in Terminal" action may not appear on an empty-background right-click (right-clicking a file or folder works).
 - **Remote access** (workflow input `remote`, Arch-Niri only):
   - **`none` (default)**: no remote access.
-  - **`wayvnc` (recommended)**: Wayland-native VNC server, ALARM extra prebuilt package (minimal change, ~5MB), niri implements all wlr protocols wayvnc needs (screencopy v3 + virtual-pointer + virtual-keyboard + data-control). Connect from PC via TigerVNC/Remmina/NyaTerm to `<phone-ip>:5900`, **no password** (wayvnc 0.10.1 offers RSA-AES security type when auth is enabled, which most Windows VNC clients don't support, so auth is disabled by default — local network only). For secure remote access, use SSH tunnel: `ssh -L 5900:localhost:5900 colle@<phone-ip>`, then VNC to `localhost:5900`. Known limitation: virtual keyboard modifiers don't trigger niri's own keybinds (Super+Tab etc., niri#403); normal character input works; use Noctalia Shell buttons for window management.
-  - **`lamco`**: standard RDP server based on IronRDP (PC's built-in `mstsc` needs no client install), aarch64 requires source build (Rust 1.89+, ~30-60 min), depends on PipeWire + dbus-broker. Connect to `<phone-ip>:3389`, **no password** (PAM auth is incompatible with mstsc's NLA/CredSSP, so auth is disabled — local network only; use SSH tunnel for secure remote access). License BSL 1.1 (free for single instance). Config file `/etc/lamco/config.toml` (`auth_method = "none"`).
-  - The two options don't conflict (different ports/protocols); the modifier-key limitation is a shared niri/Smithay upstream issue (not fixable on the container side). Full research in `remote-access-background-and-solutions.md`.
+  - **`wayvnc`**: Wayland-native VNC server from the ALARM repository (minimal change, about 5 MB), using screencopy, virtual input, and data control. A separate VNC client uses `<phone WLAN IP>:5900` with host/shared networking, or the host endpoint actually published by Droidspaces with isolated/NAT networking. It has no password by default and is suitable only for a trusted LAN; niri#403 still limits compositor shortcuts sent through its virtual keyboard path.
+  - **`lamco`**: a standard RDP server tailored to this project; Windows uses its built-in `mstsc`. The RootFS downloads the pinned `anland-v0.2.0` ARM64 Release from `collegeming/lamco-anland-bridge` and verifies SHA-256 `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea`. It does not build Rust in the image and contains no OpenH264, x264, or FFmpeg software encoder. Android sends only the ANiri/anland desktop to a MediaCodec hardware H.264 Surface encoder; it does not capture the whole Android screen. External RDP uses TLS and dedicated credentials. Win/Super is forwarded unchanged to niri, with no Win-to-Alt mapping. Complete the directory bind and interactive secure setup below after import.
+  - The implementations use different protocols and ports; select one at build time. A non-`none` `remote` value requires an individual `Arch-Niri` target; the workflow rejects other and aggregate targets.
 
 #### VNC Connection Guide (`remote=wayvnc`)
 
@@ -99,22 +100,18 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 
 **PC-side connection steps**:
 
-1. **Get phone IP**: Check the Droidspaces network mode on the phone —
-   - **NAT mode**: Phone Settings → WLAN → check IP (e.g. `192.168.1.100`)
-   - **Host network mode**: same IP as the phone
+1. **Determine the network endpoint**:
+   - With **host/shared networking**, use the phone WLAN IP and VNC port 5900.
+   - With **isolated/NAT networking**, first publish guest TCP 5900 on a host TCP port in Droidspaces, then use the host address and host port actually reported by Droidspaces. Without that publication, the phone WLAN IP cannot directly reach guest port 5900.
 
 2. **Download a VNC client** (pick one, free):
    - **Windows**: [TigerVNC](https://tigervnc.org/) (lightweight, recommended) or [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
    - **macOS**: built-in Screen Sharing or [TigerVNC](https://tigervnc.org/)
    - **Linux**: `pacman -S tigervnc` or `apt install tigervnc-viewer` / Remmina
 
-3. **Connect**: Open VNC client, enter:
-   ```
-   <phone-ip>:5900
-   ```
-   e.g. `192.168.1.100:5900` (TigerVNC: `192.168.1.100::5900`).
+3. **Connect**: With host/shared networking enter `<phone WLAN IP>:5900`; with isolated/NAT networking enter the `<host address>:<host port>` actually published by Droidspaces. For example, host/shared networking may use `192.168.1.100:5900` (TigerVNC: `192.168.1.100::5900`).
 
-   **Password**: no password (VNC auth is disabled). For secure access, use SSH tunnel: run `ssh -L 5900:localhost:5900 colle@<phone-ip>` on PC, then VNC to `localhost:5900`.
+   **Password**: no password (VNC auth is disabled). With host/shared networking, protect it through an SSH tunnel: run `ssh -L 5900:localhost:5900 colle@<phone WLAN IP>` on the PC, then connect VNC to `localhost:5900`. With isolated/NAT networking, use the SSH host endpoint actually published by Droidspaces; this example does not apply when SSH is not published.
 
 4. **Usage**:
    - You'll see the niri desktop (same view as the phone screen)
@@ -177,7 +174,7 @@ The main GitHub Actions inputs are:
 | Docker integration (`enable_docker`) | `true`, `false` | `false` | Installs Docker-related packages inside the RootFS. |
 | Build Wayland prebuilt packages (`build_wayland_packages`) | `true`, `false` | `false` | Triggers the KWin/Xwayland prebuilt package workflow before building the RootFS. |
 | Terminal (`terminal`) | `kitty`, `ghostty`, `konsole`, `both` | `kitty` | Terminal for Arch-Niri/Arch-KDE. `both` builds kitty+ghostty rootfs to one release. |
-| Remote access (`remote`) | `none`, `wayvnc`, `lamco` | `none` | Arch-Niri remote access. `wayvnc`=VNC 5900 (recommended, minimal); `lamco`=RDP 3389 (mstsc, source build). |
+| Remote access (`remote`) | `none`, `wayvnc`, `lamco` | `none` | Arch-Niri remote access. `wayvnc`=VNC 5900; `lamco`=RDP 3389 from a pinned verified ARM64 Release, followed by a private-directory bind and secure setup after import. |
 
 KDE mode details:
 
@@ -396,9 +393,52 @@ startplasma-wayland
 
 If `mobile` is selected, the workflow forces Wayland on because Plasma Mobile is configured through the Wayland path in this project.
 
+## Lamco Anland RDP Setup
+
+This feature is installed only in an `Arch-Niri` RootFS built with `remote=lamco`. It does not capture through a Portal, PipeWire, screencopy, or Android MediaProjection. The anland dmabuf/FD display path feeds the Android consumer directly, Android uses a hardware MediaCodec H.264 Surface encoder, and Lamco packages only that ANiri desktop as RDP EGFX AVC420 for `mstsc`. When there is no viewer, or the viewer stays minimized and there is no local Surface, Android stops the encoder and graphics-consumption chain.
+
+1. Create the private Android host directory `/data/local/tmp/anland-rdp`, then use Droidspaces advanced settings to bind the **directory** into the container:
+
+   ```text
+   /data/local/tmp/anland-rdp -> /run/anland-rdp
+   ```
+
+   Do not bind the individual `bridge.sock` inode. Rust safely unlinks and rebinds the socket after a restart, and only a directory bind exposes the new inode. Do not use `chmod 777`, and never map this path to the network. The setup helper changes the bind source/target to the UID/GID of the dedicated no-login `lamco-anland-bridge` account and mode `0700`; the Android root helper connects to the mode-`0600` socket as root.
+
+2. Start the container and verify that the bind exists:
+
+   ```bash
+   findmnt --task 1 --mountpoint /run/anland-rdp --output TARGET,FSROOT
+   ```
+
+3. Select `remote` or `both` in the Anland Android app and copy the 32-character lowercase hexadecimal bridge token shown by the app. In the container run:
+
+   ```bash
+   sudo setup-lamco-anland-bridge
+   ```
+
+   The helper disables shell xtrace, reads the token and RDP password without echo, requires a password of at least 12 characters, and asks for a dedicated RDP username. It never generates a password and never reuses the RootFS account password. On success it atomically writes `/etc/lamco-anland-bridge/config.toml` as a mode-`0600` file owned by the dedicated no-login service account, prepares a mode-`0700` TLS directory, and enables `lamco-anland-bridge.service` only after a successful start. The service creates its private key with mode `0600` on first start. No config, token, or password is baked into the image or passed through process arguments or environment variables.
+
+4. Inspect the service:
+
+   ```bash
+   systemctl status lamco-anland-bridge.service
+   journalctl -u lamco-anland-bridge.service
+   ```
+
+   The preflight rejects startup when the config, directory bind, owner/mode, token, username, or password is missing or invalid. `mstsc` shows a trust prompt for the first self-signed TLS certificate; verify the device identity, or install a trusted certificate and matching private key for production use.
+
+5. Choose the network path:
+
+   - With Droidspaces **host/shared networking**, connect `mstsc` to `<phone WLAN IP>:3389`.
+   - With Droidspaces **isolated/NAT networking**, publish guest TCP 3389 on a chosen host TCP port and connect to the `<host address>:<host port>` actually reported by Droidspaces. The endpoint is `<phone WLAN IP>:3389` only when host port 3389 is explicitly published on the phone WLAN address. The exact UI/command varies by Droidspaces version, so this project does not hard-code an unverified port-mapping syntax.
+   - Restrict TCP 3389 with host/shared networking, or the actually published host TCP port with isolated/NAT networking, to the intended PC or a trusted subnet. Never forward `/run/anland-rdp/bridge.sock` or expose compatibility/debug TCP port 33910.
+
+Windows must use the exact RDP username and password entered during setup. Win/Super, keyboard, mouse buttons, pointer movement, and wheel events are forwarded unchanged to niri. Clipboard support is limited to `CF_UNICODETEXT` text, including CJK, emoji, line breaks, and clear; images, files, HTML, and RTF are unsupported. There is no RDPSND, so the PC receives no RDP audio; the local Android audio path is separate. If hardware H.264 or EGFX is unavailable, the session fails or has no video rather than falling back to OpenH264, x264, or FFmpeg.
+
 ## Droidspaces USB Manager
 
-Eight of the distribution templates (all except NixOS) install [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager) through `scripts/install-usb-manager.sh`; NixOS's declarative layout does not integrate it yet (see the NixOS notes above). The installer detects Debian/Ubuntu, Fedora, or Arch-family systems including Artix, installs the matching PyQt5, ADB, udev, NTFS, and exFAT dependencies through APT, DNF, or Pacman, and fixes command paths that are Debian-specific in the upstream source.
+Nine of the distribution templates (all except NixOS) install [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager) through `scripts/install-usb-manager.sh`; NixOS's declarative layout does not integrate it yet (see the NixOS notes above). The installer detects Debian/Ubuntu, Fedora, or Arch-family systems including Artix, installs the matching PyQt5, ADB, udev, NTFS, and exFAT dependencies through APT, DNF, or Pacman, and fixes command paths that are Debian-specific in the upstream source.
 
 Hardware access must be enabled when importing the RootFS into Droidspaces. Without it, `/sys/bus/usb` and `/sys/bus/scsi` devices are not visible inside the container. The installer creates both an application-menu entry and a `~/Desktop/usb-manager.desktop` desktop shortcut. After entering KDE, you can also run:
 
@@ -428,6 +468,7 @@ This project is designed primarily for GitHub Actions, but local Docker Buildx b
 - Docker
 - Docker Buildx
 - `xz`
+- `build_rootfs-native.sh` requires an ARM64 host; x86_64 hosts must use the QEMU arm64 script
 - A working QEMU/binfmt setup if cross-architecture builds are required
 
 Native build example:
@@ -453,7 +494,8 @@ chmod +x build_rootfs-native.sh
   -S false \
   -t false \
   -u Gold \
-  -A false
+  -A false \
+  -R none
 ```
 
 QEMU arm64 build example:
@@ -479,7 +521,8 @@ chmod +x build_rootfs-qemu-aarch64.sh
   -S false \
   -t false \
   -u Gold \
-  -A true
+  -A true \
+  -R none
 ```
 
 After a successful build, the output file will look similar to:
@@ -525,6 +568,10 @@ The script installs `zstd` and `linux-firmware`, so working package repositories
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── install-anland-kde.sh
+│   ├── install-lamco-anland-bridge.sh
+│   ├── setup-lamco-anland-bridge.sh
+│   ├── check-lamco-anland-bridge.sh
+│   ├── lamco-anland-bridge.service
 │   ├── niri/
 │   │   └── default-config.kdl
 │   ├── nosnap.sh
@@ -553,7 +600,7 @@ KDE packages are published only as GitHub Release assets. When running `build-kd
 - When Anland is enabled, the workflow disables PulseAudio forwarding because the Anland app provides its own audio path.
 - Fedora may require hardware access on some devices to avoid flicker or crashes.
 - Ubuntu and Debian may lag or freeze if `noseccomp` is disabled or the kernel lacks `USER_NS`.
-- The default password is `1234`; change it after importing the RootFS.
+- The RootFS Linux account password defaults to `1234`; change it immediately after import. Lamco RDP never uses it and requires separate strong credentials through the setup helper.
 - Compatibility between the bundled prebuilt Wayland packages and upstream anland depends on the upstream state at build time.
 
 ## Acknowledgements
