@@ -40,7 +40,7 @@ on:
         description: Remote access variant
         required: true
         type: choice
-        default: none
+        default: wayvnc
         options:
           - none
           - wayvnc
@@ -125,19 +125,23 @@ concurrency:
 
 env:
   ACTIVE_DOCKERFILE: Droidspaces-Arch-Niri.Dockerfile
+  ARCH_BASE_IMAGE: docker.io/ogarcia/archlinux@sha256:f92ed48cdfc274181f16e94e6a4e90e4c90c59a3d14fc7a133483a93ebc16ec6
+  ARCH_BASE_INDEX_DIGEST: sha256:f92ed48cdfc274181f16e94e6a4e90e4c90c59a3d14fc7a133483a93ebc16ec6
+  ARCH_BASE_ARM64_MANIFEST_DIGEST: sha256:019992bf3dc54ab4ba1515dd80e613d473b2ca7a97e410e1da053ae501b6383d
+  ARCH_BASE_LAYER_DIGEST: sha256:c714810994102b031ad2f2319282528593ae84ce86b5131b82e859642e3c79f4
   ANIRI_REPOSITORY: collegeming/ANiri-anland-tuned
-  ANIRI_TAG: v26.4.0-anland.1
-  ANIRI_TAG_OBJECT: 8abf6ac37eb9e3775dc2150abdfe406e4a857e0f
-  ANIRI_SOURCE_COMMIT: 1999f7cfb9c7ffdd02d79edf35fdf98df7eafe18
+  ANIRI_TAG: v26.4.0-anland.5
+  ANIRI_TAG_OBJECT: 975beeef6d99c81d8ad98ac32500c0e96353dbdf
+  ANIRI_SOURCE_COMMIT: 6480280d4baa624d00cf26bb816e4312dc9409c9
   ANIRI_IMPLEMENTATION_BASELINE: 74ce2a92eb2151d729818a784ced605ec950b56c
   ANIRI_ASSET: niri-arm64-linux-bin
-  ANIRI_SHA256: 9970f367377bab96f6ae714ed524a16cec8427c505b5de22ae01a0a97c8e44e3
+  ANIRI_SHA256: 54f6aad1a8e47515527ac24fc120ff670675d75cbe6b4be6ae52fcdcfbc0227c
   ANIRI_BUILD_METADATA: BUILD-METADATA.txt
-  ANIRI_BUILD_METADATA_SHA256: 43b59e66a8cd01c7bd32f1351a9b7890aa5de96c13d804dde24c7042bdfe4cbd
+  ANIRI_BUILD_METADATA_SHA256: 37b20cfa0aa5664790a2a0d67d21df41c9bcb58f619c9dc46db284629790064f
   ANIRI_SBOM: ANiri-SBOM.cdx.json
-  ANIRI_SBOM_SHA256: 078456261cb4c2b594d01f261bce6457f85bc44a94923e110723718a9b286ab3
-  ANIRI_RELEASE_URL: https://github.com/collegeming/ANiri-anland-tuned/releases/tag/v26.4.0-anland.1
-  ANIRI_BUILD_RUN_URL: https://github.com/collegeming/ANiri-anland-tuned/actions/runs/32749084441
+  ANIRI_SBOM_SHA256: 600e71d2cd3ad52f31f4690556a08e7430297c0aab62894e6f197e7b9e437734
+  ANIRI_RELEASE_URL: https://github.com/collegeming/ANiri-anland-tuned/releases/tag/v26.4.0-anland.5
+  ANIRI_BUILD_RUN_URL: https://github.com/collegeming/ANiri-anland-tuned/actions/runs/32775049302
   ANLAND_REPOSITORY: collegeming/anland-bridge
   ANLAND_TAG: anland-v5.19.3
   ANLAND_TAG_OBJECT: 1d912e982a8f35e90e81255afd9f8444cd319295
@@ -190,6 +194,27 @@ jobs:
           test -f "$ACTIVE_DOCKERFILE"
           test "$(find . -maxdepth 1 -type f -name '*.Dockerfile' -printf '%f\n')" = "$ACTIVE_DOCKERFILE"
           test "$(find .github/workflows -maxdepth 1 -type f -name '*.yml' -printf '%f\n')" = build-arch-niri-rootfs.yml
+
+          while IFS= read -r expected; do
+            grep -Fxq "$expected" "$ACTIVE_DOCKERFILE"
+          done <<EOF
+          FROM $ARCH_BASE_IMAGE AS customizer
+          ARG ARCH_BASE_IMAGE=$ARCH_BASE_IMAGE
+          ARG ARCH_BASE_INDEX_DIGEST=$ARCH_BASE_INDEX_DIGEST
+          ARG ARCH_BASE_ARM64_MANIFEST_DIGEST=$ARCH_BASE_ARM64_MANIFEST_DIGEST
+          ARG ARCH_BASE_LAYER_DIGEST=$ARCH_BASE_LAYER_DIGEST
+          ARG ANIRI_RELEASE_REPOSITORY=$ANIRI_REPOSITORY
+          ARG ANIRI_VERSION=$ANIRI_TAG
+          ARG ANIRI_TAG_OBJECT=$ANIRI_TAG_OBJECT
+          ARG ANIRI_SOURCE_COMMIT=$ANIRI_SOURCE_COMMIT
+          ARG ANIRI_IMPLEMENTATION_BASELINE=$ANIRI_IMPLEMENTATION_BASELINE
+          ARG ANIRI_FILENAME=$ANIRI_ASSET
+          ARG ANIRI_SHA256=$ANIRI_SHA256
+          ARG ANIRI_BUILD_METADATA=$ANIRI_BUILD_METADATA
+          ARG ANIRI_BUILD_METADATA_SHA256=$ANIRI_BUILD_METADATA_SHA256
+          ARG ANIRI_SBOM=$ANIRI_SBOM
+          ARG ANIRI_SBOM_SHA256=$ANIRI_SBOM_SHA256
+          EOF
 
           case "$USERNAME_INPUT" in
             ''|*[!A-Za-z0-9_-]*|[0-9-]*)
@@ -386,6 +411,10 @@ jobs:
           workflow_run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           workflow_attempt=$GITHUB_RUN_ATTEMPT
           architecture=aarch64
+          arch_base_image=$ARCH_BASE_IMAGE
+          arch_base_index_digest=$ARCH_BASE_INDEX_DIGEST
+          arch_base_arm64_manifest_digest=$ARCH_BASE_ARM64_MANIFEST_DIGEST
+          arch_base_layer_digest=$ARCH_BASE_LAYER_DIGEST
           build_mode=$BUILD_MODE
           version=$BUILD_VERSION
           remote=$REMOTE_VARIANT
@@ -616,9 +645,10 @@ jobs:
           - Build mode: ${{ inputs.build_mode }}
           - Terminal request: $TERMINAL_INPUT
           - Remote variant: $REMOTE_VARIANT
+          - Arch base: $ARCH_BASE_IMAGE (ARM64 manifest $ARCH_BASE_ARM64_MANIFEST_DIGEST; layer $ARCH_BASE_LAYER_DIGEST)
 
           Pinned components
-          - ANiri tuned: $ANIRI_REPOSITORY annotated tag $ANIRI_TAG (tag object $ANIRI_TAG_OBJECT), source commit $ANIRI_SOURCE_COMMIT, implementation baseline $ANIRI_IMPLEMENTATION_BASELINE, asset $ANIRI_ASSET, SHA256 $ANIRI_SHA256. The source contains the 74ce2a9 Anland implementation plus only the minimal strict-Clippy fixes required for the final release build. Release: $ANIRI_RELEASE_URL
+          - ANiri tuned: $ANIRI_REPOSITORY annotated tag $ANIRI_TAG (tag object $ANIRI_TAG_OBJECT), source commit $ANIRI_SOURCE_COMMIT, implementation baseline $ANIRI_IMPLEMENTATION_BASELINE, asset $ANIRI_ASSET, SHA256 $ANIRI_SHA256. The source contains the 74ce2a9 Anland implementation, minimal strict-Clippy fixes, and the final Arch release-verification workflow fix. Release: $ANIRI_RELEASE_URL
           - ANiri provenance: build metadata $ANIRI_BUILD_METADATA (SHA256 $ANIRI_BUILD_METADATA_SHA256), SBOM $ANIRI_SBOM (SHA256 $ANIRI_SBOM_SHA256), successful build $ANIRI_BUILD_RUN_URL
           - Android anland-bridge device-side prerequisite: $ANLAND_REPOSITORY annotated tag $ANLAND_TAG (tag object $ANLAND_TAG_OBJECT), source commit $ANLAND_SOURCE_COMMIT, feature baseline $ANLAND_FEATURE_BASELINE. Release: $ANLAND_RELEASE_URL; successful build: $ANLAND_BUILD_RUN_URL
           - Android plain APK: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_PLAIN_APK (SHA256 $ANLAND_PLAIN_APK_SHA256)

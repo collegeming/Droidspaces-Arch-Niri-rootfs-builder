@@ -5,7 +5,7 @@
 # 供 Arch-Niri.Dockerfile 调用（RUN 阶段，root 执行，需网络）。
 # 用法: setup-beautify.sh [USERNAME]
 set -euo pipefail
-USERNAME="${1:-Gold}"
+USERNAME="${1:-colle}"
 USERHOME="/home/${USERNAME}"
 
 echo "==> [美化] 1. 安装 fish + cinnamon-translations + fastfetch"

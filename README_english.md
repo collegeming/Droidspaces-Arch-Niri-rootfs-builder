@@ -16,7 +16,7 @@ Droidspaces is a privileged container using namespaces and `pivot_root` on the s
 | Project | Responsibility | Current Builder status |
 | --- | --- | --- |
 | [niri](https://github.com/niri-wm/niri) / [Celvra/ANiri](https://github.com/Celvra/ANiri) | Upstream niri and historical source of the Anland backend | The Builder consumes the tuned fork's final immutable Release listed below. |
-| [collegeming/ANiri-anland-tuned](https://github.com/collegeming/ANiri-anland-tuned) | Linux compositor, input, `CF_UNICODETEXT` clipboard, and Anland polling improvements | The RootFS pins final ARM64 Release `v26.4.0-anland.1`; its source commit contains the `74ce2a9…` implementation baseline plus only the minimal strict-Clippy fixes required by the final build. |
+| [collegeming/ANiri-anland-tuned](https://github.com/collegeming/ANiri-anland-tuned) | Linux compositor, input, `CF_UNICODETEXT` clipboard, and Anland polling improvements | The RootFS pins final Arch ARM64 Release `v26.4.0-anland.5`; its source commit contains the `74ce2a9…` implementation baseline, minimal strict-Clippy fixes, and the final public-Release verification fix. |
 | [superturtlee/anland](https://github.com/superturtlee/anland) / [collegeming/anland-bridge](https://github.com/collegeming/anland-bridge) | Android Surface, `local|remote|both` state, MediaCodec, FD/root helper | Final device-side prerequisite `anland-v5.19.3`. APK, daemon, and Magisk assets are installed only on the Android host/root side and never enter the RootFS. |
 | [collegeming/lamco-anland-bridge](https://github.com/collegeming/lamco-anland-bridge) | Linux RDP/TLS/EGFX, input, CLIPRDR, and private UDS listener | `remote=lamco` consumes a pinned, verified ARM64 binary Release. Rust is not built inside the RootFS. |
 | This Builder | Combines and pins the Linux RootFS, emits variants/checksums/metadata, and records Android prerequisites | One active Dockerfile and workflow; old KDE content is preserved only under `legacy/`. |
@@ -61,12 +61,12 @@ The Builder's `remote=none|wayvnc|lamco` only determines which remote service, i
 
 | Component | Repository / annotated tag | Source commit / baseline | Asset / SHA-256 | Status |
 | --- | --- | --- | --- | --- |
-| ANiri tuned | [`collegeming/ANiri-anland-tuned` / `v26.4.0-anland.1`](https://github.com/collegeming/ANiri-anland-tuned/releases/tag/v26.4.0-anland.1), tag object `8abf6ac37eb9e3775dc2150abdfe406e4a857e0f` | source `1999f7cfb9c7ffdd02d79edf35fdf98df7eafe18`; implementation baseline `74ce2a92eb2151d729818a784ced605ec950b56c` | [`niri-arm64-linux-bin`](https://github.com/collegeming/ANiri-anland-tuned/releases/download/v26.4.0-anland.1/niri-arm64-linux-bin) / `9970f367377bab96f6ae714ed524a16cec8427c505b5de22ae01a0a97c8e44e3` | Actually consumed by the RootFS; [successful build run](https://github.com/collegeming/ANiri-anland-tuned/actions/runs/32749084441). The source contains the `74ce2a9…` implementation plus minimal strict-Clippy fixes. |
+| ANiri tuned | [`collegeming/ANiri-anland-tuned` / `v26.4.0-anland.5`](https://github.com/collegeming/ANiri-anland-tuned/releases/tag/v26.4.0-anland.5), tag object `975beeef6d99c81d8ad98ac32500c0e96353dbdf` | source `6480280d4baa624d00cf26bb816e4312dc9409c9`; implementation baseline `74ce2a92eb2151d729818a784ced605ec950b56c` | [`niri-arm64-linux-bin`](https://github.com/collegeming/ANiri-anland-tuned/releases/download/v26.4.0-anland.5/niri-arm64-linux-bin) / `54f6aad1a8e47515527ac24fc120ff670675d75cbe6b4be6ae52fcdcfbc0227c` | Actually consumed by the RootFS; [successful three-job run](https://github.com/collegeming/ANiri-anland-tuned/actions/runs/32775049302). Public Arch ARM64 verification confirms `libdisplay-info.so.3`, every direct SONAME, `ldd`, and `--version`. |
 | Android anland bridge | [`collegeming/anland-bridge` / `anland-v5.19.3`](https://github.com/collegeming/anland-bridge/releases/tag/anland-v5.19.3), tag object `1d912e982a8f35e90e81255afd9f8444cd319295` | source `e26a080e990d0c9fc18d64b35e161d134bc51e63`; feature baseline `95b2d73ff799639ce8576ff908f13f5a31e024a1` | plain APK, Tracy APK, `anland-daemon.zip`, and `SHA256SUMS`; see below | Final device-side prerequisite; [successful build run](https://github.com/collegeming/anland-bridge/actions/runs/32751299809). Never downloaded or installed into the RootFS. |
 | Lamco | `collegeming/lamco-anland-bridge` / `anland-v0.2.0` | `03902875622f04c8c64ab52fd4dc72981bb93e64` | `lamco-anland-bridge-0.2.0-aarch64-unknown-linux-gnu.tar.xz` / `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea` | Actually consumed by `remote=lamco`; pin unchanged. |
 | Lamco IronRDP pin | `collegeming/IronRDP` / branch `anland-preauth-timeout` | `33fc287b83af35ba3650519fe059db99d1cdf131` | Recorded in Lamco metadata | Pinned by the Lamco Release; unchanged. |
 
-The ANiri Release also provides `BUILD-METADATA.txt` (SHA-256 `43b59e66a8cd01c7bd32f1351a9b7890aa5de96c13d804dde24c7042bdfe4cbd`) and the CycloneDX SBOM `ANiri-SBOM.cdx.json` (SHA-256 `078456261cb4c2b594d01f261bce6457f85bc44a94923e110723718a9b286ab3`).
+The ANiri Release also provides `BUILD-METADATA.txt` (SHA-256 `37b20cfa0aa5664790a2a0d67d21df41c9bcb58f619c9dc46db284629790064f`) and the CycloneDX SBOM `ANiri-SBOM.cdx.json` (SHA-256 `600e71d2cd3ad52f31f4690556a08e7430297c0aab62894e6f197e7b9e437734`). The Builder and ANiri use the same pinned Arch base index `sha256:f92ed48cdfc274181f16e94e6a4e90e4c90c59a3d14fc7a133483a93ebc16ec6`, ARM64 manifest `sha256:019992bf3dc54ab4ba1515dd80e613d473b2ca7a97e410e1da053ae501b6383d`, and layer `sha256:c714810994102b031ad2f2319282528593ae84ce86b5131b82e859642e3c79f4`.
 
 Android `anland-v5.19.3` device-side assets:
 
@@ -106,7 +106,7 @@ Main inputs:
 | `build_mode` | `native-arm64` or `qemu-x86_64` | `native-arm64` |
 | `username` | RootFS user | `colle` |
 | `terminal` | `kitty|ghostty|both` | `kitty` |
-| `remote` | `none|wayvnc|lamco` | `none` |
+| `remote` | `none|wayvnc|lamco` | `wayvnc` |
 | `niri_autostart` | Auto-start niri | `true` |
 | `enable_zh_locale` | Chinese locale and Asia/Shanghai timezone | `true` |
 | `enable_fcitx_rime` | fcitx5 + Rime-Ice | `true` |
