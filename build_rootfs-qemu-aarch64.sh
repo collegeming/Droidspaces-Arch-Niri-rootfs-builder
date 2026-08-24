@@ -1,203 +1,185 @@
-#!/bin/bash
-: "${VERSION:=dev}"
-TARGET_ARCH="aarch64"     # 产物命名使用的目标架构
-PLATFORM="linux/arm64"    # Docker buildx 的平台参数
+#!/usr/bin/env bash
+set -euo pipefail
 
-ENABLE_binfmt="false"
-BUILD_KDE_plus="false"
-ENABLE_nosnap="false"
-ENABLE_8gen2_wayland="false"
-ENABLE_systemd257="false"
-ENABLE_anland_kde="false"
+VERSION="${VERSION:-dev}"
+DOCKERFILE="Droidspaces-Arch-Niri.Dockerfile"
+USERNAME="droid"
+TERMINAL="kitty"
 REMOTE="none"
-# 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:R:" opt; do
-  case $opt in
-    i) DOCKERFILE="$OPTARG" ;; 
-    v) VERSION="$OPTARG" ;;    
-    K) BUILD_KDE="$OPTARG"  ;;
-    L) BUILD_KDE_plus="$OPTARG"  ;;
-    P) PulseAudio="$OPTARG"  ;;
-    g) ENABLE_zh_tz="$OPTARG"  ;; 
-    a) ENABLE_binfmt="$OPTARG" ;; 
-    b) ENABLE_yj="$OPTARG" ;;
-    c) ENABLE_mesa="$OPTARG" ;;
-    d) ENABLE_kfgj="$OPTARG" ;;
-    e) ENABLE_zip="$OPTARG" ;;
-    f) ENABLE_docker="$OPTARG" ;;
-    h) ENABLE_srf="$OPTARG" ;; 
-    j) ENABLE_tmoe="$OPTARG" ;; 
-    n) ENABLE_nosnap="$OPTARG" ;;
-    S) ENABLE_systemd257="$OPTARG" ;; # systemd 257 旧内核兼容
-    t) ENABLE_8gen2_wayland="$OPTARG" ;; # 修复骁龙8 Gen 2 Wayland 花屏
-    u) USERNAME="$OPTARG" ;; 
-    A) ENABLE_anland_kde="$OPTARG" ;; # anland_kde 支持
-    R) REMOTE="$OPTARG" ;; # 远程访问（none/wayvnc/lamco）
-    *) echo "用法: $0 -i <template.Dockerfile> [-v <version>] [-S <true|false>] [-R <none|wayvnc|lamco>]" ; exit 1 ;;
-  esac
-done
+NIRI_AUTOSTART="true"
+ENABLE_ZH_LOCALE="true"
+ENABLE_FCITX_RIME="true"
+ENABLE_QUALCOMM_MESA="true"
+ENABLE_SYSTEMD257="true"
+ENABLE_USB_MANAGER="true"
+ENABLE_FIRMWARE="false"
+ENABLE_BINFMT="false"
+ENABLE_CONTAINER_INTEGRATION="true"
+ENABLE_8GEN2_WAYLAND="false"
+ENABLE_DEV_TOOLS="false"
+ENABLE_COMPRESSION_TOOLS="true"
+ENABLE_DOCKER="false"
+ENABLE_TMOE="false"
 
-: "${USERNAME:=Gold}"
-: "${ANLAND_KDE_RELEASE_REPOSITORY:=Goldzxcbug/Droidspaces-rootfs-KDE-builder}"
-: "${ANLAND_KDE_RELEASE_TAG:=}"
-: "${ANLAND_KDE_PACKAGE_REVISION:=}"
-ANLAND_KDE_ROLLING_RELEASE_TAG="anland-kde-packages"
-
-if [ "${BUILD_KDE:-}" = "mobile" ]; then
-  ENABLE_anland_kde="true"
-  PulseAudio="none"
-fi
-
-resolve_anland_kde_release_tag() {
-  case "$ANLAND_KDE_RELEASE_TAG" in
-    anland-kde-packages) return 0 ;;
-    '')
-      ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_ROLLING_RELEASE_TAG"
-      return 0
-      ;;
-    *)
-      echo "错误：ANLAND_KDE_RELEASE_TAG 必须是固定标签 anland-kde-packages。" >&2
-      return 1
-      ;;
-  esac
+usage() {
+    cat <<'EOF'
+Usage: build_rootfs-qemu-aarch64.sh [options]
+  -i FILE   Active Dockerfile (default: Droidspaces-Arch-Niri.Dockerfile)
+  -v VALUE  Artifact version label
+  -u USER   RootFS desktop user
+  -T VALUE  Terminal: kitty|ghostty|both
+  -R VALUE  Remote access: none|wayvnc|lamco
+  -N BOOL   Auto-start niri
+  -g BOOL   Chinese locale and Asia/Shanghai timezone
+  -h BOOL   Fcitx5 + Rime-Ice
+  -c BOOL   Qualcomm KGSL Mesa
+  -S BOOL   systemd 257 compatibility runtime
+  -U BOOL   Droidspaces USB Manager
+  -F BOOL   Linux firmware packages
+  -a BOOL   In-RootFS binfmt helpers
+  -b BOOL   Droidspaces hardware/network integration
+  -t BOOL   Snapdragon 8 Gen 2 Wayland UBWC hint
+  -d BOOL   Development toolchain
+  -e BOOL   Compression tools
+  -f BOOL   Docker packages
+  -j BOOL   TMOE
+EOF
 }
 
-# 校验：检查是否传递了 Dockerfile 模板文件
-if [ -z "$DOCKERFILE" ]; then
-    echo "错误：必须使用 -i 参数指定模板文件。"
+while getopts ":i:v:u:T:R:N:g:h:c:S:U:F:a:b:t:d:e:f:j:" opt; do
+    case "$opt" in
+        i) DOCKERFILE="$OPTARG" ;;
+        v) VERSION="$OPTARG" ;;
+        u) USERNAME="$OPTARG" ;;
+        T) TERMINAL="$OPTARG" ;;
+        R) REMOTE="$OPTARG" ;;
+        N) NIRI_AUTOSTART="$OPTARG" ;;
+        g) ENABLE_ZH_LOCALE="$OPTARG" ;;
+        h) ENABLE_FCITX_RIME="$OPTARG" ;;
+        c) ENABLE_QUALCOMM_MESA="$OPTARG" ;;
+        S) ENABLE_SYSTEMD257="$OPTARG" ;;
+        U) ENABLE_USB_MANAGER="$OPTARG" ;;
+        F) ENABLE_FIRMWARE="$OPTARG" ;;
+        a) ENABLE_BINFMT="$OPTARG" ;;
+        b) ENABLE_CONTAINER_INTEGRATION="$OPTARG" ;;
+        t) ENABLE_8GEN2_WAYLAND="$OPTARG" ;;
+        d) ENABLE_DEV_TOOLS="$OPTARG" ;;
+        e) ENABLE_COMPRESSION_TOOLS="$OPTARG" ;;
+        f) ENABLE_DOCKER="$OPTARG" ;;
+        j) ENABLE_TMOE="$OPTARG" ;;
+        :) printf 'Error: -%s requires a value.\n' "$OPTARG" >&2; usage >&2; exit 2 ;;
+        \?) printf 'Error: unknown option -%s.\n' "$OPTARG" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+is_bool() {
+    [[ "$1" == "true" || "$1" == "false" ]]
+}
+
+[[ -f "$DOCKERFILE" ]] || { printf 'Error: active Dockerfile not found: %s\n' "$DOCKERFILE" >&2; exit 1; }
+[[ "$(basename "$DOCKERFILE")" == "Droidspaces-Arch-Niri.Dockerfile" ]] || {
+    printf 'Error: this active builder only accepts Droidspaces-Arch-Niri.Dockerfile.\n' >&2
     exit 1
-fi
+}
+[[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { printf 'Error: VERSION contains unsafe characters.\n' >&2; exit 1; }
+[[ "$USERNAME" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || { printf 'Error: USERNAME is invalid.\n' >&2; exit 1; }
+case "$TERMINAL" in kitty|ghostty|both) ;; *) printf 'Error: terminal must be kitty, ghostty, or both.\n' >&2; exit 1 ;; esac
+case "$REMOTE" in none|wayvnc|lamco) ;; *) printf 'Error: remote must be none, wayvnc, or lamco.\n' >&2; exit 1 ;; esac
+for value in "$NIRI_AUTOSTART" "$ENABLE_ZH_LOCALE" "$ENABLE_FCITX_RIME" "$ENABLE_QUALCOMM_MESA" "$ENABLE_SYSTEMD257" "$ENABLE_USB_MANAGER" "$ENABLE_FIRMWARE" "$ENABLE_BINFMT" "$ENABLE_CONTAINER_INTEGRATION" "$ENABLE_8GEN2_WAYLAND" "$ENABLE_DEV_TOOLS" "$ENABLE_COMPRESSION_TOOLS" "$ENABLE_DOCKER" "$ENABLE_TMOE"; do
+    is_bool "$value" || { printf 'Error: boolean options must be true or false (got %s).\n' "$value" >&2; exit 1; }
+done
 
-# 校验：检查指定的 Dockerfile 文件在本地是否存在
-if [ ! -f "$DOCKERFILE" ]; then
-    echo "错误：找不到模板文件 '$DOCKERFILE'。"
-    exit 1
-fi
-
-# 提取前缀名称
-PREFIX=$(basename "$DOCKERFILE" .Dockerfile)
-
-case "$REMOTE" in
-  none|wayvnc|lamco) ;;
-  *) echo "错误：REMOTE 必须是 none、wayvnc 或 lamco。" >&2; exit 1 ;;
+case "$(uname -m)" in
+    x86_64|amd64) ;;
+    aarch64|arm64)
+        printf 'Error: this is the QEMU script; use build_rootfs-native.sh on ARM64.\n' >&2
+        exit 1
+        ;;
+    *) printf 'Error: QEMU builder requires an x86_64 host.\n' >&2; exit 1 ;;
 esac
-if [ "$REMOTE" != "none" ] && [ "$PREFIX" != "Arch-Niri" ]; then
-  echo "错误：远程访问参数仅支持 Arch-Niri。" >&2
-  exit 1
+
+if [[ "$TERMINAL" == "both" ]]; then
+    combined_outputs=(
+        "Droidspaces-Arch-Niri-Anland-aarch64-${VERSION}-${REMOTE}-kitty.tar.xz"
+        "Droidspaces-Arch-Niri-Anland-aarch64-${VERSION}-${REMOTE}-ghostty.tar.xz"
+    )
+    trap 'rm -f -- "${combined_outputs[@]}"' EXIT
+    for terminal_variant in kitty ghostty; do
+        "$0" \
+            -i "$DOCKERFILE" -v "$VERSION" -u "$USERNAME" \
+            -T "$terminal_variant" -R "$REMOTE" -N "$NIRI_AUTOSTART" \
+            -g "$ENABLE_ZH_LOCALE" -h "$ENABLE_FCITX_RIME" \
+            -c "$ENABLE_QUALCOMM_MESA" -S "$ENABLE_SYSTEMD257" \
+            -U "$ENABLE_USB_MANAGER" -F "$ENABLE_FIRMWARE" \
+            -a "$ENABLE_BINFMT" -b "$ENABLE_CONTAINER_INTEGRATION" \
+            -t "$ENABLE_8GEN2_WAYLAND" -d "$ENABLE_DEV_TOOLS" \
+            -e "$ENABLE_COMPRESSION_TOOLS" -f "$ENABLE_DOCKER" \
+            -j "$ENABLE_TMOE"
+    done
+    trap - EXIT
+    printf 'Build completed: %s\n' "${combined_outputs[@]}"
+    exit 0
 fi
 
-echo "========================================================="
-echo " 开始构建项目 : $PREFIX"
-echo " 使用模板文件 : $DOCKERFILE"
-echo " 当前构建版本 : $VERSION"
-echo " 目标构建平台 : $PLATFORM"
-echo " 跨架构 : $ENABLE_binfmt"
-echo " 容器识别部分硬件和网络：$ENABLE_yj"
-echo " Ubuntu nosnap：$ENABLE_nosnap"
-echo " systemd 257 旧内核兼容：$ENABLE_systemd257"
-echo " 修复骁龙8 Gen 2 Wayland 花屏：$ENABLE_8gen2_wayland"
-echo "========================================================="
+BUILDER_REPOSITORY="${BUILDER_REPOSITORY:-collegeming/Droidspaces-Arch-Niri-rootfs-builder}"
+BUILDER_COMMIT="${BUILDER_COMMIT:-$(git rev-parse HEAD 2>/dev/null || printf unknown)}"
+PREFIX="Droidspaces-Arch-Niri"
+TARGET_ARCH="aarch64"
+PLATFORM="linux/arm64"
+TEMP_TAR="custom-${PREFIX}-${REMOTE}-${TERMINAL}-rootfs.tar"
+FINAL_NAME="${PREFIX}-Anland-${TARGET_ARCH}-${VERSION}-${REMOTE}-${TERMINAL}.tar.xz"
 
-if [ "$ENABLE_anland_kde" = "true" ]; then
-  if ! resolve_anland_kde_release_tag; then
-    exit 1
-  fi
-  if [ -z "$ANLAND_KDE_PACKAGE_REVISION" ]; then
-    if ! command -v curl >/dev/null 2>&1; then
-      echo "错误：启用 anland_kde 时需要 curl 读取 KDE 包 Release 清单。"
-      exit 1
-    fi
-    if ! RELEASE_MANIFEST="$(curl -fsSL --retry 3 --connect-timeout 20 \
-      "https://github.com/${ANLAND_KDE_RELEASE_REPOSITORY}/releases/download/${ANLAND_KDE_RELEASE_TAG}/anland-kde-manifest")"; then
-      echo "错误：无法下载 anland KDE 包 Release 清单。"
-      exit 1
-    fi
-    ANLAND_KDE_PACKAGE_REVISION="$(printf '%s\n' "$RELEASE_MANIFEST" | awk -F= '
-      $1 == "format" { format = substr($0, index($0, "=") + 1) }
-      $1 == "revision" { revision = substr($0, index($0, "=") + 1); revisions++ }
-      END {
-        if (format == "1" && revisions == 1 && revision ~ /^[A-Za-z0-9._-]+$/) {
-          print revision
-        }
-      }
-    ')"
-  fi
+cleanup() { rm -f -- "$TEMP_TAR" "${TEMP_TAR}.xz"; }
+trap cleanup EXIT
 
-  if [ -z "$ANLAND_KDE_PACKAGE_REVISION" ]; then
-    echo "错误：Release 清单缺少有效 revision。"
-    exit 1
-  fi
-  echo " Anland KDE 包 Release：$ANLAND_KDE_RELEASE_REPOSITORY @ $ANLAND_KDE_RELEASE_TAG"
-else
-  ANLAND_KDE_PACKAGE_REVISION="${ANLAND_KDE_PACKAGE_REVISION:-disabled}"
-fi
+printf '%s\n' \
+    "=========================================================" \
+    " Build target : $PREFIX" \
+    " Build mode   : x86_64 host with explicit QEMU ARM64" \
+    " Platform     : $PLATFORM" \
+    " Version      : $VERSION" \
+    " Terminal     : $TERMINAL" \
+    " Remote       : $REMOTE" \
+    "========================================================="
 
-# 1. 环境初始化（跨架构 QEMU 模式）
-echo "正在初始化 QEMU/binfmt 跨架构支持..."
-docker run --privileged --rm tonistiigi/binfmt --install all > /dev/null 2>&1
-
-# 2. 跨平台编译器（Buildx Builder）设置
+docker run --privileged --rm tonistiigi/binfmt:qemu-v9.2.2 --install arm64
 if ! docker buildx inspect droidspaces-builder >/dev/null 2>&1; then
-    echo "正在创建新的 buildx 构建器: droidspaces-builder"
     docker buildx create --name droidspaces-builder --driver docker-container --use
 else
-    echo "使用已存在的 buildx 构建器: droidspaces-builder"
     docker buildx use droidspaces-builder
 fi
+docker buildx inspect --bootstrap
 
-# 引导启动构建器，确保其处于就绪状态
-docker buildx inspect --bootstrap || echo "警告: 引导失败，尝试继续执行..."
-
-# 开启严格模式
-set -e
-
-# 3. 核心构建流程
-TEMP_TAR="custom-${PREFIX}-rootfs.tar"
-if [ "$BUILD_KDE" = "mobile" ]; then
-  DISPLAY_BACKEND="Mobile"
-elif [ "$ENABLE_anland_kde" = "true" ]; then
-  DISPLAY_BACKEND="Wayland"
-else
-  DISPLAY_BACKEND="X11"
+build_args=(
+    --platform "$PLATFORM"
+    --target export
+    --output "type=tar,dest=$TEMP_TAR"
+    --build-arg "USERNAME=$USERNAME"
+    --build-arg "TERMINAL_ARG=$TERMINAL"
+    --build-arg "REMOTE_ARG=$REMOTE"
+    --build-arg "NIRI_AUTOSTART_ARG=$NIRI_AUTOSTART"
+    --build-arg "ENABLE_ZH_LOCALE_ARG=$ENABLE_ZH_LOCALE"
+    --build-arg "ENABLE_FCITX_RIME_ARG=$ENABLE_FCITX_RIME"
+    --build-arg "ENABLE_QUALCOMM_MESA_ARG=$ENABLE_QUALCOMM_MESA"
+    --build-arg "ENABLE_SYSTEMD257_ARG=$ENABLE_SYSTEMD257"
+    --build-arg "ENABLE_USB_MANAGER_ARG=$ENABLE_USB_MANAGER"
+    --build-arg "ENABLE_FIRMWARE_ARG=$ENABLE_FIRMWARE"
+    --build-arg "ENABLE_BINFMT_ARG=$ENABLE_BINFMT"
+    --build-arg "ENABLE_CONTAINER_INTEGRATION_ARG=$ENABLE_CONTAINER_INTEGRATION"
+    --build-arg "ENABLE_8GEN2_WAYLAND_ARG=$ENABLE_8GEN2_WAYLAND"
+    --build-arg "ENABLE_DEV_TOOLS_ARG=$ENABLE_DEV_TOOLS"
+    --build-arg "ENABLE_COMPRESSION_TOOLS_ARG=$ENABLE_COMPRESSION_TOOLS"
+    --build-arg "ENABLE_DOCKER_ARG=$ENABLE_DOCKER"
+    --build-arg "ENABLE_TMOE_ARG=$ENABLE_TMOE"
+    --build-arg "BUILDER_REPOSITORY=$BUILDER_REPOSITORY"
+    --build-arg "BUILDER_COMMIT=$BUILDER_COMMIT"
+)
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    build_args+=(--secret "id=github_token,env=GITHUB_TOKEN")
 fi
-FINAL_NAME="${PREFIX}-${DISPLAY_BACKEND}-Droidspaces-rootfs-${TARGET_ARCH}-${VERSION}.tar.xz"
 
-echo "正在运行 Docker Buildx ($PLATFORM 跨架构模式)..."
-
-docker buildx build \
-  --platform "$PLATFORM" \
-  --target export \
-  --output type=tar,dest="$TEMP_TAR" \
-  --build-arg BUILD_KDE="$BUILD_KDE" \
-  --build-arg BUILD_KDE_plus="$BUILD_KDE_plus" \
-  --build-arg PulseAudio="$PulseAudio" \
-  --build-arg ENABLE_zh_tz_ARG="$ENABLE_zh_tz" \
-  --build-arg ENABLE_binfmt_ARG="$ENABLE_binfmt" \
-  --build-arg ENABLE_yj_ARG="$ENABLE_yj" \
-  --build-arg ENABLE_mesa_ARG="$ENABLE_mesa" \
-  --build-arg ENABLE_kfgj_ARG="$ENABLE_kfgj" \
-  --build-arg ENABLE_zip_ARG="$ENABLE_zip" \
-  --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
-  --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
-  --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
-  --build-arg ENABLE_nosnap_ARG="$ENABLE_nosnap" \
-  --build-arg ENABLE_systemd257_ARG="$ENABLE_systemd257" \
-  --build-arg ENABLE_anland_kde_ARG="$ENABLE_anland_kde" \
-  --build-arg ENABLE_8gen2_wayland_ARG="$ENABLE_8gen2_wayland" \
-  --build-arg ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
-  --build-arg ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
-  --build-arg ANLAND_KDE_PACKAGE_REVISION="$ANLAND_KDE_PACKAGE_REVISION" \
-  --build-arg USERNAME="$USERNAME" \
-  --build-arg REMOTE_ARG="$REMOTE" \
-  -f "$DOCKERFILE" \
-  .
-
-echo "正在压缩构建产物 (使用 xz 最高压缩率 - 开启多线程加速)..."
+docker buildx build "${build_args[@]}" -f "$DOCKERFILE" .
 xz -T0 -9 -f "$TEMP_TAR"
-
-echo "正在重命名最终文件: $FINAL_NAME"
-mv "${TEMP_TAR}.xz" "$FINAL_NAME"
-
-echo "========================================================="
-echo " 恭喜！构建成功完成: $FINAL_NAME"
-echo "========================================================="
+mv -- "${TEMP_TAR}.xz" "$FINAL_NAME"
+trap - EXIT
+printf 'Build completed: %s\n' "$FINAL_NAME"

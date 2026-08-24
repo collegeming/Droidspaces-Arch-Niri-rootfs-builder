@@ -28,7 +28,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 通用 Droidspaces USB Manager 安装器
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
-COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
+COPY legacy/scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 
 # 加速下载
 RUN echo "max_parallel_downloads=10" >> /etc/dnf/dnf.conf && \

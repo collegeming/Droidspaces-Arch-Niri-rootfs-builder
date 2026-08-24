@@ -47,7 +47,7 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 # 通用 Droidspaces USB Manager 安装器
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
-COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
+COPY legacy/scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 
 # 赋予相关脚本可执行权限
 RUN chmod +x /usr/local/bin/download-firmware /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-kde

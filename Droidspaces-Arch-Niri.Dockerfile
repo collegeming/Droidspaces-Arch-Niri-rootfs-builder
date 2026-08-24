@@ -1,57 +1,62 @@
-# Dockerfile (Arch Linux Minimal + niri/ANiri + Noctalia Shell - aarch64)
-# 说明：
-#   - 定位：不带 KDE 的最小化 Arch RootFS，集成 niri（滚动平铺 Wayland 合成器）
-#     与 Noctalia Shell 桌面外壳。
-#   - 基础逻辑来自上游 Droidspaces-rootfs-builder 的 Arch-Minimal
-#     （最小包集合、iptables-legacy 兼容、ds-aliases 别名），
-#     并叠加本项目的优化：中文环境、用户创建、systemd 257 旧内核兼容、
-#     fcitx5、高通 GPU（mesa-for-android-container）、binfmt 跨架构、
-#     NAT/硬件识别门控、USB Manager、压缩/开发/Docker/TMOE 可选组件。
-#   - niri 使用 ANiri（https://github.com/Celvra/ANiri）：niri 的 anland 后端
-#     fork，通过 Anland 把桌面渲染到 Android Surface（与本项目 patched KWin
-#     同一套宿主侧方案：virtual-drm-daemon + /run/display.sock 绑定挂载）。
-#     二进制固定从 ANiri Releases 下载并校验 SHA256，构建时 strip 减小体积。
-#   - 显示路径固定为 Anland/Wayland：无需 Termux:X11；BUILD_KDE 选项被忽略
-#     （本模板不安装任何 KDE 组件），BUILD_KDE_plus 控制的是 niri 自启动。
-#   - pacman 源定制：
-#       * TUNA 清华镜像置顶（archlinuxarm $arch/$repo），官方源保留回退；
-#       * 附加 archlinuxcn aarch64 仓库（TUNA 优先、官方回退），
-#         首次以 SigLevel=Never 引导安装 archlinuxcn-keyring（其安装脚本
-#         会执行 pacman-key --populate 完成本地信任），随后恢复签名校验；
-#       * archlinuxcn 提供 paru（AUR 助手）与 rime-ice-git（雾凇拼音）等
-#         aarch64 预编译包，无需本地编译。
+# Droidspaces Arch-Niri RootFS (ARM64 only)
+# Active target: Arch Linux + niri/ANiri + Anland + Noctalia, with optional
+# kitty/ghostty and none/wayvnc/Lamco remote access. This is a privileged
+# namespace + pivot_root Droidspaces container sharing the Android kernel; it
+# is not PRoot. Legacy multi-distribution KDE builders live under legacy/ and
+# are intentionally outside the active workflow.
+#
+# ANiri renders through /run/display.sock to the Android Surface consumer.
+# Lamco uses a second private directory bind, /run/anland-rdp/bridge.sock, with
+# TLS, dedicated credentials and HMAC mutual authentication. Android uses only
+# MediaCodec hardware H.264; there is no software encoder fallback.
+#
+# Package sources: TUNA-first Arch Linux ARM mirrors plus archlinuxcn aarch64,
+# retaining official fallback servers and restoring signature verification
+# immediately after archlinuxcn-keyring bootstrap.
 
 ARG TARGETPLATFORM
 
 FROM ogarcia/archlinux AS customizer
 
+# Re-declare the automatic platform argument inside the build stage so the
+# ARM64 guard below evaluates the actual BuildKit target.
+ARG TARGETPLATFORM
+
 #######################################################
-ARG BUILD_KDE
-ARG BUILD_KDE_plus
-ARG PulseAudio
-ARG ENABLE_zh_tz_ARG
-ARG ENABLE_binfmt_ARG
-ARG ENABLE_yj_ARG
-ARG ENABLE_mesa_ARG
-ARG ENABLE_anland_kde_ARG
-ARG ENABLE_8gen2_wayland_ARG
-ARG ENABLE_kfgj_ARG
-ARG ENABLE_zip_ARG
-ARG ENABLE_docker_ARG
-ARG ENABLE_srf_ARG
-ARG ENABLE_tmoe_ARG
-ARG ENABLE_systemd257_ARG
-ARG ENABLE_nosnap_ARG
+# Active Arch-Niri public build API. Boolean values are validated below.
+ARG USERNAME=droid
 ARG TERMINAL_ARG=kitty
 ARG REMOTE_ARG=none
-ARG USERNAME
-ARG ANLAND_KDE_RELEASE_REPOSITORY=Goldzxcbug/Droidspaces-rootfs-KDE-builder
-ARG ANLAND_KDE_RELEASE_TAG
-ARG ANLAND_KDE_PACKAGE_REVISION=unknown
-# ANiri（niri anland 后端）固定版本与校验
+ARG NIRI_AUTOSTART_ARG=true
+ARG ENABLE_ZH_LOCALE_ARG=true
+ARG ENABLE_FCITX_RIME_ARG=true
+ARG ENABLE_QUALCOMM_MESA_ARG=true
+ARG ENABLE_SYSTEMD257_ARG=true
+ARG ENABLE_USB_MANAGER_ARG=true
+ARG ENABLE_FIRMWARE_ARG=false
+ARG ENABLE_BINFMT_ARG=false
+ARG ENABLE_CONTAINER_INTEGRATION_ARG=true
+ARG ENABLE_8GEN2_WAYLAND_ARG=false
+ARG ENABLE_DEV_TOOLS_ARG=false
+ARG ENABLE_COMPRESSION_TOOLS_ARG=true
+ARG ENABLE_DOCKER_ARG=false
+ARG ENABLE_TMOE_ARG=false
+
+# Temporary immutable ANiri baseline pin. collegeming/ANiri-anland-tuned has no
+# consumable Release yet; switch repository/tag/checksum only after its final
+# public ARM64 asset is independently verified. Never invent a tuned pin.
+ARG ANIRI_RELEASE_REPOSITORY=Celvra/ANiri
 ARG ANIRI_VERSION=v0.2.0
+ARG ANIRI_SOURCE_COMMIT=cfd31db9c79c681a11ebc1afdb80fa7b31c4f7e0
 ARG ANIRI_FILENAME=niri-arm64-linux-bin
 ARG ANIRI_SHA256=9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6eb
+
+# Builder provenance and Android-side compatibility prerequisite embedded in
+# the RootFS. The Android APK/root helper is linked only; it is never installed.
+ARG BUILDER_REPOSITORY=collegeming/Droidspaces-Arch-Niri-rootfs-builder
+ARG BUILDER_COMMIT=unknown
+ARG ANDROID_ANLAND_REPOSITORY=collegeming/anland-bridge
+ARG ANDROID_ANLAND_SOURCE_COMMIT=95b2d73ff799639ce8576ff908f13f5a31e024a1
 ######################################################
 
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
@@ -66,28 +71,26 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/niri/default-config.kdl /usr/share/niri/default-config.kdl
 COPY scripts/terminal/ /tmp/beautify/
 
-# Arch-Niri 限制检查与说明
-RUN case "$REMOTE_ARG" in \
-        none|wayvnc|lamco) ;; \
-        *) echo "错误: REMOTE_ARG 必须是 none、wayvnc 或 lamco" >&2; exit 1 ;; \
+# Active option validation. This Dockerfile is ARM64 Arch-Niri only.
+RUN case "$TARGETPLATFORM" in \
+        ''|linux/arm64|linux/arm64/v8) ;; \
+        *) echo "ERROR: target platform must be linux/arm64" >&2; exit 1 ;; \
     esac && \
+    case "$TERMINAL_ARG" in kitty|ghostty) ;; \
+        *) echo "ERROR: TERMINAL_ARG must be kitty or ghostty" >&2; exit 1 ;; esac && \
+    case "$REMOTE_ARG" in none|wayvnc|lamco) ;; \
+        *) echo "ERROR: REMOTE_ARG must be none, wayvnc, or lamco" >&2; exit 1 ;; esac && \
     case "$USERNAME" in \
-        ''|*[!A-Za-z0-9_-]*|[0-9-]*) \
-            echo "错误: USERNAME 包含不安全字符" >&2; exit 1 ;; \
+        ''|*[!A-Za-z0-9_-]*|[0-9-]*) echo "ERROR: USERNAME is invalid" >&2; exit 1 ;; \
     esac && \
-    if [ "$BUILD_KDE" = "mobile" ]; then \
-        echo "错误: Arch-Niri 不支持 mobile 模式（该选项属于 KDE Plasma Mobile）" >&2; \
-        exit 1; \
-    fi && \
-    if [ "$BUILD_KDE" = "min" ] || [ "$BUILD_KDE" = "conc" ]; then \
-        echo "--> [提示] Arch-Niri 为无 KDE 模板，build_KDE=$BUILD_KDE 将被忽略"; \
-    fi && \
-    if [ "$ENABLE_anland_kde_ARG" != "true" ]; then \
-        echo "--> [提示] Arch-Niri 显示路径固定为 Anland/Wayland，无论开关如何都会写入 anland 环境变量"; \
-    fi && \
-    if [ "$PulseAudio" != "none" ]; then \
-        echo "--> [提示] Anland App 自带音频路径，PulseAudio=$PulseAudio 仅保留客户端变量"; \
-    fi
+    for value in \
+        "$NIRI_AUTOSTART_ARG" "$ENABLE_ZH_LOCALE_ARG" "$ENABLE_FCITX_RIME_ARG" \
+        "$ENABLE_QUALCOMM_MESA_ARG" "$ENABLE_SYSTEMD257_ARG" "$ENABLE_USB_MANAGER_ARG" \
+        "$ENABLE_FIRMWARE_ARG" "$ENABLE_BINFMT_ARG" "$ENABLE_CONTAINER_INTEGRATION_ARG" \
+        "$ENABLE_8GEN2_WAYLAND_ARG" "$ENABLE_DEV_TOOLS_ARG" \
+        "$ENABLE_COMPRESSION_TOOLS_ARG" "$ENABLE_DOCKER_ARG" "$ENABLE_TMOE_ARG"; do \
+        case "$value" in true|false) ;; *) echo "ERROR: boolean build args must be true or false" >&2; exit 1 ;; esac; \
+    done
 
 RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
@@ -133,7 +136,10 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     xkeyboard-config \
     # 音频栈（Anland App 负责转发，容器内安装客户端库）
     pipewire libpipewire pipewire-pulse wireplumber \
-    noctalia fuzzel kitty && \
+    noctalia fuzzel && \
+    if [ "$TERMINAL_ARG" = "kitty" ]; then \
+        pacman -S --noconfirm --needed kitty; \
+    fi && \
     # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
     # base-devel 全组（makepkg 与源码构建必需，容器内 AUR 构建完全可用；
     # 增加约 250MB 体积）、zig 0.16（官方稳定版 PKGBUILD 无约束，0.16 满足；
@@ -168,30 +174,30 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 中文附加字体（可选）：用思源黑体 CN（59MB）替代 noto-fonts-cjk（313MB），
     # 省约 254MB。思源黑体 CN = Adobe Source Han Sans 简中子集，字形质量与
     # Noto CJK 同级（同一设计），只含简中 Sans，本场景（中文桌面）完全够用。
-    if [ "$ENABLE_zh_tz_ARG" = "true" ]; then pacman -S --noconfirm --needed adobe-source-han-sans-cn-fonts; fi && \
+    if [ "$ENABLE_ZH_LOCALE_ARG" = "true" ]; then pacman -S --noconfirm --needed adobe-source-han-sans-cn-fonts; fi && \
     ############################################## 可选组件 ################################################
     # 输入法 fcitx5 + rime 雾凇拼音 (可选)
-    if [ "$ENABLE_srf_ARG" = "true" ]; then \
+    if [ "$ENABLE_FCITX_RIME_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed fcitx5-im; \
     fi && \
-    if [ "$ENABLE_srf_ARG" = "true" ]; then \
+    if [ "$ENABLE_FCITX_RIME_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed fcitx5-rime; \
         pacman -S --noconfirm --needed rime-ice-git; \
     fi && \
     ## 开发工具集成 (可选)
-    if [ "$ENABLE_kfgj_ARG" = "true" ]; then \
+    if [ "$ENABLE_DEV_TOOLS_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed base-devel cmake clang llvm python python-pip; \
     fi && \
     ## 压缩工具扩展 (可选)
-    if [ "$ENABLE_zip_ARG" = "true" ]; then \
+    if [ "$ENABLE_COMPRESSION_TOOLS_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed zip unzip p7zip bzip2 xz tar gzip; \
     fi && \
     ## docker (可选)
-    if [ "$ENABLE_docker_ARG" = "true" ]; then \
+    if [ "$ENABLE_DOCKER_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed docker docker-compose; \
     fi && \
     ## 集成tmoe (可选)
-    if [ "$ENABLE_tmoe_ARG" = "true" ]; then \
+    if [ "$ENABLE_TMOE_ARG" = "true" ]; then \
         git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux/git && \
         ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
         chmod -R 755 /usr/local/etc/tmoe-linux; \
@@ -205,7 +211,7 @@ RUN ln -sf /usr/bin/iptables-legacy /usr/bin/iptables && \
 
 # 配置 Locale、时区与 SSH
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
-    if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
+    if [ "$ENABLE_ZH_LOCALE_ARG" = "true" ]; then \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
         echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen && \
         locale-gen && \
@@ -226,8 +232,17 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd && \
     systemctl enable sshd
 
-# 为 RootFS 安装 Droidspaces USB Manager
-RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
+# Optional Droidspaces USB manager. Android APK/daemon assets are never copied
+# into the Linux RootFS; they remain device-side compatibility prerequisites.
+RUN if [ "$ENABLE_USB_MANAGER_ARG" = "true" ]; then \
+        /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"; \
+    fi && \
+    rm -f /usr/local/sbin/install-droidspaces-usb-manager
+
+# Optional Arch firmware packages for device-specific hardware passthrough.
+RUN if [ "$ENABLE_FIRMWARE_ARG" = "true" ]; then \
+        pacman -S --noconfirm --needed linux-firmware; \
+    fi
 
 # 为 droidspaces 的 su/su -l 入口建立完整的 systemd 用户会话。
 RUN for pam_file in /etc/pam.d/su /etc/pam.d/su-l; do \
@@ -248,25 +263,18 @@ ANLAND_SOCKET=/run/display.sock
 ANLAND_DRM_DEVICE=/dev/dri/renderD128
 XWAYLAND_GBM_DEVICE=/dev/dri/renderD128
 EOF
-RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
+RUN if [ "$ENABLE_QUALCOMM_MESA_ARG" = "true" ]; then \
         echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment && \
         echo "GALLIUM_DRIVER=kgsl" >> /etc/environment && \
         echo "FD_FORCE_KGSL=1" >> /etc/environment; \
     fi
-# 音频选择（X11 时代的转发方式，Anland 下通常不需要）
-RUN if [ "$PulseAudio" = "socket" ]; then \
-        echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
-    elif [ "$PulseAudio" = "tcp" ]; then \
-        echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
-    fi
-
-RUN if [ "$ENABLE_8gen2_wayland_ARG" = "true" ]; then \
+RUN if [ "$ENABLE_8GEN2_WAYLAND_ARG" = "true" ]; then \
         echo 'FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1' >> /etc/environment; \
     fi
 
 # 输入法环境变量（不使用 heredoc：BuildKit 的重定向 heredoc 会终止指令，
 # 其后的 fi 会被当作 Dockerfile 指令导致解析错误）
-RUN if [ "$ENABLE_srf_ARG" = "true" ]; then \
+RUN if [ "$ENABLE_FCITX_RIME_ARG" = "true" ]; then \
         echo "XMODIFIERS=@im=fcitx5" >> /etc/environment && \
         echo "GTK_IM_MODULE=fcitx5" >> /etc/environment && \
         echo "QT_IM_MODULE=fcitx5" >> /etc/environment && \
@@ -365,15 +373,43 @@ RUN chmod +x /tmp/beautify/setup-beautify.sh && \
     rm -rf /tmp/beautify
 
 # 下载 ANiri niri 二进制（固定版本 + SHA256 校验 + strip 减小体积）
-RUN echo "--> [niri] 下载 ANiri ${ANIRI_VERSION}..." && \
-    curl -fL --retry 5 --retry-delay 3 \
-      "https://github.com/Celvra/ANiri/releases/download/${ANIRI_VERSION}/${ANIRI_FILENAME}" \
+RUN echo "--> [niri] Downloading pinned ${ANIRI_RELEASE_REPOSITORY} ${ANIRI_VERSION}..." && \
+    curl -fL --retry 5 --retry-delay 3 --retry-all-errors \
+      "https://github.com/${ANIRI_RELEASE_REPOSITORY}/releases/download/${ANIRI_VERSION}/${ANIRI_FILENAME}" \
       -o /tmp/niri-bin && \
     echo "${ANIRI_SHA256}  /tmp/niri-bin" | sha256sum -c - && \
     install -Dm755 /tmp/niri-bin /usr/bin/niri && \
     strip --strip-all /usr/bin/niri && \
     rm -f /tmp/niri-bin && \
-    /usr/bin/niri --version
+    /usr/bin/niri --version && \
+    install -d -m 0755 /usr/share/doc/droidspaces-arch-niri && \
+    printf '%s\n' \
+      "repository=${ANIRI_RELEASE_REPOSITORY}" \
+      "release_tag=${ANIRI_VERSION}" \
+      "source_commit=${ANIRI_SOURCE_COMMIT}" \
+      "asset=${ANIRI_FILENAME}" \
+      "sha256=${ANIRI_SHA256}" \
+      "status=temporary-upstream-baseline-until-tuned-release-exists" \
+      > /usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt
+
+# Record Builder provenance and device-side compatibility without copying any
+# Android APK, display daemon, root helper, MediaCodec component or credential.
+RUN printf '%s\n' \
+      "builder_repository=${BUILDER_REPOSITORY}" \
+      "builder_commit=${BUILDER_COMMIT}" \
+      "architecture=aarch64" \
+      "terminal=${TERMINAL_ARG}" \
+      "remote=${REMOTE_ARG}" \
+      "android_anland_repository=${ANDROID_ANLAND_REPOSITORY}" \
+      "android_anland_source_commit=${ANDROID_ANLAND_SOURCE_COMMIT}" \
+      "android_anland_release=unpublished-device-side-prerequisite" \
+      "android_anland_checksum=unavailable-until-release-exists" \
+      "local_display_socket=/run/display.sock" \
+      "private_rdp_bridge_socket=/run/anland-rdp/bridge.sock" \
+      "private_rdp_android_bind_source=/data/local/tmp/anland-rdp" \
+      "h264_encoder=android-mediacodec-hardware-only" \
+      "software_h264_fallback=forbidden" \
+      > /usr/share/doc/droidspaces-arch-niri/BUILD-COMPATIBILITY.txt
 
 # 安装 niri 默认配置：waybar 自启动替换为 noctalia，终端快捷键指向
 # ghostty（缺失时回退 kitty，spawn-sh 运行时探测），并按构建开关追加
@@ -383,8 +419,8 @@ install -Dm644 /usr/share/niri/default-config.kdl /tmp/config.kdl
 sed -i 's/spawn-at-startup "waybar"/spawn-at-startup "noctalia"/' /tmp/config.kdl
 sed -i 's#spawn "alacritty"#spawn-sh "command -v ghostty >/dev/null 2>\&1 \&\& exec ghostty || exec kitty"#' /tmp/config.kdl
 sed -i 's/Open a Terminal: alacritty/Open a Terminal: ghostty (fallback kitty)/' /tmp/config.kdl
-sed -i '/Open a Terminal: ghostty/a\    Alt+E hotkey-overlay-title="Open Files: nemo" { spawn "nemo"; }' /tmp/config.kdl
-if [ "$ENABLE_srf_ARG" = "true" ]; then
+sed -i '/Open a Terminal: ghostty/a\    Mod+E hotkey-overlay-title="Open Files: nemo" { spawn "nemo"; }' /tmp/config.kdl
+if [ "$ENABLE_FCITX_RIME_ARG" = "true" ]; then
     printf '\n// Droidspaces: fcitx5 input method\nspawn-at-startup "fcitx5" "-d"\n' >> /tmp/config.kdl
 fi
 # 追加终端窗口背景模糊（kitty niri 原生不生效，ghostty 自带 blur 时由协议优先）
@@ -421,7 +457,7 @@ RestartSec=3s
 WantedBy=multi-user.target
 EOF
 sed -i "s/__DS_USER__/${USERNAME}/g" /etc/systemd/system/niri.service
-if [ "$BUILD_KDE_plus" = "true" ]; then
+if [ "$NIRI_AUTOSTART_ARG" = "true" ]; then
     mkdir -p /etc/systemd/system/multi-user.target.wants
     ln -sf /etc/systemd/system/niri.service /etc/systemd/system/multi-user.target.wants/niri.service
 fi
@@ -486,7 +522,7 @@ RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
 COPY scripts/binfmt/qemu-binfmt-register.sh /usr/local/bin/
 COPY scripts/binfmt/qemu-binfmt-register.service /etc/systemd/system/
 
-RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
+RUN if [ "$ENABLE_BINFMT_ARG" = "true" ]; then \
         chmod +x /usr/local/bin/qemu-binfmt-register.sh && \
         chmod 644 /etc/systemd/system/qemu-binfmt-register.service && \
         mkdir -p /etc/systemd/system/multi-user.target.wants && \
@@ -498,7 +534,7 @@ RUN if [ "$ENABLE_binfmt_ARG" = "true" ]; then \
     fi
 
 # 可选：为 systemd 258+ 发行版构建 systemd 257 旧内核兼容运行时（4.19 内核设备建议开启）
-RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
+RUN if [ "$ENABLE_SYSTEMD257_ARG" = "true" ]; then \
         bash /usr/local/sbin/systemd257; \
     else \
         echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
@@ -506,7 +542,7 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
     rm -f /usr/local/sbin/systemd257
 
 # 下载并安装 Mesa（高通 GPU，ANiri 的 kgsl 渲染依赖此定制包）
-RUN --mount=type=secret,id=github_token if [ "$ENABLE_mesa_ARG" = "true" ]; then \
+RUN --mount=type=secret,id=github_token if [ "$ENABLE_QUALCOMM_MESA_ARG" = "true" ]; then \
         echo "--> [开启] 正在下载并安装最新版 Mesa 驱动..." && \
         GH_TOKEN_VAL="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
         URL=$(if [ -n "$GH_TOKEN_VAL" ]; then \
@@ -587,7 +623,7 @@ if [ -f "$GUEST_SYSTEMD_PATH/dbus.service" ]; then
     ln -sf "$GUEST_SYSTEMD_PATH/dbus.service" "/etc/systemd/system/multi-user.target.wants/dbus.service"
 fi
 
-if [ "$ENABLE_yj_ARG" = "true" ]; then
+if [ "$ENABLE_CONTAINER_INTEGRATION_ARG" = "true" ]; then
     for service in systemd-udevd.service systemd-resolved.service systemd-networkd.service NetworkManager.service; do
         if [ -f "$GUEST_SYSTEMD_PATH/$service" ]; then
             ln -sf "$GUEST_SYSTEMD_PATH/$service" "/etc/systemd/system/multi-user.target.wants/$service"
