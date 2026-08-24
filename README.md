@@ -248,7 +248,7 @@ Lamco Release 已固定并在安装时验证 archive entry、AArch64 ELF、inter
 
 - active Bash `bash -n`、ShellCheck；workflow YAML parse、actionlint；Dockerfile parse。
 - active/legacy scope、唯一 workflow、旧 active 参数、action SHA、permissions、mode、symlink、secret signature 和 hard-coded URL 扫描。
-- workflow 产物的 xz/tar、文件名、变体数、SHA256、metadata 与 exact Release asset set。
+- workflow 产物的 xz/tar、文件名、变体数、SHA256、metadata 与 exact Release asset set；最终 archive 还会拒绝 Android 设备侧资产、OpenH264/FFmpeg/x264 软件编码包和源码构建残留。
 - Lamco Release installer 的 AArch64 ELF、依赖、metadata、SBOM/license 与软件 H.264 依赖拒绝。
 
 除非有对应设备测试记录，否则以下均视为**未验证**：目标手机导入/启动、实际 GPU、Android Surface 生命周期、MediaCodec、`mstsc` 互操作、剪贴板端到端、host/NAT UI、功耗、温度、长时间稳定性。Actions 成功不能替代真机验证。

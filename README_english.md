@@ -248,7 +248,7 @@ The build/static layer can validate:
 
 - `bash -n` and ShellCheck for active Bash; YAML parsing and actionlint for the workflow; Dockerfile parsing.
 - active/legacy scope, sole workflow, removed active options, action SHAs, permissions, modes, symlinks, secret signatures, and hard-coded URLs.
-- output xz/tar integrity, filenames, variant count, SHA-256, metadata, and exact Release asset set.
+- output xz/tar integrity, filenames, variant count, SHA-256, metadata, and exact Release asset set; final archives also reject Android device-side assets, OpenH264/FFmpeg/x264 software-codec packages, and source-build residue.
 - Lamco's AArch64 ELF, dependencies, metadata, SBOM/licenses, and refusal of software-H.264 dependencies.
 
 Unless a corresponding device test is recorded, the following remain **unverified**: target-phone import/boot, real GPU behavior, Android Surface lifecycle, MediaCodec, `mstsc` interoperability, end-to-end clipboard, host/NAT UI behavior, power, temperature, and long-duration stability. A successful Actions build is not a substitute for device validation.
