@@ -15,9 +15,9 @@ Droidspaces 是共享 Android 内核、使用 namespace + `pivot_root` 的特权
 
 | 项目 | 职责 | 当前 Builder 状态 |
 | --- | --- | --- |
-| [niri](https://github.com/niri-wm/niri) / [Celvra/ANiri](https://github.com/Celvra/ANiri) | Linux Wayland 合成器及 Anland 显示后端 | 暂时消费已验证的上游 ANiri `v0.2.0` ARM64 资产。 |
-| [collegeming/ANiri-anland-tuned](https://github.com/collegeming/ANiri-anland-tuned) | 针对 Anland 的 Linux compositor、输入、剪贴板和 polling 调优 | 调优提交已存在，但尚无可消费的 immutable ARM64 Release；Builder **没有虚构或提前切换 pin**。 |
-| [superturtlee/anland](https://github.com/superturtlee/anland) / [collegeming/anland-bridge](https://github.com/collegeming/anland-bridge) | Android Surface、`local|remote|both` 显示状态、MediaCodec、FD/root helper | 设备侧 prerequisite；APK、daemon、Magisk 资产不进入 RootFS。candidate 已编译通过，但公开 immutable Release/checksum 尚未发布。 |
+| [niri](https://github.com/niri-wm/niri) / [Celvra/ANiri](https://github.com/Celvra/ANiri) | niri 上游与 Anland 后端的历史来源 | Builder 消费下列 tuned fork 的最终 immutable Release。 |
+| [collegeming/ANiri-anland-tuned](https://github.com/collegeming/ANiri-anland-tuned) | Linux compositor、输入、`CF_UNICODETEXT` 剪贴板与 Anland polling 调优 | RootFS 固定消费最终 ARM64 Release `v26.4.0-anland.1`；其 source commit 包含 `74ce2a9…` 实现基线及最终构建所需的最小 strict-Clippy 修复。 |
+| [superturtlee/anland](https://github.com/superturtlee/anland) / [collegeming/anland-bridge](https://github.com/collegeming/anland-bridge) | Android Surface、`local|remote|both` 显示状态、MediaCodec、FD/root helper | 最终设备侧 prerequisite 为 `anland-v5.19.3`；APK、daemon、Magisk 资产只安装到 Android host/root，绝不进入 RootFS。 |
 | [collegeming/lamco-anland-bridge](https://github.com/collegeming/lamco-anland-bridge) | Linux RDP/TLS/EGFX、输入、CLIPRDR 和私有 UDS listener | `remote=lamco` 固定消费已发布并校验的 ARM64 二进制，不在 RootFS 内构建 Rust。 |
 | 本 Builder | 组合并 pin Linux RootFS，生成变体、校验和与 metadata，并记录 Android prerequisite | 唯一 active Dockerfile/workflow；旧 KDE 内容仅在 `legacy/` 保存。 |
 
@@ -59,13 +59,25 @@ Builder 的 `remote=none|wayvnc|lamco` 只决定 RootFS 是否安装远程服务
 
 ## 精确版本与兼容矩阵
 
-| 组件 | Repository / tag | Source commit | Asset / SHA-256 | 状态 |
+| 组件 | Repository / annotated tag | Source commit / baseline | Asset / SHA-256 | 状态 |
 | --- | --- | --- | --- | --- |
-| ANiri baseline | `Celvra/ANiri` / `v0.2.0` | `cfd31db9c79c681a11ebc1afdb80fa7b31c4f7e0` | `niri-arm64-linux-bin` / `9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6eb` | 当前 RootFS 实际消费。 |
-| ANiri tuned | `collegeming/ANiri-anland-tuned` / branch `anland-poll-optimize` | `74ce2a92eb2151d729818a784ced605ec950b56c` | 尚无 Release asset/checksum | 不消费；等待真实 immutable Release 后再改 pin。 |
-| Android anland bridge | `collegeming/anland-bridge` / branch `bridge-service-toggle` | `95b2d73ff799639ce8576ff908f13f5a31e024a1` | candidate 已成功；公开 Release/checksum 尚不可用 | 设备侧 prerequisite，不进入 RootFS。 |
-| Lamco | `collegeming/lamco-anland-bridge` / `anland-v0.2.0` | `03902875622f04c8c64ab52fd4dc72981bb93e64` | `lamco-anland-bridge-0.2.0-aarch64-unknown-linux-gnu.tar.xz` / `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea` | `remote=lamco` 实际消费。 |
-| Lamco IronRDP pin | `collegeming/IronRDP` / branch `anland-preauth-timeout` | `33fc287b83af35ba3650519fe059db99d1cdf131` | 记录在 Lamco metadata | 由 Lamco Release 固定。 |
+| ANiri tuned | [`collegeming/ANiri-anland-tuned` / `v26.4.0-anland.1`](https://github.com/collegeming/ANiri-anland-tuned/releases/tag/v26.4.0-anland.1)，tag object `8abf6ac37eb9e3775dc2150abdfe406e4a857e0f` | source `1999f7cfb9c7ffdd02d79edf35fdf98df7eafe18`；implementation baseline `74ce2a92eb2151d729818a784ced605ec950b56c` | [`niri-arm64-linux-bin`](https://github.com/collegeming/ANiri-anland-tuned/releases/download/v26.4.0-anland.1/niri-arm64-linux-bin) / `9970f367377bab96f6ae714ed524a16cec8427c505b5de22ae01a0a97c8e44e3` | 当前 RootFS 实际消费；[成功构建 run](https://github.com/collegeming/ANiri-anland-tuned/actions/runs/32749084441)。source 含 `74ce2a9…` 实现及最小 strict-Clippy 修复。 |
+| Android anland bridge | [`collegeming/anland-bridge` / `anland-v5.19.3`](https://github.com/collegeming/anland-bridge/releases/tag/anland-v5.19.3)，tag object `1d912e982a8f35e90e81255afd9f8444cd319295` | source `e26a080e990d0c9fc18d64b35e161d134bc51e63`；feature baseline `95b2d73ff799639ce8576ff908f13f5a31e024a1` | plain APK、Tracy APK、`anland-daemon.zip` 与 `SHA256SUMS`，见下表 | 最终设备侧 prerequisite；[成功构建 run](https://github.com/collegeming/anland-bridge/actions/runs/32751299809)。不下载或安装到 RootFS。 |
+| Lamco | `collegeming/lamco-anland-bridge` / `anland-v0.2.0` | `03902875622f04c8c64ab52fd4dc72981bb93e64` | `lamco-anland-bridge-0.2.0-aarch64-unknown-linux-gnu.tar.xz` / `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea` | `remote=lamco` 实际消费，pin 保持不变。 |
+| Lamco IronRDP pin | `collegeming/IronRDP` / branch `anland-preauth-timeout` | `33fc287b83af35ba3650519fe059db99d1cdf131` | 记录在 Lamco metadata | 由 Lamco Release 固定，保持不变。 |
+
+ANiri Release 还提供 `BUILD-METADATA.txt`（SHA-256 `43b59e66a8cd01c7bd32f1351a9b7890aa5de96c13d804dde24c7042bdfe4cbd`）和 CycloneDX SBOM `ANiri-SBOM.cdx.json`（SHA-256 `078456261cb4c2b594d01f261bce6457f85bc44a94923e110723718a9b286ab3`）。
+
+Android `anland-v5.19.3` 设备侧资产：
+
+| 资产 | 用途 | SHA-256 / 下载 |
+| --- | --- | --- |
+| `anland-bridge-5.19.3-plain-release-arm64-v8a.apk` | 常规设备安装，默认推荐 | `f7d698d17a3611f8cb4a0af5c1f1d5781c8c84731f656de744b4251fab5b4c38` / [下载](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/anland-bridge-5.19.3-plain-release-arm64-v8a.apk) |
+| `anland-bridge-5.19.3-tracy-profiling-release-arm64-v8a.apk` | 仅 Tracy profiling | `983e2a03aac1f0d56dda2fb9e3ac7048e8d37051492714dd1c918a2e19fe2d29` / [下载](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/anland-bridge-5.19.3-tracy-profiling-release-arm64-v8a.apk) |
+| `anland-daemon.zip` | Android host/root 的 Magisk module/daemon | `a258b4a5de851f24cd94fe1232528de2d56d525ea54f0ec478592772da6f6df4` / [下载](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/anland-daemon.zip) |
+| `SHA256SUMS` | Release 校验清单 | 文件 SHA-256 `63b82e1e64c3574c94d3d7381fc44ac00df9bbfff5659ea36dad25702a43cc95` / [下载](https://github.com/collegeming/anland-bridge/releases/download/anland-v5.19.3/SHA256SUMS) |
+
+以上 APK/ZIP **仅供 Android host/root 使用**；Dockerfile、workflow 和 RootFS 都不会下载、`COPY` 或安装它们。`anland-v5.19.2` 因 Tracy `versionName` 污染不推荐，最终 pin 仅为 `anland-v5.19.3`。
 
 RootFS 内会写入 `/usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt` 与 `BUILD-COMPATIBILITY.txt`。workflow 还会生成外部 `BUILD-METADATA.txt` 和 `SHA256SUMS`，其中 Builder commit 取运行时精确 `github.sha`，不会使用可变 `latest`。
 
@@ -79,7 +91,7 @@ RootFS 内会写入 `/usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt` 与 `BU
 - 可选开发工具、压缩工具、Docker 和 TMOE。
 - `remote=none|wayvnc|lamco`。
 
-RootFS 默认 Linux 用户为 `droid`，构建参数可修改。镜像目前为 Linux 账户设置初始密码 `1234`；导入后必须立即通过 `passwd` 修改。Lamco 不复用该密码，必须单独配置强 RDP 凭据。
+RootFS 默认 Linux 用户为 `colle`，构建参数可修改。镜像目前为 Linux 账户设置初始密码 `1234`；导入后必须立即通过 `passwd` 修改。Lamco 不复用该密码，必须单独配置强 RDP 凭据。
 
 ## GitHub Actions 构建
 
@@ -92,7 +104,7 @@ RootFS 默认 Linux 用户为 `droid`，构建参数可修改。镜像目前为 
 | `version` | 安全的版本/文件名标签；`candidate` 自动附加 run id/attempt | `candidate` |
 | `publish_release` | 是否发布 immutable tag/Release | `false` |
 | `build_mode` | `native-arm64` 或 `qemu-x86_64` | `native-arm64` |
-| `username` | RootFS 用户名 | `droid` |
+| `username` | RootFS 用户名 | `colle` |
 | `terminal` | `kitty|ghostty|both` | `kitty` |
 | `remote` | `none|wayvnc|lamco` | `none` |
 | `niri_autostart` | niri 自动启动 | `true` |
@@ -137,7 +149,7 @@ ARM64 host 原生构建：
 ./build_rootfs-native.sh \
   -i Droidspaces-Arch-Niri.Dockerfile \
   -v local \
-  -u droid \
+  -u colle \
   -T both \
   -R lamco \
   -N true -g true -h true -c true -S true \
@@ -151,7 +163,7 @@ x86_64 host 必须使用显式 QEMU 脚本：
 ./build_rootfs-qemu-aarch64.sh \
   -i Droidspaces-Arch-Niri.Dockerfile \
   -v local \
-  -u droid \
+  -u colle \
   -T kitty \
   -R none \
   -N true -g true -h true -c true -S true \
@@ -166,7 +178,7 @@ x86_64 host 必须使用显式 QEMU 脚本：
 1. 把 `.tar.xz` 导入 Droidspaces 特权容器；不要按 PRoot 教程配置。
 2. 为 Qualcomm Mesa/niri 启用 GPU 与必要硬件访问。
 3. 4.19 内核建议保持 `enable_systemd257=true`。`enable_binfmt` 只有目标内核启用 `CONFIG_BINFMT_MISC` 才有意义。
-4. 配置 Anland Android 端，并提供本地显示 socket 到 `/run/display.sock`。具体 Android 资产应来自 `anland-bridge` 的设备侧 Release；不要从 RootFS 寻找 APK/daemon。
+4. 使用最终 [`anland-v5.19.3`](https://github.com/collegeming/anland-bridge/releases/tag/anland-v5.19.3) 配置 Anland Android 端，并提供本地显示 socket 到 `/run/display.sock`。这些是 Android host/root 资产；不要从 RootFS 寻找 APK/daemon/Magisk ZIP。
 5. `niri.service` 默认自动启动；检查命令：
 
    ```bash

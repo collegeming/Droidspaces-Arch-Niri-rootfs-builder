@@ -24,7 +24,7 @@ ARG TARGETPLATFORM
 
 #######################################################
 # Active Arch-Niri public build API. Boolean values are validated below.
-ARG USERNAME=droid
+ARG USERNAME=colle
 ARG TERMINAL_ARG=kitty
 ARG REMOTE_ARG=none
 ARG NIRI_AUTOSTART_ARG=true
@@ -42,21 +42,39 @@ ARG ENABLE_COMPRESSION_TOOLS_ARG=true
 ARG ENABLE_DOCKER_ARG=false
 ARG ENABLE_TMOE_ARG=false
 
-# Temporary immutable ANiri baseline pin. collegeming/ANiri-anland-tuned has no
-# consumable Release yet; switch repository/tag/checksum only after its final
-# public ARM64 asset is independently verified. Never invent a tuned pin.
-ARG ANIRI_RELEASE_REPOSITORY=Celvra/ANiri
-ARG ANIRI_VERSION=v0.2.0
-ARG ANIRI_SOURCE_COMMIT=cfd31db9c79c681a11ebc1afdb80fa7b31c4f7e0
+# Immutable tuned ANiri ARM64 Release. The source commit contains the
+# 74ce2a9 Anland implementation baseline plus only the minimal strict-Clippy
+# fixes required by the final release build.
+ARG ANIRI_RELEASE_REPOSITORY=collegeming/ANiri-anland-tuned
+ARG ANIRI_VERSION=v26.4.0-anland.1
+ARG ANIRI_TAG_OBJECT=8abf6ac37eb9e3775dc2150abdfe406e4a857e0f
+ARG ANIRI_SOURCE_COMMIT=1999f7cfb9c7ffdd02d79edf35fdf98df7eafe18
+ARG ANIRI_IMPLEMENTATION_BASELINE=74ce2a92eb2151d729818a784ced605ec950b56c
 ARG ANIRI_FILENAME=niri-arm64-linux-bin
-ARG ANIRI_SHA256=9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6eb
+ARG ANIRI_SHA256=9970f367377bab96f6ae714ed524a16cec8427c505b5de22ae01a0a97c8e44e3
+ARG ANIRI_BUILD_METADATA=BUILD-METADATA.txt
+ARG ANIRI_BUILD_METADATA_SHA256=43b59e66a8cd01c7bd32f1351a9b7890aa5de96c13d804dde24c7042bdfe4cbd
+ARG ANIRI_SBOM=ANiri-SBOM.cdx.json
+ARG ANIRI_SBOM_SHA256=078456261cb4c2b594d01f261bce6457f85bc44a94923e110723718a9b286ab3
 
-# Builder provenance and Android-side compatibility prerequisite embedded in
-# the RootFS. The Android APK/root helper is linked only; it is never installed.
+# Builder provenance and final Android-side compatibility prerequisite embedded
+# in the RootFS. Android APK/daemon/Magisk assets are linked only and are never
+# downloaded, copied, or installed here.
 ARG BUILDER_REPOSITORY=collegeming/Droidspaces-Arch-Niri-rootfs-builder
 ARG BUILDER_COMMIT=unknown
 ARG ANDROID_ANLAND_REPOSITORY=collegeming/anland-bridge
-ARG ANDROID_ANLAND_SOURCE_COMMIT=95b2d73ff799639ce8576ff908f13f5a31e024a1
+ARG ANDROID_ANLAND_TAG=anland-v5.19.3
+ARG ANDROID_ANLAND_TAG_OBJECT=1d912e982a8f35e90e81255afd9f8444cd319295
+ARG ANDROID_ANLAND_SOURCE_COMMIT=e26a080e990d0c9fc18d64b35e161d134bc51e63
+ARG ANDROID_ANLAND_FEATURE_BASELINE=95b2d73ff799639ce8576ff908f13f5a31e024a1
+ARG ANDROID_ANLAND_PLAIN_APK=anland-bridge-5.19.3-plain-release-arm64-v8a.apk
+ARG ANDROID_ANLAND_PLAIN_APK_SHA256=f7d698d17a3611f8cb4a0af5c1f1d5781c8c84731f656de744b4251fab5b4c38
+ARG ANDROID_ANLAND_TRACY_APK=anland-bridge-5.19.3-tracy-profiling-release-arm64-v8a.apk
+ARG ANDROID_ANLAND_TRACY_APK_SHA256=983e2a03aac1f0d56dda2fb9e3ac7048e8d37051492714dd1c918a2e19fe2d29
+ARG ANDROID_ANLAND_DAEMON_ZIP=anland-daemon.zip
+ARG ANDROID_ANLAND_DAEMON_ZIP_SHA256=a258b4a5de851f24cd94fe1232528de2d56d525ea54f0ec478592772da6f6df4
+ARG ANDROID_ANLAND_SHA256SUMS=SHA256SUMS
+ARG ANDROID_ANLAND_SHA256SUMS_SHA256=63b82e1e64c3574c94d3d7381fc44ac00df9bbfff5659ea36dad25702a43cc95
 ######################################################
 
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
@@ -386,10 +404,16 @@ RUN echo "--> [niri] Downloading pinned ${ANIRI_RELEASE_REPOSITORY} ${ANIRI_VERS
     printf '%s\n' \
       "repository=${ANIRI_RELEASE_REPOSITORY}" \
       "release_tag=${ANIRI_VERSION}" \
+      "tag_object=${ANIRI_TAG_OBJECT}" \
       "source_commit=${ANIRI_SOURCE_COMMIT}" \
+      "implementation_baseline=${ANIRI_IMPLEMENTATION_BASELINE}" \
+      "release_url=https://github.com/${ANIRI_RELEASE_REPOSITORY}/releases/tag/${ANIRI_VERSION}" \
       "asset=${ANIRI_FILENAME}" \
       "sha256=${ANIRI_SHA256}" \
-      "status=temporary-upstream-baseline-until-tuned-release-exists" \
+      "build_metadata=${ANIRI_BUILD_METADATA}" \
+      "build_metadata_sha256=${ANIRI_BUILD_METADATA_SHA256}" \
+      "sbom=${ANIRI_SBOM}" \
+      "sbom_sha256=${ANIRI_SBOM_SHA256}" \
       > /usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt
 
 # Record Builder provenance and device-side compatibility without copying any
@@ -401,9 +425,25 @@ RUN printf '%s\n' \
       "terminal=${TERMINAL_ARG}" \
       "remote=${REMOTE_ARG}" \
       "android_anland_repository=${ANDROID_ANLAND_REPOSITORY}" \
+      "android_anland_tag=${ANDROID_ANLAND_TAG}" \
+      "android_anland_tag_object=${ANDROID_ANLAND_TAG_OBJECT}" \
       "android_anland_source_commit=${ANDROID_ANLAND_SOURCE_COMMIT}" \
-      "android_anland_release=unpublished-device-side-prerequisite" \
-      "android_anland_checksum=unavailable-until-release-exists" \
+      "android_anland_feature_baseline=${ANDROID_ANLAND_FEATURE_BASELINE}" \
+      "android_anland_release_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/tag/${ANDROID_ANLAND_TAG}" \
+      "android_anland_plain_apk=${ANDROID_ANLAND_PLAIN_APK}" \
+      "android_anland_plain_apk_sha256=${ANDROID_ANLAND_PLAIN_APK_SHA256}" \
+      "android_anland_plain_apk_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_PLAIN_APK}" \
+      "android_anland_tracy_apk=${ANDROID_ANLAND_TRACY_APK}" \
+      "android_anland_tracy_apk_sha256=${ANDROID_ANLAND_TRACY_APK_SHA256}" \
+      "android_anland_tracy_apk_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_TRACY_APK}" \
+      "android_anland_daemon_zip=${ANDROID_ANLAND_DAEMON_ZIP}" \
+      "android_anland_daemon_zip_sha256=${ANDROID_ANLAND_DAEMON_ZIP_SHA256}" \
+      "android_anland_daemon_zip_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_DAEMON_ZIP}" \
+      "android_anland_sha256sums=${ANDROID_ANLAND_SHA256SUMS}" \
+      "android_anland_sha256sums_sha256=${ANDROID_ANLAND_SHA256SUMS_SHA256}" \
+      "android_anland_sha256sums_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_SHA256SUMS}" \
+      "android_assets_role=device-side-prerequisite-only" \
+      "android_assets_in_rootfs=false" \
       "local_display_socket=/run/display.sock" \
       "private_rdp_bridge_socket=/run/anland-rdp/bridge.sock" \
       "private_rdp_android_bind_source=/data/local/tmp/anland-rdp" \

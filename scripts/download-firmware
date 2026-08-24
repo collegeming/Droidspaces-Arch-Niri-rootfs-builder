@@ -86,7 +86,11 @@ decompressed_count=0
 TEMP_FILE=$(mktemp)
 TEMP_FILE2=$(mktemp)
 # 使用 trap 确保脚本无论如何结束，都会清理掉这两个临时文件
-trap "rm -f '$TEMP_FILE' '$TEMP_FILE2'" EXIT
+cleanup_temp_files() {
+    # shellcheck disable=SC2317 # Invoked indirectly by the EXIT trap.
+    rm -f "$TEMP_FILE" "$TEMP_FILE2"
+}
+trap cleanup_temp_files EXIT
 
 # 查找所有后缀为 .zst 的“普通文件”（-type f，排除软链接）
 # -print0 配合 read -d '' 可以完美处理文件名中包含空格的极端情况
@@ -209,7 +213,6 @@ while IFS= read -r -d '' symlink_path; do
             link_target=$(realpath -m "$link_dir/$link_target")
         fi
 
-        original_link="$link_target"
         found_link=""
 
         if [ -e "$link_target" ]; then found_link="$link_target"; fi
