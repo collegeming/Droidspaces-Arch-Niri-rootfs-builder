@@ -16,17 +16,21 @@
 
 ARG TARGETPLATFORM
 
-FROM ogarcia/archlinux AS customizer
+FROM docker.io/ogarcia/archlinux@sha256:f92ed48cdfc274181f16e94e6a4e90e4c90c59a3d14fc7a133483a93ebc16ec6 AS customizer
 
 # Re-declare the automatic platform argument inside the build stage so the
 # ARM64 guard below evaluates the actual BuildKit target.
 ARG TARGETPLATFORM
+ARG ARCH_BASE_IMAGE=docker.io/ogarcia/archlinux@sha256:f92ed48cdfc274181f16e94e6a4e90e4c90c59a3d14fc7a133483a93ebc16ec6
+ARG ARCH_BASE_INDEX_DIGEST=sha256:f92ed48cdfc274181f16e94e6a4e90e4c90c59a3d14fc7a133483a93ebc16ec6
+ARG ARCH_BASE_ARM64_MANIFEST_DIGEST=sha256:019992bf3dc54ab4ba1515dd80e613d473b2ca7a97e410e1da053ae501b6383d
+ARG ARCH_BASE_LAYER_DIGEST=sha256:c714810994102b031ad2f2319282528593ae84ce86b5131b82e859642e3c79f4
 
 #######################################################
 # Active Arch-Niri public build API. Boolean values are validated below.
 ARG USERNAME=colle
 ARG TERMINAL_ARG=kitty
-ARG REMOTE_ARG=none
+ARG REMOTE_ARG=wayvnc
 ARG NIRI_AUTOSTART_ARG=true
 ARG ENABLE_ZH_LOCALE_ARG=true
 ARG ENABLE_FCITX_RIME_ARG=true
@@ -43,19 +47,19 @@ ARG ENABLE_DOCKER_ARG=false
 ARG ENABLE_TMOE_ARG=false
 
 # Immutable tuned ANiri ARM64 Release. The source commit contains the
-# 74ce2a9 Anland implementation baseline plus only the minimal strict-Clippy
-# fixes required by the final release build.
+# 74ce2a9 Anland implementation baseline, minimal strict-Clippy fixes, and the
+# final Arch release-verification workflow fix.
 ARG ANIRI_RELEASE_REPOSITORY=collegeming/ANiri-anland-tuned
-ARG ANIRI_VERSION=v26.4.0-anland.1
-ARG ANIRI_TAG_OBJECT=8abf6ac37eb9e3775dc2150abdfe406e4a857e0f
-ARG ANIRI_SOURCE_COMMIT=1999f7cfb9c7ffdd02d79edf35fdf98df7eafe18
+ARG ANIRI_VERSION=v26.4.0-anland.5
+ARG ANIRI_TAG_OBJECT=975beeef6d99c81d8ad98ac32500c0e96353dbdf
+ARG ANIRI_SOURCE_COMMIT=6480280d4baa624d00cf26bb816e4312dc9409c9
 ARG ANIRI_IMPLEMENTATION_BASELINE=74ce2a92eb2151d729818a784ced605ec950b56c
 ARG ANIRI_FILENAME=niri-arm64-linux-bin
-ARG ANIRI_SHA256=9970f367377bab96f6ae714ed524a16cec8427c505b5de22ae01a0a97c8e44e3
+ARG ANIRI_SHA256=54f6aad1a8e47515527ac24fc120ff670675d75cbe6b4be6ae52fcdcfbc0227c
 ARG ANIRI_BUILD_METADATA=BUILD-METADATA.txt
-ARG ANIRI_BUILD_METADATA_SHA256=43b59e66a8cd01c7bd32f1351a9b7890aa5de96c13d804dde24c7042bdfe4cbd
+ARG ANIRI_BUILD_METADATA_SHA256=37b20cfa0aa5664790a2a0d67d21df41c9bcb58f619c9dc46db284629790064f
 ARG ANIRI_SBOM=ANiri-SBOM.cdx.json
-ARG ANIRI_SBOM_SHA256=078456261cb4c2b594d01f261bce6457f85bc44a94923e110723718a9b286ab3
+ARG ANIRI_SBOM_SHA256=600e71d2cd3ad52f31f4690556a08e7430297c0aab62894e6f197e7b9e437734
 
 # Builder provenance and final Android-side compatibility prerequisite embedded
 # in the RootFS. Android APK/daemon/Magisk assets are linked only and are never
@@ -163,7 +167,7 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # 增加约 250MB 体积）、zig 0.16（官方稳定版 PKGBUILD 无约束，0.16 满足；
     # 构建后随工具链清理）、电源信息、字体
     pacman -S --noconfirm --needed paru base-devel zig upower noto-fonts noto-fonts-emoji && \
-    # 远程访问方案（REMOTE_ARG）：none（默认）/ wayvnc（VNC 5900）/ lamco（RDP 3389）
+    # 远程访问方案（REMOTE_ARG）：none / wayvnc（默认，VNC 5900）/ lamco（RDP 3389）
     # wayvnc：ALARM extra 预编译包，Wayland 原生 VNC，改动最小
     # lamco：固定下载并校验 anland-v0.2.0 ARM64 Release，不在镜像内编译 Rust
     if [ "$REMOTE_ARG" = "wayvnc" ]; then \
@@ -422,6 +426,10 @@ RUN printf '%s\n' \
       "builder_repository=${BUILDER_REPOSITORY}" \
       "builder_commit=${BUILDER_COMMIT}" \
       "architecture=aarch64" \
+      "arch_base_image=${ARCH_BASE_IMAGE}" \
+      "arch_base_index_digest=${ARCH_BASE_INDEX_DIGEST}" \
+      "arch_base_arm64_manifest_digest=${ARCH_BASE_ARM64_MANIFEST_DIGEST}" \
+      "arch_base_layer_digest=${ARCH_BASE_LAYER_DIGEST}" \
       "terminal=${TERMINAL_ARG}" \
       "remote=${REMOTE_ARG}" \
       "android_anland_repository=${ANDROID_ANLAND_REPOSITORY}" \
