@@ -1,0 +1,37 @@
+[Unit]
+Description=Lamco Anland RDP Bridge
+Documentation=file:/usr/share/doc/lamco-anland-bridge/INSTALL.md
+After=network.target niri.service
+Requires=niri.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=lamco-anland-bridge
+Group=lamco-anland-bridge
+SetLoginEnvironment=no
+UnsetEnvironment=HOME XDG_CONFIG_HOME
+UMask=0077
+ExecStartPre=+/usr/local/sbin/check-lamco-anland-bridge
+ExecStart=/usr/bin/lamco-anland-bridge --config /etc/lamco-anland-bridge/config.toml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lamco-anland-bridge /run/anland-rdp
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+
+[Install]
+WantedBy=multi-user.target
