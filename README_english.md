@@ -1,614 +1,261 @@
 English | [中文](README.md)
 
-# Droidspaces RootFS Automated Build
+# Droidspaces Arch-Niri RootFS Builder
 
-This project builds Linux RootFS archives for Droidspaces through GitHub Actions. The build system is based on Dockerfile templates and exposes common options for distribution selection, KDE desktop size, Chinese localization, input method support, Snapdragon GPU acceleration, audio forwarding, TMOE, Docker, development tools, and Wayland/Anland support.
+An **Arch Linux + niri/ANiri + Anland + Noctalia** RootFS builder for ARM64 Android/Droidspaces, especially devices running 4.19 kernels. The only active target is `Droidspaces-Arch-Niri.Dockerfile`. It can produce kitty, ghostty, or both terminal variants with `remote=none|wayvnc|lamco`.
 
-The goal is to reduce the amount of manual setup required to run a desktop Linux container on Android. Fork the repository, choose the build options in GitHub Actions, wait for the Release artifact, then import the generated `.tar.xz` RootFS into Droidspaces.
+Droidspaces is a privileged container using namespaces and `pivot_root` on the shared Android kernel; it is **not PRoot**. This repository assembles and pins the Linux RootFS only. Android APKs, root helpers, Surface/MediaCodec components, and Magisk assets are device-side prerequisites and are never installed into the RootFS.
 
-## Table of Contents
+- Canonical repository: <https://github.com/collegeming/Droidspaces-Arch-Niri-rootfs-builder>
+- Workflow: [Build and release Droidspaces Arch-Niri RootFS](https://github.com/collegeming/Droidspaces-Arch-Niri-rootfs-builder/actions/workflows/build-arch-niri-rootfs.yml)
+- Chinese documentation: [README.md](README.md)
+- Archived multi-distribution KDE files: [legacy/README.md](legacy/README.md)
 
-- [Supported Targets](#supported-targets)
-- [Feature Overview](#feature-overview)
-- [Build Options](#build-options)
-- [Build with GitHub Actions](#build-with-github-actions)
-- [Import into Droidspaces](#import-into-droidspaces)
-- [Start KDE Desktop](#start-kde-desktop)
-- [Wayland and Anland Setup](#wayland-and-anland-setup)
-- [Lamco Anland RDP Setup](#lamco-anland-rdp-setup)
-- [Droidspaces USB Manager](#droidspaces-usb-manager)
-- [Account, Password, and Username Changes](#account-password-and-username-changes)
-- [Local Build](#local-build)
-- [Install Hardware Firmware](#install-hardware-firmware)
-- [Repository Layout](#repository-layout)
-- [Known Limitations](#known-limitations)
-- [Acknowledgements](#acknowledgements)
+## Project relationships and responsibilities
 
-## Supported Targets
+| Project | Responsibility | Current Builder status |
+| --- | --- | --- |
+| [niri](https://github.com/niri-wm/niri) / [Celvra/ANiri](https://github.com/Celvra/ANiri) | Linux Wayland compositor and Anland display backend | Temporarily consumes the verified upstream ANiri `v0.2.0` ARM64 asset. |
+| [collegeming/ANiri-anland-tuned](https://github.com/collegeming/ANiri-anland-tuned) | Anland-specific Linux compositor, input, clipboard, and polling improvements | Tuned commits exist, but no consumable immutable ARM64 Release exists yet. The Builder has **not invented or prematurely switched a pin**. |
+| [superturtlee/anland](https://github.com/superturtlee/anland) / [collegeming/anland-bridge](https://github.com/collegeming/anland-bridge) | Android Surface, `local|remote|both` state, MediaCodec, FD/root helper | Device-side prerequisite. APK, daemon, and Magisk assets do not enter the RootFS. A candidate build succeeded, but no public immutable Release/checksum is available yet. |
+| [collegeming/lamco-anland-bridge](https://github.com/collegeming/lamco-anland-bridge) | Linux RDP/TLS/EGFX, input, CLIPRDR, and private UDS listener | `remote=lamco` consumes a pinned, verified ARM64 binary Release. Rust is not built inside the RootFS. |
+| This Builder | Combines and pins the Linux RootFS, emits variants/checksums/metadata, and records Android prerequisites | One active Dockerfile and workflow; old KDE content is preserved only under `legacy/`. |
 
-| Build target | Base image | KDE modes | Wayland/Anland | Notes |
+## Architecture and data paths
+
+### Two distinct Unix sockets
+
+These sockets are not interchangeable:
+
+| Path | Purpose | Android-side source |
+| --- | --- | --- |
+| `/run/display.sock` | ANiri local display path to the Android Surface consumer | The display socket mounted by Droidspaces/Anland. |
+| `/run/anland-rdp/bridge.sock` | Lamco's private HMAC mutual-auth bridge | Bind the Android directory `/data/local/tmp/anland-rdp` to `/run/anland-rdp`. |
+
+Lamco requires a **directory bind**, not a bind of the individual `bridge.sock` inode. The service safely unlinks and rebinds its socket after restart; only a directory bind exposes the new inode. Never map this socket to the network or use `chmod 777`.
+
+```text
+/data/local/tmp/anland-rdp -> /run/anland-rdp
+```
+
+### Android display states: local / remote / both
+
+These are states of the Android `anland-bridge`, not values of the Builder's `remote` input:
+
+- `local`: retain only the local Android Surface viewer.
+- `remote`: retain only the remote hardware-encoding/RDP graphics path.
+- `both`: retain the local Surface and remote viewer together.
+- When no viewer exists, or the viewer stays minimized and no local Surface exists, Android must stop the MediaCodec encoder and graphics-consumption chain to avoid idle encoding and continuous power use.
+
+The Builder's `remote=none|wayvnc|lamco` only determines which remote service, if any, is installed in the RootFS.
+
+### Encoding, input, clipboard, and audio boundaries
+
+- H.264 is provided only by the **Android MediaCodec hardware Surface encoder**. There is no OpenH264, x264, FFmpeg, or libavcodec software fallback; the session fails or has no video when the hardware path is unavailable.
+- Lamco does not capture the whole screen through Portal, PipeWire, screencopy, or Android MediaProjection. It consumes only the dedicated ANiri desktop delivered by the Anland bridge.
+- Win/Super is forwarded as original RDP input. niri retains native `Mod+T`, `Mod+E`, and related semantics; Win-to-Alt translation is forbidden.
+- RDP clipboard support is limited to `CF_UNICODETEXT`, including CJK, emoji, line breaks, and clear. Images, files, HTML, and RTF are unsupported.
+- RDPSND is not implemented, so the PC receives no RDP audio. Local Android audio is a separate path.
+
+## Exact version and compatibility matrix
+
+| Component | Repository / tag | Source commit | Asset / SHA-256 | Status |
 | --- | --- | --- | --- | --- |
-| `Debian-13-KDE` | `debian:trixie` | `min`, `conc`, `mobile`, `none` | Supported | Uses the Debian 13 Trixie repositories. |
-| `Ubuntu-24-KDE` | `ubuntu:24.04` | `min`, `conc`, `none` | Not supported | Supports `nosnap`. |
-| `Ubuntu-25-KDE` | `ubuntu:25.10` | `min`, `conc`, `none` | Not supported | Supports `nosnap`. |
-| `Ubuntu-26-KDE` | `ubuntu:26.04` | `min`, `conc`, `mobile`, `none` | Supported | Supports `nosnap`; recommended for Anland KDE. |
-| `Fedora-43-KDE` | `fedora:43` | `min`, `conc`, `mobile`, `none` | Supported | Some devices require hardware access to avoid flicker or crashes. |
-| `Fedora-44-KDE` | `fedora:44` | `min`, `conc`, `mobile`, `none` | Supported | Some devices require hardware access. |
-| `Arch-KDE` | `ogarcia/archlinux` | `min`, `conc`, `mobile`, `none` | Supported | Uses ARM64 Arch patched KWin/Xwayland; this project's QEMU/binfmt flow is not recommended for Arch at the moment. |
-| `Arch-Niri` | `ogarcia/archlinux` | No KDE (`build_KDE` ignored) | Forced on | KDE-free minimal Arch + niri (ANiri anland backend) + Noctalia Shell; see the Arch-Niri notes below. |
-| `Artix-KDE` | ARMtix OpenRC rootfs | `min`, `conc`, `none` | Not supported | Artix mainline has no aarch64; uses the [ARMtix](https://armtixlinux.org/) community port. OpenRC init (no systemd); unsigned repositories (`SigLevel = Never`); X11 path only. |
-| `NixOS-KDE` | `nixos/nix` + declarative build | `min`, `none` | Not supported | Pinned to the NixOS 25.05 channel (systemd 257, old-kernel friendly); `conc` exceeds the GitHub ARM runner disk budget; GPU falls back to software rendering (see the NixOS notes below). |
+| ANiri baseline | `Celvra/ANiri` / `v0.2.0` | `cfd31db9c79c681a11ebc1afdb80fa7b31c4f7e0` | `niri-arm64-linux-bin` / `9d7e8d3533e73f95a9141c81346c5f33777b9be38b87bf703cb322b340eee6eb` | Actually consumed by the current RootFS. |
+| ANiri tuned | `collegeming/ANiri-anland-tuned` / branch `anland-poll-optimize` | `74ce2a92eb2151d729818a784ced605ec950b56c` | No Release asset/checksum yet | Not consumed. Wait for a real immutable Release before changing the pin. |
+| Android anland bridge | `collegeming/anland-bridge` / branch `bridge-service-toggle` | `95b2d73ff799639ce8576ff908f13f5a31e024a1` | Candidate succeeded; public Release/checksum not yet available | Device-side prerequisite; never included in the RootFS. |
+| Lamco | `collegeming/lamco-anland-bridge` / `anland-v0.2.0` | `03902875622f04c8c64ab52fd4dc72981bb93e64` | `lamco-anland-bridge-0.2.0-aarch64-unknown-linux-gnu.tar.xz` / `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea` | Actually consumed by `remote=lamco`. |
+| Lamco IronRDP pin | `collegeming/IronRDP` / branch `anland-preauth-timeout` | `33fc287b83af35ba3650519fe059db99d1cdf131` | Recorded in Lamco metadata | Pinned by the Lamco Release. |
 
-`all` builds every Dockerfile template. For `min`, `conc`, and `mobile`, `all-wayland` builds `Debian-13-KDE`, `Ubuntu-26-KDE`, `Fedora-43-KDE`, `Fedora-44-KDE`, and `Arch-KDE`; `mobile` forces Wayland on.
+The RootFS records `/usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt` and `BUILD-COMPATIBILITY.txt`. The workflow also emits external `BUILD-METADATA.txt` and `SHA256SUMS`. The Builder commit comes from the exact runtime `github.sha`; mutable `latest` is not used.
 
-### Artix-KDE notes
+## Active RootFS features
 
-- Bootstrapped from the official [ARMtix](https://wiki.artixlinux.org/Main/Aarch64) (Artix Linux aarch64 community port) OpenRC rootfs; packages come from the `system`, `world`, and `galaxy` repositories at `repo.armtixlinux.org` (unsigned, so pacman runs with `SigLevel = Never`).
-- Uses OpenRC + elogind + standalone udev; there is no systemd, so systemd version compatibility is a non-issue and `enable_systemd257` auto-skips.
-- Desktop auto-start uses the OpenRC service `plasma-x11` (`/etc/init.d/plasma-x11`, supervised by supervise-daemon), equivalent to the systemd `plasma-x11.service`.
-- The OpenRC services for `NetworkManager` and `udev` carry the same runtime gating as the systemd versions (NAT network mode only / hardware access only).
-- Snapdragon GPU support reuses the `archlinux_arm64` custom Mesa build from `mesa-for-android-container` (binary-compatible with ARMtix).
-- Wayland/Anland patched KWin and plasma-mobile are not supported on Artix yet.
+- ARM64 Arch Linux; niri/ANiri over Anland; Noctalia and fuzzel.
+- kitty, ghostty, or two separate RootFS variants with `both`.
+- fcitx5 + Rime-Ice, Chinese locale, Nemo, neovim, fish/reef/Fisher/Tide, and Maple Mono NF CN.
+- Qualcomm KGSL Mesa and an optional Snapdragon 8 Gen 2 UBWC hint.
+- systemd 257 old-kernel compatibility, Droidspaces USB manager, optional firmware/binfmt/container integration.
+- Optional development tools, compression tools, Docker, and TMOE.
+- `remote=none|wayvnc|lamco`.
 
-### NixOS-KDE notes
+The default Linux user is `droid` and can be changed at build time. The image currently initializes the Linux account password as `1234`; change it immediately with `passwd` after import. Lamco never reuses this password and requires independent strong RDP credentials.
 
-- Built declaratively inside the `nixos/nix` container, pinned to the `nixos-25.05` channel: it ships **systemd 257**, the last major line that works on old Android kernels such as 4.19, so `scripts/systemd257.sh` is neither needed nor applicable.
-- The channel is EOL/frozen: builds are reproducible but receive no further security updates; to update, switch channels inside the container with `nix-channel --add` (newer channels may ship systemd versions incompatible with old kernels).
-- The rootfs is produced with nixpkgs `make-system-tarball`, includes the full `/nix/store` closure, and provides `/sbin/init` pointing to the NixOS activation script; the first boot registers the Nix database and creates the user (default password `1234`).
-- **GPU limitation**: NixOS uses stock nixpkgs Mesa, which has no Qualcomm KGSL backend, and the `mesa-for-android-container` packages are incompatible with the NixOS store. GPU rendering therefore falls back to llvmpipe software rendering; `enable_mesa` only installs the graphics stack and tools. For GPU acceleration prefer the Arch/Debian/Ubuntu/Fedora templates.
-- Only `min` and `none` desktop profiles are supported: the `conc` Plasma closure plus builder intermediates exceed the GitHub ARM runner disk budget.
-- TMOE targets apt/dnf/pacman systems and is not integrated on NixOS; Droidspaces USB Manager is not integrated yet either (all other distributions ship it).
-- Wayland/Anland patched KWin and plasma-mobile are not supported on NixOS yet.
+## GitHub Actions build
 
-### Arch-Niri notes (KDE-free minimal + niri + Noctalia Shell)
+The only active workflow is `.github/workflows/build-arch-niri-rootfs.yml`, named **Build and release Droidspaces Arch-Niri RootFS**.
 
-- Positioning: a **minimal Arch without any KDE components**, with a scrollable-tiling Wayland compositor [niri](https://github.com/niri-wm/niri) (adapted for Android through the [ANiri](https://github.com/Celvra/ANiri) anland backend), the [Noctalia Shell](https://github.com/noctalia-dev/noctalia) desktop shell, and fuzzel as the launcher.
-- The terminal is chosen via the `terminal` workflow input: **`kitty` (default)** installs straight from the repo, stable and fast; **`ghostty`** builds Arch's official stable 1.3.1 PKGBUILD from source (~25-50 min, using the official zig 0.16.0 binary + online fetch to work around the `--system` offline manifest bug; hard-fail on failure, no silent fallback); **`konsole`** uses the KDE built-in terminal (Arch-KDE only); **`both`** builds both kitty and ghostty rootfs (matrix expansion, two jobs, aggregated into one release). Effective for both templates: in Arch-Niri the niri Mod+T shortcut uses `spawn-sh` runtime detection (ghostty if installed, else kitty); in Arch-KDE selecting kitty/ghostty sets `TerminalApplication` via `/etc/xdg/kdeglobals`. Desktop choice is via the `build_target` parameter: `Arch-Niri` (niri + Noctalia Shell) or `Arch-KDE` (Plasma).
-- Build logic: based on the upstream `Droidspaces-rootfs-builder` Arch-Minimal (minimal package set, iptables-legacy compatibility, `ds-aliases` shell aliases), combined with this project's Chinese localization, user creation, `enable_systemd257` old-kernel compatibility (recommended for 4.19 devices), fcitx5, the custom Qualcomm Mesa build (`enable_mesa`, which ANiri's kgsl rendering requires), binfmt, NAT/hardware-access gating, USB Manager, and the optional components.
-- Repositories and tooling: pacman uses the **TUNA mirror first** (official ALARM servers kept as fallback) and adds the **archlinuxcn aarch64 repository** (TUNA first, official fallback; signature verification is restored after the keyring bootstrap); **paru** (AUR helper, run as a regular user inside the container) is bundled, the editor is neovim, and the file manager is Nemo (niri shortcut `Mod+E`).
-- The niri binary is downloaded from a pinned ANiri release (currently `v0.2.0`, SHA256-verified and stripped at build time); it requires kernel ≥3.7, so 4.19 is fully compatible. ANiri does not use this project's patched KWin packages.
-- The display path is **Anland/Wayland only** (no X11/Termux:X11 path): selecting this target forces Wayland support on and disables PulseAudio forwarding (the Anland app provides audio).
-- The `build_KDE` option is ignored (the template contains no KDE); with `build_KDE_plus=true` (default), `niri.service` auto-starts: it runs `/usr/bin/niri` as the regular user, creates `/run/user/1000` automatically, and restarts 3 seconds after an abnormal exit. The service is wrapped in `dbus-run-session`: the fcitx5 GTK/Qt input method modules and the Noctalia Shell IPC all need a session D-Bus bus, which plain systemd system services do not provide.
-- The input method (`enable_srf`) uses **fcitx5-rime + rime-ice-git (Rime-Ice pinyin)**: fcitx5-rime comes from ALARM extra and rime-ice-git is a prebuilt archlinuxcn aarch64 package, working out of the box without manual rime configuration.
-- The niri config is installed to `~/.config/niri/config.kdl` (from the upstream `default-config.kdl`, with the waybar autostart replaced by noctalia and the terminal shortcut preferring ghostty (runtime detection, kitty fallback), plus a new `Mod+E` binding for Nemo; an fcitx5 autostart entry is appended when `enable_srf` is on). New users get the same config from `/etc/skel`.
-- Desktop app preconfiguration (everything is written to `/etc/skel` and copied into the default user's home):
-  - **fcitx5**: niri supports the input method protocols natively (text-input-v3; GTK4-popup compatibility with Fcitx was fixed in niri 26.04); a preset `profile` makes rime the default engine, skipping the first-run wizard; the environment variables use the official fcitx5 module keys (the GTK/Qt modules register both `fcitx` and `fcitx5`); niri starts `fcitx5 -d` automatically.
-  - **Nemo**: a GTK3 app running natively on Wayland (no Xwayland needed); `gvfs` provides the trash/mount backends; directories open with Nemo by default (`/etc/xdg/mimeapps.list`); an "Open in Terminal" action is preset (through the `droidspaces-terminal` wrapper, ghostty first with kitty fallback, matching `Mod+T`).
-  - **neovim**: a minimal preset `init.lua` (UTF-8, line numbers, true color, mouse, system clipboard sync); `wl-clipboard` is bundled for clipboard support. Delete `~/.config/nvim/init.lua` to restore stock defaults.
-  - **GTK3/GTK4 dark theme**: matches the dark Noctalia style (read by ghostty and Nemo alike).
-  - **Terminal beautification** (deployed via `scripts/terminal/setup-beautify.sh`, written to `/etc/skel` and synced to user home):
-    - **fish shell**: set as default shell (`chsh -s /usr/bin/fish`); kitty/ghostty `shell`/`command` point to fish interactive login.
-    - **reef + reef-tools** (AUR): bash compatibility layer + modern CLI tool replacements (grep→rg, find→fd, cat→bat, ls→eza, cd→zoxide); `conf.d/reef.fish` auto-enables `reef on` in interactive sessions.
-    - **Fisher + Tide**: `fisher.fish` manually placed in functions dir, `fisher install ilancosman/tide@v6` pre-installed; `tide-apply.fish` writes universal variables (**Classic Powerline style**, double-line frame, `❯` prompt, left os→pwd→git→newline→character, right status/cmd_duration/context/jobs/direnv/language runtimes/cloud/time, Powerline separators `\ue0b0`, vi_mode/shlvl/private_mode modules).
-    - **Maple Mono NF CN font**: downloaded from GitHub release (v7.9, Nerd Font + CN), installed to `/usr/share/fonts/MapleMono/`, `fc-cache` refreshed.
-    - **kitty config**: Catppuccin Frappe theme (`include themes/frappe.conf`), Maple Mono NF CN 14pt, Neovide-style cursor trail (`cursor_trail 3`), semi-transparent background 0.85, no window decorations.
-    - **ghostty config** (only when `terminal=ghostty`): `theme = catppuccin-frappe` (built-in), Maple Mono NF CN 14pt, `background-blur = true` (Ghostty 1.1+ native ext-background-effect-v1), `custom-shader = shaders/cursor_warp.glsl` (clones `ghostty-cursor-shaders` repo), semi-transparent 0.85.
-    - **niri background blur**: `config.kdl` appends `window-rule` enabling `background-effect { blur true }` for kitty/ghostty (kitty native blur doesn't work on niri; ghostty's built-in blur takes priority via protocol).
-    - **Nemo Chinese**: installs `cinnamon-translations` (Nemo UI translations) alongside the already-generated `zh_CN.UTF-8` locale for a Chinese interface.
-- Noctalia Shell: niri is one of its officially integrated compositors; the notification daemon, launcher, and control center are all built in, and no extra daemons are required; it does not bundle a polkit authentication agent (the USB Manager in this project uses passwordless sudo, so this does not matter).
-- Host-side preparation is identical to the Wayland/Anland configuration section: flash virtual-drm-daemon, install the Anland app, bind-mount `display_daemon.sock -> /run/display.sock`, enable GPU access and permissive SELinux, and turn on Anland's accessibility toggle (otherwise Android intercepts the Super key).
-- Known limitations: upstream ANiri lists a few known issues (glmark2/vkmark scores slightly below KWin, Android floating windows may cause glitches, microphone/camera forwarding is unreadable by apps); Xwayland is not integrated (the patched Xwayland belongs to the KWin prebuilt package set); the Nemo "Open in Terminal" action may not appear on an empty-background right-click (right-clicking a file or folder works).
-- **Remote access** (workflow input `remote`, Arch-Niri only):
-  - **`none` (default)**: no remote access.
-  - **`wayvnc`**: Wayland-native VNC server from the ALARM repository (minimal change, about 5 MB), using screencopy, virtual input, and data control. A separate VNC client uses `<phone WLAN IP>:5900` with host/shared networking, or the host endpoint actually published by Droidspaces with isolated/NAT networking. It has no password by default and is suitable only for a trusted LAN; niri#403 still limits compositor shortcuts sent through its virtual keyboard path.
-  - **`lamco`**: a standard RDP server tailored to this project; Windows uses its built-in `mstsc`. The RootFS downloads the pinned `anland-v0.2.0` ARM64 Release from `collegeming/lamco-anland-bridge` and verifies SHA-256 `593a2639f7c06bc3f453ae094114f85e03f442f5d9482d132b5662cd9a146eea`. It does not build Rust in the image and contains no OpenH264, x264, or FFmpeg software encoder. Android sends only the ANiri/anland desktop to a MediaCodec hardware H.264 Surface encoder; it does not capture the whole Android screen. External RDP uses TLS and dedicated credentials. Win/Super is forwarded unchanged to niri, with no Win-to-Alt mapping. Complete the directory bind and interactive secure setup below after import.
-  - The implementations use different protocols and ports; select one at build time. A non-`none` `remote` value requires an individual `Arch-Niri` target; the workflow rejects other and aggregate targets.
+Main inputs:
 
-#### VNC Connection Guide (`remote=wayvnc`)
-
-**Prerequisite**: Build with `remote=wayvnc`; after container start, `wayvnc.service` auto-listens on `0.0.0.0:5900`.
-
-**PC-side connection steps**:
-
-1. **Determine the network endpoint**:
-   - With **host/shared networking**, use the phone WLAN IP and VNC port 5900.
-   - With **isolated/NAT networking**, first publish guest TCP 5900 on a host TCP port in Droidspaces, then use the host address and host port actually reported by Droidspaces. Without that publication, the phone WLAN IP cannot directly reach guest port 5900.
-
-2. **Download a VNC client** (pick one, free):
-   - **Windows**: [TigerVNC](https://tigervnc.org/) (lightweight, recommended) or [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/)
-   - **macOS**: built-in Screen Sharing or [TigerVNC](https://tigervnc.org/)
-   - **Linux**: `pacman -S tigervnc` or `apt install tigervnc-viewer` / Remmina
-
-3. **Connect**: With host/shared networking enter `<phone WLAN IP>:5900`; with isolated/NAT networking enter the `<host address>:<host port>` actually published by Droidspaces. For example, host/shared networking may use `192.168.1.100:5900` (TigerVNC: `192.168.1.100::5900`).
-
-   **Password**: no password (VNC auth is disabled). With host/shared networking, protect it through an SSH tunnel: run `ssh -L 5900:localhost:5900 colle@<phone WLAN IP>` on the PC, then connect VNC to `localhost:5900`. With isolated/NAT networking, use the SSH host endpoint actually published by Droidspaces; this example does not apply when SSH is not published.
-
-4. **Usage**:
-   - You'll see the niri desktop (same view as the phone screen)
-   - **Mouse**: fully usable (move, click, drag, scroll)
-   - **Keyboard character input**: fully usable (terminal typing, Chinese input)
-   - **fcitx5 Chinese input**: works
-   - **Window management shortcuts**: Super+Tab / Super+Q etc. do **not** trigger (niri#403 upstream limitation); use Noctalia Shell UI buttons instead (switch/close/move windows)
-
-5. **Disconnect**: Close the VNC client window. The wayvnc service keeps running; reconnect anytime.
-
-## Feature Overview
-
-- Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, Arch, Artix, and NixOS.
-- Scalable KDE desktop profiles, from command-line only to minimal, compact, and mobile KDE.
-- KDE-free niri desktop: the `Arch-Niri` target provides minimal Arch + niri (ANiri anland backend) + Noctalia Shell, **with no KDE components**.
-- Terminal choice (`terminal`): Arch-Niri/Arch-KDE can pick kitty (repo install), ghostty (official stable 1.3.1 source build), konsole (KDE built-in), or both (kitty+ghostty rootfs in one release).
-- Terminal beautification preconfigured: fish shell (default shell) + reef/reef-tools (bash compat) + Fisher + Tide v6 (Classic Powerline double-line) + Maple Mono NF CN font + Catppuccin Frappe theme + cursor trail + translucent background + niri blur window-rule.
-- Nemo Chinese: installs cinnamon-translations for Nemo Chinese UI, alongside zh_CN.UTF-8 locale.
-- Remote access (`remote`): Arch-Niri can enable wayvnc (VNC 5900, recommended) or lamco (RDP 3389, mstsc no client needed) for PC-to-phone desktop access.
-- Desktop auto-start and failure recovery using shared systemd service templates for X11, Plasma Wayland, and Plasma Mobile, with rate-limited automatic restarts after failures. niri auto-starts via `niri.service` (wrapped in `dbus-run-session`).
-- Termux:X11 desktop startup support. X11 mode defaults to `DISPLAY=:5`.
-- PulseAudio forwarding through Unix socket, TCP, or disabled mode.
-- Optional Chinese locale with `zh_CN.UTF-8` and `Asia/Shanghai` timezone.
-- Optional Fcitx5 input method. Chinese input addons are installed when Chinese localization is enabled.
-- Snapdragon GPU support using configuration from `mesa-for-android-container`.
-- Optional Snapdragon 8 Gen 2 Wayland display-corruption fix through a Turnip UBWC environment setting.
-- Container integration improvements for common Android/Droidspaces hardware, network, and group recognition.
-- Optional TMOE integration. Run `tmoe` inside the container to start it.
-- Optional development toolchain packages, including compilers, CMake, and Python development tooling.
-- Optional compression utilities such as `zip`, `unzip`, `7z`, `xz`, `tar`, and `gzip`.
-- Optional Docker packages inside the RootFS.
-- Optional old-kernel systemd compatibility: on apt, dnf, or pacman targets whose systemd major version is above 257, build and install `v257-stable`; Debian 13 and other 257-or-older systems are skipped automatically.
-- Stable ARM64 Wayland/Anland support for Debian 13, Ubuntu 26.04, Fedora 43/44, and Arch Linux through patched KWin and Xwayland packages.
-- USB device management on every distribution through Droidspaces USB Manager, including USB storage, ADB device nodes, mounting, unmounting, and a system tray interface.
-- Automatic Release publishing with the RootFS `.tar.xz` files and matching audio startup scripts.
-
-## Build Options
-
-The main GitHub Actions inputs are:
-
-| Option | Values | Default | Description |
-| --- | --- | --- | --- |
-| Distribution to build (`build_target`) | Distribution target, `all`, `all-wayland` | `Debian-13-KDE` | Selects which RootFS target to build. |
-| Custom username (`custom_username`) | String | `Gold` | Default user inside the RootFS. The audio startup script in the Release is patched with this username. |
-| KDE desktop choice (`build_KDE`) | `conc`, `min`, `mobile`, `none` | `min` | KDE desktop size. `none` builds a command-line only RootFS. |
-| KDE desktop auto-start (`build_KDE_plus`) | `true`, `false` | `true` | Creates a systemd service to auto-start KDE. Requires a KDE mode other than `none`; turn it off when building `none`. |
-| Wayland support (`enable_anland_kde`) | `true`, `false` | `false` | Enables Wayland/Anland support on Debian 13, Ubuntu 26, Fedora 43/44, and Arch. |
-| PulseAudio forwarding (`PulseAudio`) | `socket`, `tcp`, `none` | `socket` | Audio forwarding mode for X11 builds. It is forced to `none` when Anland is enabled. |
-| Chinese language and timezone (`enable_zh_tz`) | `true`, `false` | `false` in the English workflow | Enables Chinese locale and the Shanghai timezone. |
-| Qualcomm Snapdragon GPU support (`enable_mesa`) | `true`, `false` | `true` | Enables Qualcomm Snapdragon GPU and Mesa-related support. |
-| Fix Snapdragon 8 Gen 2 Wayland display corruption (`enable_8gen2_wayland`) | `true`, `false` | `false` | Writes `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` to `/etc/environment` for Debian 13, Ubuntu 26, Fedora 43/44, and Arch. |
-| Integrate TMOE (`enable_tmoe`) | `true`, `false` | `true` | Integrates TMOE. |
-| Remove Ubuntu Snap (`nosnap`) | `true`, `false` | `false` | Ubuntu-only option that removes Snap, snapd, and APT policy paths that may reinstall snapd. |
-| systemd 257 old-kernel compatibility (`enable_systemd257`) | `true`, `false` | `true` | When enabled, builds a `v257-stable` compatibility runtime if the current systemd major version is above 257; versions 257 and older are skipped, as are Artix (no systemd) and NixOS 25.05 (pinned to 257). systemd-related packages are locked after the build to prevent replacement by upgrades. |
-| Fcitx5 input method support (`enable_srf`) | `true`, `false` | `true` | Installs Fcitx5 input method support. |
-| Cross-architecture support (`enable_binfmt`) | `true`, `false` | `false` | Adds binfmt cross-architecture components inside the RootFS. Not recommended for Arch in this project. |
-| NAT and hardware recognition (`enable_yj`) | `true`, `false` | `true` | Enables container hardware and network recognition improvements. |
-| Development tools integration (`enable_kfgj`) | `true`, `false` | `false` | Installs development tools. |
-| Compression tools integration (`enable_zip`) | `true`, `false` | `true` | Installs common compression tools. |
-| Docker integration (`enable_docker`) | `true`, `false` | `false` | Installs Docker-related packages inside the RootFS. |
-| Build Wayland prebuilt packages (`build_wayland_packages`) | `true`, `false` | `false` | Triggers the KWin/Xwayland prebuilt package workflow before building the RootFS. |
-| Terminal (`terminal`) | `kitty`, `ghostty`, `konsole`, `both` | `kitty` | Terminal for Arch-Niri/Arch-KDE. `both` builds kitty+ghostty rootfs to one release. |
-| Remote access (`remote`) | `none`, `wayvnc`, `lamco` | `none` | Arch-Niri remote access. `wayvnc`=VNC 5900; `lamco`=RDP 3389 from a pinned verified ARM64 Release, followed by a private-directory bind and secure setup after import. |
-
-KDE mode details:
-
-| Mode | Description | Recommended use |
+| Input | Values | Default |
 | --- | --- | --- |
-| `none` | Does not install KDE. Keeps a command-line environment only. | Lightweight RootFS, SSH use, development environments, or custom desktop setups. |
-| `min` | Minimal KDE desktop with Plasma basics and startup dependencies. | Smaller KDE builds that still provide a usable desktop. |
-| `conc` | Compact but more complete KDE desktop with more system tools, monitoring, file management, and multimedia components. | General desktop use. |
-| `mobile` | KDE Plasma Mobile components. | Phone-screen and touch-first usage; forces Wayland in this project. |
+| `version` | Safe version/filename label; `candidate` receives run id/attempt suffixes | `candidate` |
+| `publish_release` | Publish an immutable tag and Release | `false` |
+| `build_mode` | `native-arm64` or `qemu-x86_64` | `native-arm64` |
+| `username` | RootFS user | `droid` |
+| `terminal` | `kitty|ghostty|both` | `kitty` |
+| `remote` | `none|wayvnc|lamco` | `none` |
+| `niri_autostart` | Auto-start niri | `true` |
+| `enable_zh_locale` | Chinese locale and Asia/Shanghai timezone | `true` |
+| `enable_fcitx_rime` | fcitx5 + Rime-Ice | `true` |
+| `enable_qualcomm_mesa` | Qualcomm KGSL Mesa | `true` |
+| `enable_systemd257` | systemd 257 compatibility runtime | `true` |
+| `enable_usb_manager` | Droidspaces USB manager | `true` |
+| `enable_firmware` | Linux firmware packages | `false` |
+| `enable_binfmt` | In-RootFS binfmt helpers | `false` |
+| `enable_container_integration` | Droidspaces hardware/network integration | `true` |
+| `enable_8gen2_wayland` | Snapdragon 8 Gen 2 UBWC hint | `false` |
+| `enable_dev_tools` | Development toolchain | `false` |
+| `enable_compression_tools` | Additional compression tools | `true` |
+| `enable_docker` | Docker packages inside the RootFS | `false` |
+| `enable_tmoe` | TMOE integration | `false` |
 
-Audio mode details:
+### Candidate and publication safety
 
-| Mode | Description |
-| --- | --- |
-| `socket` | Uses a Unix socket for PulseAudio forwarding. This is usually lower latency and is recommended for X11 mode. |
-| `tcp` | Uses `127.0.0.1:4713` for PulseAudio forwarding. It is straightforward to debug, but exposes a wider interface. |
-| `none` | Does not configure PulseAudio. Anland mode automatically uses this value because the Anland app provides its own audio path. |
+1. Normal validation keeps `publish_release=false`. Outputs remain Actions artifacts and no tag or Release is created.
+2. `native-arm64` uses a fixed ARM64 runner, and the native script rejects non-ARM64 hosts.
+3. `qemu-x86_64` explicitly registers arm64 QEMU on an x86_64 runner and builds only `linux/arm64`. ARM64 hosts cannot accidentally use this script.
+4. `terminal=both` expands to kitty and ghostty variants. Filenames always include the real `remote` and `terminal` values:
 
-### systemd 257 old-kernel compatibility
+   ```text
+   Droidspaces-Arch-Niri-Anland-aarch64-<version>-<remote>-<terminal>.tar.xz
+   ```
 
-When `enable_systemd257` is enabled, the build runs `scripts/systemd257.sh`. The script first detects the installed systemd major version:
+5. Each archive passes `xz -t`, tar listing, and an independent SHA-256 check before the exact asset set is assembled.
+6. `publish_release=true` is allowed only on `main` with an explicit non-`candidate` version. The workflow checks that the tag and Release do not exist both before building and immediately before publication; replacement of any existing tag, Release, or asset is refused.
+7. Third-party actions are pinned to 40-character commit SHAs. Default permissions are `contents: read`; only the release job receives `contents: write`.
 
-- systemd 257 or older (for example Debian 13 and Ubuntu 24.04) is skipped;
-- apt, dnf, and pacman systems above 257 build systemd 257 from the official `v257-stable` branch;
-- build dependencies are removed after the build, and systemd-related packages are locked so a later upgrade does not overwrite the compatibility runtime.
+This project does not trigger workflows automatically. A human must explicitly run the workflow. An old run or Release does not validate the current Builder commit.
 
-This option targets old Android kernels and is experimental. It adds substantial build time; test the desktop, dbus, udev, and networking behavior on the target kernel before distributing the image.
+## Local build
 
-### Recommended settings for 4.19-kernel devices (for example Redmi K40 / Snapdragon 870)
+Docker, Buildx, and `xz` are required. Run commands from the repository root.
 
-This `4.19Core` repository targets 4.19-kernel devices (reference device: Redmi K40 `alioth`, Snapdragon 870 / SM8250, Adreno 650). Recommended workflow inputs for such devices:
-
-| Option | Recommended | Notes |
-| --- | --- | --- |
-| `enable_systemd257` | `true` | 4.19 kernels cannot run systemd 258+; this is the Chinese workflow default. NixOS 25.05 already ships systemd 257 and Artix has no systemd; both skip automatically. |
-| `enable_zh_tz` | `true` | Chinese locale and Shanghai timezone (Chinese workflow default). |
-| `enable_srf` | `true` | Fcitx5 input method; Chinese input addons are included when the Chinese locale is enabled (Chinese workflow default). |
-| `enable_mesa` | `true` | Snapdragon (Adreno) GPU support; on NixOS this is a software-rendering fallback. |
-| `enable_yj` | `true` | Container hardware and network recognition (default). |
-| `enable_zip` | `true` | Compression tools integration (default). |
-| `enable_binfmt` | `false` | See the kernel notes below. |
-| `PulseAudio` | `socket` | Recommended Unix-socket forwarding in X11 mode. |
-
-Kernel notes for such devices (verified on the Redmi K40):
-
-- `CONFIG_USER_NS` is not set: enable `noseccomp` in the Droidspaces privileged options when importing, otherwise operations that rely on user namespaces may stutter.
-- `CONFIG_BINFMT_MISC` is not set: in-container QEMU binfmt registration skips gracefully (the log prints `binfmt_misc not supported by kernel`), so `enable_binfmt` has no effect on the device; cross-architecture binary emulation requires a kernel with that option enabled.
-- The GPU render node `/dev/dri/renderD128` is available; enable GPU access when importing (the `droidspaces-gpu` group is built in).
-
-## Build with GitHub Actions
-
-1. Fork this repository to your own GitHub account.
-2. Open the `Actions` page in your fork.
-3. Select the Chinese workflow `编译并发布 Droidspaces RootFS` or the English workflow `Build and Release Droidspaces RootFS`.
-4. Click `Run workflow`.
-5. Choose the distribution, KDE mode, username, and feature toggles.
-6. For Wayland/Anland builds, choose `Ubuntu-26-KDE`, `Debian-13-KDE`, `Fedora-43-KDE`, `Fedora-44-KDE`, or `Arch-KDE`, then enable `enable_anland_kde`.
-7. If you want to rebuild the patched KWin/Xwayland packages before building the RootFS, enable `build_wayland_packages`.
-8. Wait for the workflow to finish. Build time depends on the number of targets, KDE mode, and GitHub runner availability.
-9. Open the `Releases` page and download the generated `.tar.xz` RootFS.
-
-The Release usually contains:
-
-- One or more RootFS archives
-- RootFS filenames are marked by display mode as `X11`, `Wayland`, or `Mobile`, for example `Ubuntu-26-KDE-Mobile-Droidspaces-rootfs-aarch64-v20260702-120000.tar.xz`.
-- `on_aaudio_socket.sh` or `on_aaudio_tcp.sh` when `PulseAudio` is set to `socket` or `tcp` and `build_KDE_plus=false`.
-- A Release body that records the build target, KDE mode, Wayland setting, username, and feature toggles.
-
-## Import into Droidspaces
-
-1. Create or import a container in Droidspaces.
-2. Select the `.tar.xz` RootFS downloaded from the Release.
-3. If the RootFS includes KDE, enable GPU access in Droidspaces.
-4. For Ubuntu and Debian, enabling `noseccomp` in privileged mode is strongly recommended. The kernel should also have `USER_NS` enabled. Without these, some desktop operations may freeze or lag noticeably.
-5. For Fedora, some devices require hardware access. Without it, the desktop may flicker or crash.
-6. For Arch, kernel 5.10 or newer is recommended.
-7. For X11 mode, prepare Termux:X11.
-8. For Wayland/Anland mode, complete the host-side Anland setup described below.
-
-## Start KDE Desktop
-
-When `build_KDE_plus` is enabled, the build installs the systemd service matching the selected desktop mode:
-
-| Desktop mode | Service file | Start command |
-| --- | --- | --- |
-| X11 | `plasma-x11.service` | `DISPLAY=:5 startplasma-x11` |
-| Wayland | `plasma-wayland.service` | `startplasma-wayland` |
-| Mobile | `plasma-mobile.service` | `startplasmamobile` |
-
-These services run as UID 1000 and load `/etc/environment`. If the desktop process fails, systemd restarts it after 2 seconds. If it fails more than 5 times within 60 seconds, systemd temporarily stops retrying to prevent a crash loop. A normal exit does not trigger a restart.
-
-### X11 Mode
-
-X11 mode applies to builds where `enable_anland_kde` is disabled. The default display environment is:
-
-```text
-DISPLAY=:5
-```
-
-It is recommended to keep `build_KDE_plus=true`, which is now the default. With it enabled, the RootFS creates a KDE auto-start systemd service so the desktop can start after the container boots. Disable it only when you want to use the Termux-side `on_aaudio_*` script to start the desktop manually, or when building a `none` command-line environment.
-
-If the Release includes an audio startup script, run it from Termux to start PulseAudio, Termux:X11, and KDE:
+Native ARM64 host:
 
 ```bash
-chmod +x on_aaudio_socket.sh
-./on_aaudio_socket.sh
+./build_rootfs-native.sh \
+  -i Droidspaces-Arch-Niri.Dockerfile \
+  -v local \
+  -u droid \
+  -T both \
+  -R lamco \
+  -N true -g true -h true -c true -S true \
+  -U true -F false -a false -b true -t false \
+  -d false -e true -f false -j false
 ```
 
-Or:
+An x86_64 host must use the explicit QEMU script:
 
 ```bash
-chmod +x on_aaudio_tcp.sh
-./on_aaudio_tcp.sh
+./build_rootfs-qemu-aarch64.sh \
+  -i Droidspaces-Arch-Niri.Dockerfile \
+  -v local \
+  -u droid \
+  -T kitty \
+  -R none \
+  -N true -g true -h true -c true -S true \
+  -U true -F false -a false -b true -t false \
+  -d false -e true -f false -j false
 ```
 
-Before using the script, check the variables at the top:
+The scripts reject the wrong host architecture, a non-canonical Dockerfile, unsafe versions/usernames, and invalid boolean, terminal, or remote values.
 
-```bash
-CONTAINER_NAME="your Droidspaces container name"
-USERNAME="your RootFS username"
-DISPLAY_NUMBER=":5"
-DPI=315
-```
+## Import and local display
 
-`USERNAME` is patched automatically during Release generation according to `custom_username`, but `CONTAINER_NAME` must still match the container name in Droidspaces.
+1. Import the `.tar.xz` into a privileged Droidspaces container. Do not follow PRoot setup instructions.
+2. Enable GPU and required hardware access for Qualcomm Mesa/niri.
+3. Keep `enable_systemd257=true` for 4.19 kernels. `enable_binfmt` is useful only when the target kernel enables `CONFIG_BINFMT_MISC`.
+4. Configure the Android Anland side and make the local display socket available at `/run/display.sock`. Android assets should come from the device-side `anland-bridge` Release; do not search for APKs or daemons inside the RootFS.
+5. `niri.service` auto-starts by default. Inspect it with:
 
-If you do not use the helper script, enter the container and start KDE manually:
+   ```bash
+   systemctl status niri.service
+   journalctl -u niri.service
+   ```
 
-```bash
-startplasma-x11
-```
+6. Change the Linux account password after the first import: `passwd`.
 
-The actual auto-start behavior still depends on Droidspaces systemd support, permissions, and the configured display backend. If the desktop does not start automatically, enter the container and run `startplasma-x11` for debugging.
+## Remote access
 
-### Wayland/Anland Mode
+### `remote=none`
 
-Wayland/Anland mode applies to Debian 13, Ubuntu 26, Fedora 43/44, and Arch builds where `enable_anland_kde` is enabled. The default environment includes:
+No remote service is installed. Only the local Android Surface display path is used.
 
-```text
-WAYLAND_DISPLAY=wayland-0
-DISPLAY=:0
-QT_QPA_PLATFORM=wayland
-ANLAND=1
-ANLAND_SOCKET=/run/display.sock
-ANLAND_DRM_DEVICE=/dev/dri/renderD128
-```
+### `remote=wayvnc`
 
-After completing the host-side Anland setup, run this inside the container:
+wayvnc listens on guest `0.0.0.0:5900` and currently has no VNC password. Use it only on a trusted network and restrict access with a firewall, SSH tunnel, or Droidspaces isolation/port-publication policy.
 
-```bash
-startplasma-wayland
-```
+- **host/shared networking**: connect to `<phone WLAN IP>:5900`.
+- **isolated/NAT networking**: publish guest TCP 5900 on a host port and use the `<host address>:<host port>` actually reported by Droidspaces. Without publication, the phone WLAN address cannot directly reach guest port 5900.
 
-For a `mobile` build, the corresponding manual start command is:
+wayvnc uses a separate Wayland screencopy/virtual-input path. It is not the Lamco private hardware-encoding bridge.
 
-```bash
-startplasmamobile
-```
+### `remote=lamco`
 
-## Wayland and Anland Setup
+The Lamco Release is pinned. Installation verifies its archive entry set, AArch64 ELF, interpreter, dynamic dependencies, metadata, SBOM, and licenses. The RootFS contains no preconfigured bridge token, RDP credentials, config, or TLS private key, and does not enable an unconfigured service.
 
-Wayland support depends on [anland](https://github.com/superturtlee/anland) and patched KWin/Xwayland prebuilt packages published through GitHub Releases. `Ubuntu-26-KDE` is recommended, while `Debian-13-KDE`, `Fedora-43-KDE`, `Fedora-44-KDE`, and `Arch-KDE` are also available. Arch rebuilds its packages in an ARM64 Arch container through `producers/kde/Arch_v5/build.sh` from the selected anland repository.
-
-### One-Click Installation of Anland KDE Release Packages
-
-`scripts/install-anland-kde.sh` automatically detects the current Linux distribution, uses `anland-kde-manifest` from the fixed rolling Release `anland-kde-packages` to select the exact archive, downloads the patched KWin/Xwayland packages by their KWin version, and prevents system updates from overwriting them. Binary packages are no longer added to Git history; this Release contains five independent archives for Arch, Debian 13, Ubuntu 26, Fedora 43, and Fedora 44. Archive names include the KWin version, for example `anland-kde-ubuntu2604-kwin-6.7.3-arm64.tar.gz`.
-The script reads the system language in `LC_ALL`, `LC_MESSAGES`, and `LANG` priority order. Chinese locales produce Chinese messages; all other locales produce English messages.
-
-The installer supports Debian 13, Ubuntu 26.04, Fedora 43/44, and Arch Linux on ARM64/aarch64 only. It downloads, preflights, and extracts packages as the invoking user, then elevates only for installation. Debian and Ubuntu use installer-managed `apt-mark hold` state, Fedora uses a managed `excludepkgs` block in `/etc/dnf/dnf.conf`, and Arch uses pacman `IgnorePkg` entries for equivalent package locking.
-
-Run it from the repository root:
-
-```bash
-sudo ./scripts/install-anland-kde.sh
-```
-
-On startup, the installer probes GitHub, `gh-proxy.com`, and `ghproxy.net` in that fixed order. A probe taking two seconds or longer is shown as a timeout; enter `1`, `2`, or `3` to choose a source. When a third-party mirror is selected, both the downloaded manifest and archive are verified against SHA-256 digests published by the GitHub Release API; this requires `jq`, `sha256sum`, and access to `api.github.com`. For non-interactive use, pass `-1` or `--1` to select GitHub directly and skip probing. GitHub Actions builds use `--1`.
-
-Or download the installer directly:
-
-```bash
-curl -fLO https://raw.githubusercontent.com/Goldzxcbug/Droidspaces-rootfs-KDE-builder/main/scripts/install-anland-kde.sh
-chmod +x install-anland-kde.sh
-sudo ./install-anland-kde.sh
-```
-
-Recommended build options:
-
-| Option | Recommended value |
-| --- | --- |
-| `build_target` | `Ubuntu-26-KDE` |
-| `build_KDE` | `min`, `conc`, or `mobile` |
-| `build_KDE_plus` | `true` |
-| `enable_anland_kde` | `true` |
-| `PulseAudio` | No manual setting required; it becomes `none` when Anland is enabled |
-
-Host-side setup:
-
-1. Download `virtual-drm-daemon.zip` from [anland Releases](https://github.com/superturtlee/anland/releases), flash it, and reboot the device.
-2. Download and install `app-debug.apk` from the same Release.
-3. Enable hardware access when importing the Droidspaces container.
-4. Enable SELinux permissive mode, or use the precise SELinux policy fix documented below.
-5. Enable `nocaps` and `noseccomp` in privileged mode.
-6. Add this bind mount in advanced options:
-
-```text
-/data/local/tmp/display_daemon.sock -> /run/display.sock
-```
-
-7. Start the container and log in as the normal user.
-8. Run:
-
-```bash
-startplasma-wayland
-```
-
-If `mobile` is selected, the workflow forces Wayland on because Plasma Mobile is configured through the Wayland path in this project.
-
-## Lamco Anland RDP Setup
-
-This feature is installed only in an `Arch-Niri` RootFS built with `remote=lamco`. It does not capture through a Portal, PipeWire, screencopy, or Android MediaProjection. The anland dmabuf/FD display path feeds the Android consumer directly, Android uses a hardware MediaCodec H.264 Surface encoder, and Lamco packages only that ANiri desktop as RDP EGFX AVC420 for `mstsc`. When there is no viewer, or the viewer stays minimized and there is no local Surface, Android stops the encoder and graphics-consumption chain.
-
-1. Create the private Android host directory `/data/local/tmp/anland-rdp`, then use Droidspaces advanced settings to bind the **directory** into the container:
+1. Create `/data/local/tmp/anland-rdp` on the Android host and bind the directory:
 
    ```text
    /data/local/tmp/anland-rdp -> /run/anland-rdp
    ```
 
-   Do not bind the individual `bridge.sock` inode. Rust safely unlinks and rebinds the socket after a restart, and only a directory bind exposes the new inode. Do not use `chmod 777`, and never map this path to the network. The setup helper changes the bind source/target to the UID/GID of the dedicated no-login `lamco-anland-bridge` account and mode `0700`; the Android root helper connects to the mode-`0600` socket as root.
-
-2. Start the container and verify that the bind exists:
+2. Verify the PID 1 mount after the container starts:
 
    ```bash
    findmnt --task 1 --mountpoint /run/anland-rdp --output TARGET,FSROOT
    ```
 
-3. Select `remote` or `both` in the Anland Android app and copy the 32-character lowercase hexadecimal bridge token shown by the app. In the container run:
+3. Select `remote` or `both` in the Android app and obtain its 32-character lowercase hexadecimal bridge token.
+4. Configure interactively inside the container:
 
    ```bash
    sudo setup-lamco-anland-bridge
    ```
 
-   The helper disables shell xtrace, reads the token and RDP password without echo, requires a password of at least 12 characters, and asks for a dedicated RDP username. It never generates a password and never reuses the RootFS account password. On success it atomically writes `/etc/lamco-anland-bridge/config.toml` as a mode-`0600` file owned by the dedicated no-login service account, prepares a mode-`0700` TLS directory, and enables `lamco-anland-bridge.service` only after a successful start. The service creates its private key with mode `0600` on first start. No config, token, or password is baked into the image or passed through process arguments or environment variables.
+   The helper disables xtrace, reads the token/password without echo, rejects an all-zero token and weak passwords, and requires an RDP password of at least 12 characters that differs from the username. It atomically writes a mode-`0600` config owned by the dedicated `lamco-anland-bridge` no-login user and prepares mode-`0700` TLS/socket directories.
 
-4. Inspect the service:
+5. Inspect the service:
 
    ```bash
    systemctl status lamco-anland-bridge.service
    journalctl -u lamco-anland-bridge.service
    ```
 
-   The preflight rejects startup when the config, directory bind, owner/mode, token, username, or password is missing or invalid. `mstsc` shows a trust prompt for the first self-signed TLS certificate; verify the device identity, or install a trusted certificate and matching private key for production use.
+6. Network endpoint:
+   - **host/shared**: connect `mstsc` to `<phone WLAN IP>:3389`.
+   - **isolated/NAT**: publish guest TCP 3389 and use the `<host address>:<host port>` actually reported by Droidspaces. It is the phone WLAN IP on port 3389 only when that exact host endpoint was explicitly published.
+   - Restrict either endpoint to the intended PC or trusted subnet. Never forward the private UDS or expose compatibility/debug TCP port 33910.
 
-5. Choose the network path:
+`mstsc` shows a trust warning for the first self-signed certificate. Verify the device identity; production deployments may install a trusted certificate and matching private key.
 
-   - With Droidspaces **host/shared networking**, connect `mstsc` to `<phone WLAN IP>:3389`.
-   - With Droidspaces **isolated/NAT networking**, publish guest TCP 3389 on a chosen host TCP port and connect to the `<host address>:<host port>` actually reported by Droidspaces. The endpoint is `<phone WLAN IP>:3389` only when host port 3389 is explicitly published on the phone WLAN address. The exact UI/command varies by Droidspaces version, so this project does not hard-code an unverified port-mapping syntax.
-   - Restrict TCP 3389 with host/shared networking, or the actually published host TCP port with isolated/NAT networking, to the intended PC or a trusted subnet. Never forward `/run/anland-rdp/bridge.sock` or expose compatibility/debug TCP port 33910.
+## Verification status and unverified boundary
 
-Windows must use the exact RDP username and password entered during setup. Win/Super, keyboard, mouse buttons, pointer movement, and wheel events are forwarded unchanged to niri. Clipboard support is limited to `CF_UNICODETEXT` text, including CJK, emoji, line breaks, and clear; images, files, HTML, and RTF are unsupported. There is no RDPSND, so the PC receives no RDP audio; the local Android audio path is separate. If hardware H.264 or EGFX is unavailable, the session fails or has no video rather than falling back to OpenH264, x264, or FFmpeg.
+The build/static layer can validate:
 
-## Droidspaces USB Manager
+- `bash -n` and ShellCheck for active Bash; YAML parsing and actionlint for the workflow; Dockerfile parsing.
+- active/legacy scope, sole workflow, removed active options, action SHAs, permissions, modes, symlinks, secret signatures, and hard-coded URLs.
+- output xz/tar integrity, filenames, variant count, SHA-256, metadata, and exact Release asset set.
+- Lamco's AArch64 ELF, dependencies, metadata, SBOM/licenses, and refusal of software-H.264 dependencies.
 
-Nine of the distribution templates (all except NixOS) install [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager) through `scripts/install-usb-manager.sh`; NixOS's declarative layout does not integrate it yet (see the NixOS notes above). The installer detects Debian/Ubuntu, Fedora, or Arch-family systems including Artix, installs the matching PyQt5, ADB, udev, NTFS, and exFAT dependencies through APT, DNF, or Pacman, and fixes command paths that are Debian-specific in the upstream source.
+Unless a corresponding device test is recorded, the following remain **unverified**: target-phone import/boot, real GPU behavior, Android Surface lifecycle, MediaCodec, `mstsc` interoperability, end-to-end clipboard, host/NAT UI behavior, power, temperature, and long-duration stability. A successful Actions build is not a substitute for device validation.
 
-Hardware access must be enabled when importing the RootFS into Droidspaces. Without it, `/sys/bus/usb` and `/sys/bus/scsi` devices are not visible inside the container. The installer creates both an application-menu entry and a `~/Desktop/usb-manager.desktop` desktop shortcut. After entering KDE, you can also run:
+## Legacy KDE content
 
-```bash
-usb-manager
-```
+Old Debian/Ubuntu/Fedora/Arch-KDE/Artix/NixOS Dockerfiles, KDE scripts, and workflows are preserved under `legacy/` for historical reference and recovery. They are not active targets:
 
-Two command-line entry points are also installed:
+- GitHub does not discover or run them because they are outside `.github/workflows`.
+- Active scripts no longer accept `build_KDE`, `build_KDE_plus`, `enable_anland_kde`, `build_wayland_packages`, `all-wayland`, or related legacy inputs.
+- Legacy files may retain pins to the external upstream `Goldzxcbug/Droidspaces-rootfs-KDE-builder`. That is not this repository's self URL and does not indicate active support.
 
-```bash
-usb-passthrough
-usb-storage-passthrough
-```
-
-To install or update the application separately on an existing system, run this from the repository root:
-
-```bash
-sudo ./scripts/install-usb-manager.sh --user "$USER"
-```
-
-Like `scripts/install-anland-kde.sh`, this installer supports automatic privilege escalation and Chinese/English output. If `--user` is omitted, it tries `SUDO_USER`, the logged-in user, and then the first regular user.
-
-## Local Build
-
-This project is designed primarily for GitHub Actions, but local Docker Buildx builds are supported. Requirements:
-
-- Docker
-- Docker Buildx
-- `xz`
-- `build_rootfs-native.sh` requires an ARM64 host; x86_64 hosts must use the QEMU arm64 script
-- A working QEMU/binfmt setup if cross-architecture builds are required
-
-Native build example:
-
-```bash
-chmod +x build_rootfs-native.sh
-./build_rootfs-native.sh \
-  -i Debian-13-KDE.Dockerfile \
-  -v local \
-  -K min \
-  -L true \
-  -P socket \
-  -g true \
-  -a false \
-  -b true \
-  -c true \
-  -d false \
-  -e true \
-  -f false \
-  -h false \
-  -j true \
-  -n false \
-  -S false \
-  -t false \
-  -u Gold \
-  -A false \
-  -R none
-```
-
-QEMU arm64 build example:
-
-```bash
-chmod +x build_rootfs-qemu-aarch64.sh
-./build_rootfs-qemu-aarch64.sh \
-  -i Ubuntu-26-KDE.Dockerfile \
-  -v local \
-  -K conc \
-  -L true \
-  -P none \
-  -g true \
-  -a false \
-  -b true \
-  -c true \
-  -d false \
-  -e true \
-  -f false \
-  -h true \
-  -j true \
-  -n true \
-  -S false \
-  -t false \
-  -u Gold \
-  -A true \
-  -R none
-```
-
-After a successful build, the output file will look similar to:
-
-```text
-Ubuntu-26-KDE-Wayland-Droidspaces-rootfs-aarch64-local.tar.xz
-```
-
-## Install Hardware Firmware
-
-Debian 13 and Ubuntu 24/25/26 RootFS images include `/usr/local/bin/download-firmware`. It installs `linux-firmware`, decompresses `.zst` firmware under `/lib/firmware` into regular firmware files, and repairs symbolic links that previously pointed to compressed files. This is useful when a kernel, driver, or container environment cannot load compressed firmware directly.
-
-The tool is copied into the RootFS but is not run automatically during the build or container startup. Run it manually inside the container when needed:
-
-```bash
-sudo download-firmware
-```
-
-The script installs `zstd` and `linux-firmware`, so working package repositories and network access are required. On success it creates `/var/lib/.fw-setup-completed`. The current script does not use this marker to skip later runs; running it again still refreshes package metadata and scans the firmware directory.
-
-## Repository Layout
-
-```text
-.
-├── Arch-KDE.Dockerfile
-├── Arch-Niri.Dockerfile
-├── Artix-KDE.Dockerfile
-├── Debian-13-KDE.Dockerfile
-├── Fedora-43-KDE.Dockerfile
-├── Fedora-44-KDE.Dockerfile
-├── NixOS-KDE.Dockerfile
-├── Ubuntu-24-KDE.Dockerfile
-├── Ubuntu-25-KDE.Dockerfile
-├── Ubuntu-26-KDE.Dockerfile
-├── build_rootfs-native.sh
-├── build_rootfs-qemu-aarch64.sh
-├── scripts/
-│   ├── start/
-│   │   ├── plasma-mobile.service
-│   │   ├── plasma-wayland.service
-│   │   └── plasma-x11.service
-│   ├── bashrc.sh
-│   ├── download-firmware
-│   ├── install-usb-manager.sh
-│   ├── install-anland-kde.sh
-│   ├── install-lamco-anland-bridge.sh
-│   ├── setup-lamco-anland-bridge.sh
-│   ├── check-lamco-anland-bridge.sh
-│   ├── lamco-anland-bridge.service
-│   ├── niri/
-│   │   └── default-config.kdl
-│   ├── nosnap.sh
-│   ├── systemd257.sh
-│   ├── on_aaudio_socket.sh
-│   └── on_aaudio_tcp.sh
-├── scripts/binfmt/
-│   ├── qemu-binfmt-register.service
-│   └── qemu-binfmt-register.sh
-└── .github/workflows/
-    ├── build-kde-wayland.yml
-    ├── build-rootfs-releases-en.yml
-    └── build-rootfs-releases.yml
-```
-
-KDE packages are published only as GitHub Release assets. When running `build-kde-wayland.yml` manually, `build_target=all` pins one Anland source commit and rebuilds all five platforms. If one platform fails, the workflow reuses that platform's archive from the fixed rolling Release, updates only the successful platforms, and rewrites the same `anland-kde-packages` Release with its archives and `anland-kde-manifest`. Selecting one platform rebuilds and replaces only that package; the other four archives remain unchanged. If the fixed Release cannot provide a complete five-platform set, or no new package succeeds, the workflow fails without updating the Release. It never commits packages or rewrites `main`; the fixed rolling Release is preserved.
-
-## Known Limitations
-
-- Wayland/Anland support covers Debian 13, Ubuntu 26, Fedora 43/44, and Arch; Artix and NixOS are not supported yet (X11 path only). `Arch-Niri` uses its own ANiri approach (not patched KWin).
-- Ubuntu 24 and Ubuntu 25 currently use the X11 path.
-- `mobile` mode is supported on Debian 13, Ubuntu 26, Fedora 43/44, and Arch; not yet on Artix, NixOS, or Arch-Niri.
-- The `build_KDE` option is ignored for `Arch-Niri`; its ANiri upstream has known issues such as slightly lower rendering performance and floating-window glitches (see the Arch-Niri notes above).
-- NixOS-KDE supports only the `min` and `none` desktop profiles, falls back to software GPU rendering, and does not bundle the USB Manager (see the NixOS notes above).
-- Artix-KDE depends on the ARMtix community repositories (unsigned); availability and update cadence depend on that community.
-- When Anland is enabled, the workflow disables PulseAudio forwarding because the Anland app provides its own audio path.
-- Fedora may require hardware access on some devices to avoid flicker or crashes.
-- Ubuntu and Debian may lag or freeze if `noseccomp` is disabled or the kernel lacks `USER_NS`.
-- The RootFS Linux account password defaults to `1234`; change it immediately after import. Lamco RDP never uses it and requires separate strong credentials through the setup helper.
-- Compatibility between the bundled prebuilt Wayland packages and upstream anland depends on the upstream state at build time.
+See [legacy/README.md](legacy/README.md).
 
 ## Acknowledgements
 
-- [Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS/): the runtime foundation used by this project.
-- [mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container): Snapdragon GPU driver support.
-- [TMOE](https://github.com/2moe/tmoe): convenient management tooling inside the container.
-- [anland](https://github.com/superturtlee/anland): Wayland display backend and patched KDE work.
-- [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager): USB storage and ADB device management for Droidspaces.
-- [ARMtix](https://armtixlinux.org/): the Artix Linux aarch64 community port used by `Artix-KDE`.
-- [ANiri](https://github.com/Celvra/ANiri), [niri](https://github.com/niri-wm/niri), and [Noctalia](https://github.com/noctalia-dev/noctalia): the scrollable-tiling desktop stack behind `Arch-Niri`.
+- [Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS/)
+- [niri](https://github.com/niri-wm/niri), [ANiri](https://github.com/Celvra/ANiri), and [Noctalia](https://github.com/noctalia-dev/noctalia)
+- [superturtlee/anland](https://github.com/superturtlee/anland)
+- [lamco-admin/lamco-rdp-server](https://github.com/lamco-admin/lamco-rdp-server) and [IronRDP](https://github.com/Devolutions/IronRDP)
+- [mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)
+- [Droidspaces-USB-Manager](https://github.com/Yizhou147/Droidspaces-USB-Manager)
