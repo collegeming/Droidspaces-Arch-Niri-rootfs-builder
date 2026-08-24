@@ -402,7 +402,30 @@ jobs:
           test -f "$archive"
           test "$(find . -maxdepth 1 -type f -name 'Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz' | wc -l)" -eq 1
           xz -t "$archive"
-          tar -tJf "$archive" >/dev/null
+          entries="$RUNNER_TEMP/rootfs-entries-${TERMINAL_VARIANT}.txt"
+          tar -tJf "$archive" > "$entries"
+          test -s "$entries"
+
+          for required in \
+            usr/bin/niri \
+            usr/bin/lamco-anland-bridge \
+            usr/lib/systemd/system/lamco-anland-bridge.service \
+            usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt \
+            usr/share/doc/droidspaces-arch-niri/BUILD-COMPATIBILITY.txt
+          do
+            test "$(grep -Fxc "$required" "$entries")" -eq 1
+          done
+          case "$TERMINAL_VARIANT" in
+            kitty) test "$(grep -Fxc usr/bin/kitty "$entries")" -eq 1 ;;
+            ghostty) test "$(grep -Fxc usr/bin/ghostty "$entries")" -eq 1 ;;
+          esac
+
+          forbidden_entries='[.]apk$|anland-daemon[.]zip$|(^|/)display_daemon$|(^|/)module[.]prop$|(^|/)libopenh264([.]so|/)|(^|/)libavcodec([.]so|/)|(^|/)libx264([.]so|/)|(^|/)usr/bin/(ffmpeg|x264)$|(^|/)var/lib/pacman/local/(ffmpeg|x264)-|(^|/)[.]cargo/|(^|/)target/(debug|release)/|(^|/)tmp/ghostty-pkg/'
+          if grep -Ei "$forbidden_entries" "$entries"; then
+            echo 'RootFS contains a device-side Android asset, software H.264 package, or source-build residue.' >&2
+            exit 1
+          fi
+
           sha256sum "$archive" > "${archive}.sha256"
           cat > "${archive}.BUILD-METADATA.txt" <<EOF
           format=1

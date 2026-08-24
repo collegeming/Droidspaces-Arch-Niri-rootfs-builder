@@ -15,10 +15,21 @@
 # 内容哈希校验。用官方 zig 0.16.0 aarch64 二进制（ziglang.org）放 /usr/local/bin。
 set -euo pipefail
 
+assert_no_software_codec_packages() {
+    local forbidden_package
+    for forbidden_package in ghostty-nautilus ffmpeg x264; do
+        if pacman -Q "$forbidden_package" >/dev/null 2>&1; then
+            printf 'ERROR: Ghostty installation retained forbidden package: %s\n' "$forbidden_package" >&2
+            exit 1
+        fi
+    done
+}
+
 # 1) 仓库直装优先（ALARM 若收录则免编译）
 if pacman -S --noconfirm --needed ghostty; then
     echo "--> [终端] 已从 ALARM 仓库安装 ghostty"
     command -v ghostty
+    assert_no_software_codec_packages
     exit 0
 fi
 
@@ -63,7 +74,21 @@ chown -R aurbuild:aurbuild /tmp/ghostty-pkg
 # 6) 构建（PATH 优先官方 zig）
 sudo -u aurbuild bash -c 'export PATH=/usr/local/bin:$PATH; cd /tmp/ghostty-pkg && export EDITOR=true && makepkg -s --noconfirm'
 
-# 7) 安装产物
-pacman -U --noconfirm /tmp/ghostty-pkg/*.pkg.tar.*
+# 7) 只安装终端本体、shell integration 与 terminfo。ghostty-nautilus 会通过
+# nautilus/localsearch 拉入 FFmpeg/x264，与本 RootFS 的硬件编码边界无关且禁止保留。
+mapfile -t packages < <(
+    find /tmp/ghostty-pkg -maxdepth 1 -type f \
+        \( -name 'ghostty-[0-9]*-aarch64.pkg.tar.*' \
+        -o -name 'ghostty-shell-integration-*-any.pkg.tar.*' \
+        -o -name 'ghostty-terminfo-*-any.pkg.tar.*' \) \
+        -print | sort
+)
+[[ "${#packages[@]}" -eq 3 ]] || {
+    printf 'ERROR: expected exactly 3 Ghostty runtime packages, found %s\n' "${#packages[@]}" >&2
+    printf '%s\n' "${packages[@]}" >&2
+    exit 1
+}
+pacman -U --noconfirm "${packages[@]}"
 command -v ghostty
+assert_no_software_codec_packages
 echo "--> [终端] 官方稳定版 1.3.1 构建成功，已安装 ghostty"
