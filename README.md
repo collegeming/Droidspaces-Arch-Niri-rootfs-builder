@@ -135,7 +135,8 @@ RootFS 默认 Linux 用户为 `colle`，构建参数可修改。镜像目前为 
 
 5. 每个 archive 先通过 `xz -t`、tar listing 和独立 SHA-256 校验，再汇总 exact asset set。
 6. `publish_release=true` 只允许从 `main` 和显式非 `candidate` 版本运行。workflow 在构建前、发布前分别验证 tag/Release 不存在；拒绝覆盖已有 tag、Release 或 asset。
-7. 第三方 actions 固定 40 位 commit SHA；默认权限为 `contents: read`，仅 release job 提升为 `contents: write`。
+7. 仓库必须在 GitHub Settings 中启用原生 Immutable Releases。workflow 发布后要求 REST `immutable=true`；原生保护锁定 tag 和 assets。此设置只作用于启用后发布的 Release，不追溯旧 Release。
+8. 第三方 actions 固定 40 位 commit SHA；默认权限为 `contents: read`，仅 release job 提升为 `contents: write`。
 
 本项目不会自动触发 workflow。只有人工在 GitHub Actions 页面运行时才会开始构建；不要把旧 run/Release 当成当前 commit 的验证结果。
 
@@ -248,7 +249,7 @@ Lamco Release 已固定并在安装时验证 archive entry、AArch64 ELF、inter
 
 - active Bash `bash -n`、ShellCheck；workflow YAML parse、actionlint；Dockerfile parse。
 - active/legacy scope、唯一 workflow、旧 active 参数、action SHA、permissions、mode、symlink、secret signature 和 hard-coded URL 扫描。
-- workflow 产物的 xz/tar、文件名、变体数、SHA256、metadata 与 exact Release asset set；最终 archive 还会拒绝 Android 设备侧资产、OpenH264/FFmpeg/x264 软件编码包和源码构建残留。
+- workflow 产物的 xz/tar、文件名、变体数、SHA256、metadata 与 exact Release asset set；最终 archive 还会拒绝 Android 设备侧资产、OpenH264/FFmpeg/x264 软件编码包和源码构建残留；`enable_dev_tools=false` 时也拒绝 paru/base-devel/Zig/Rust/GCC 等构建期工具链残留。
 - Lamco Release installer 的 AArch64 ELF、依赖、metadata、SBOM/license 与软件 H.264 依赖拒绝。
 
 除非有对应设备测试记录，否则以下均视为**未验证**：目标手机导入/启动、实际 GPU、Android Surface 生命周期、MediaCodec、`mstsc` 互操作、剪贴板端到端、host/NAT UI、功耗、温度、长时间稳定性。Actions 成功不能替代真机验证。

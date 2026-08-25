@@ -5,17 +5,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Safe artifact version; keep candidate for non-release builds
+        description: 安全产物版本；非发布构建请保留 candidate
         required: true
         type: string
         default: candidate
       publish_release:
-        description: Publish an immutable tag and Release after all checks
+        description: 全部检查通过后发布不可变 tag 与 Release
         required: true
         type: boolean
         default: false
       build_mode:
-        description: Native ARM64 runner or explicit QEMU ARM64 build on x86_64
+        description: 原生 ARM64 运行器，或在 x86_64 上显式 QEMU 构建 ARM64
         required: true
         type: choice
         default: native-arm64
@@ -23,12 +23,12 @@ on:
           - native-arm64
           - qemu-x86_64
       username:
-        description: RootFS desktop username
+        description: RootFS 桌面用户名
         required: true
         type: string
         default: colle
       terminal:
-        description: Terminal variant; both creates separate kitty and ghostty RootFS archives
+        description: 终端变体；both 会分别生成 kitty 与 ghostty 两个 RootFS 归档
         required: true
         type: choice
         default: kitty
@@ -37,7 +37,7 @@ on:
           - ghostty
           - both
       remote:
-        description: Remote access variant
+        description: 远程访问变体
         required: true
         type: choice
         default: wayvnc
@@ -46,72 +46,72 @@ on:
           - wayvnc
           - lamco
       niri_autostart:
-        description: Auto-start niri
+        description: 自动启动 niri
         required: true
         type: boolean
         default: true
       enable_zh_locale:
-        description: Chinese locale and Asia/Shanghai timezone
+        description: 中文 locale 与 Asia/Shanghai 时区
         required: true
         type: boolean
         default: true
       enable_fcitx_rime:
-        description: Fcitx5 and Rime-Ice
+        description: Fcitx5 与 Rime-Ice
         required: true
         type: boolean
         default: true
       enable_qualcomm_mesa:
-        description: Qualcomm KGSL Mesa
+        description: 高通 KGSL Mesa 驱动
         required: true
         type: boolean
         default: true
       enable_systemd257:
-        description: systemd 257 compatibility runtime for old kernels
+        description: 旧内核的 systemd 257 兼容运行时
         required: true
         type: boolean
         default: true
       enable_usb_manager:
-        description: Droidspaces USB manager
+        description: Droidspaces USB 管理器
         required: true
         type: boolean
         default: true
       enable_firmware:
-        description: Linux firmware packages
+        description: Linux 固件包
         required: true
         type: boolean
         default: false
       enable_binfmt:
-        description: In-RootFS binfmt helpers
+        description: RootFS 内 binfmt 支持
         required: true
         type: boolean
         default: false
       enable_container_integration:
-        description: Droidspaces hardware and network integration
+        description: Droidspaces 硬件与网络集成
         required: true
         type: boolean
         default: true
       enable_8gen2_wayland:
-        description: Snapdragon 8 Gen 2 UBWC hint
+        description: 骁龙 8 Gen 2 UBWC 提示
         required: true
         type: boolean
         default: false
       enable_dev_tools:
-        description: Development toolchain
+        description: 开发工具链
         required: true
         type: boolean
         default: false
       enable_compression_tools:
-        description: Additional compression tools
+        description: 额外的压缩工具
         required: true
         type: boolean
         default: true
       enable_docker:
-        description: Docker packages inside the RootFS
+        description: RootFS 内的 Docker 包
         required: true
         type: boolean
         default: false
       enable_tmoe:
-        description: TMOE integration
+        description: TMOE 集成
         required: true
         type: boolean
         default: false
@@ -395,6 +395,7 @@ jobs:
           BUILD_VERSION: ${{ needs.prepare.outputs.version }}
           TERMINAL_VARIANT: ${{ matrix.terminal }}
           REMOTE_VARIANT: ${{ inputs.remote }}
+          ENABLE_DEV_TOOLS: ${{ inputs.enable_dev_tools }}
         shell: bash
         run: |
           set -euo pipefail
@@ -434,6 +435,14 @@ jobs:
           if grep -Ei "$forbidden_entries" "$entries"; then
             echo 'RootFS contains a device-side Android asset, software H.264 package, or source-build residue.' >&2
             exit 1
+          fi
+
+          if [[ "$ENABLE_DEV_TOOLS" == false ]]; then
+            build_tool_entries='(^|/)var/lib/pacman/local/(paru|base-devel|zig|binutils|gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)-|(^|/)usr/lib/zig/'
+            if grep -Ei "$build_tool_entries" "$entries"; then
+              echo 'RootFS retained a build-only package while enable_dev_tools=false.' >&2
+              exit 1
+            fi
           fi
 
           sha256sum "$archive" > "${archive}.sha256"
@@ -776,3 +785,7 @@ jobs:
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
             --jq '.[].name' | sort > "$RUNNER_TEMP/published-assets"
           diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/published-assets"
+          test "$(gh api \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            --jq .immutable)" = true

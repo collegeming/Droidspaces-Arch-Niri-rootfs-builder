@@ -150,8 +150,6 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     neovim nemo gvfs wl-clipboard \
     # 内核模块与时区数据
     kmod tzdata tar util-linux \
-    # strip niri 二进制需要 binutils
-    binutils \
     ######################################## niri 运行时依赖（按 ANiri 安装指南） ########
     libinput pango glib2 libdisplay-info mesa seatd systemd-libs libdrm libxkbcommon libevdev \
     libwacom lua freetype2 fontconfig libx11 libxcb libffi pcre2 libgudev pixman libxrender libxext \
@@ -162,11 +160,10 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     if [ "$TERMINAL_ARG" = "kitty" ]; then \
         pacman -S --noconfirm --needed kitty; \
     fi && \
-    # AUR 助手 paru（archlinuxcn aarch64 预编译包，容器内以普通用户运行）、
-    # base-devel 全组（makepkg 与源码构建必需，容器内 AUR 构建完全可用；
-    # 增加约 250MB 体积）、zig 0.16（官方稳定版 PKGBUILD 无约束，0.16 满足；
-    # 构建后随工具链清理）、电源信息、字体
-    pacman -S --noconfirm --needed paru base-devel zig upower noto-fonts noto-fonts-emoji && \
+    # paru/base-devel/zig/binutils 是 Reef、Ghostty、systemd 257 和 niri strip 的
+    # 构建期工具；enable_dev_tools=false 时在所有构建完成后统一移除。
+    pacman -S --noconfirm --needed upower noto-fonts noto-fonts-emoji && \
+    pacman -S --noconfirm --needed --asdeps paru base-devel zig binutils && \
     # 远程访问方案（REMOTE_ARG）：none / wayvnc（默认，VNC 5900）/ lamco（RDP 3389）
     # wayvnc：ALARM extra 预编译包，Wayland 原生 VNC，改动最小
     # lamco：固定下载并校验 anland-v0.2.0 ARM64 Release，不在镜像内编译 Rust
@@ -189,7 +186,6 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
         /usr/local/sbin/build-ghostty || exit 1; \
         userdel -r aurbuild 2>/dev/null || true; \
         rm -f /etc/sudoers.d/aurbuild; \
-        pacman -Rdd --noconfirm zig 2>/dev/null || true; \
         rm -f /usr/local/bin/pandoc /usr/local/bin/zig; \
         rm -rf /usr/local/lib/zig; \
         rm -rf /tmp/ghostty-pkg; \
@@ -589,6 +585,25 @@ RUN if [ "$ENABLE_SYSTEMD257_ARG" = "true" ]; then \
         echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
     fi && \
     rm -f /usr/local/sbin/systemd257
+
+# Reef、Ghostty、systemd 257 和 niri strip 均已完成。开发工具关闭时移除
+# 无条件安装的临时工具及其孤立依赖，并硬检查最终 package/filesystem 状态。
+RUN if [ "$ENABLE_DEV_TOOLS_ARG" = "false" ]; then \
+        pacman -Rns --noconfirm paru base-devel zig binutils && \
+        while orphaned="$(pacman -Qdtq 2>/dev/null || true)" && [ -n "$orphaned" ]; do \
+            set -- $orphaned; \
+            pacman -Rns --noconfirm "$@"; \
+        done && \
+        remaining_build_tools="$(pacman -Qq | grep -E \
+            '^(paru|base-devel|zig|binutils|gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)$' || true)" && \
+        if [ -n "$remaining_build_tools" ]; then \
+            printf 'ERROR: build-only packages remained:\n%s\n' "$remaining_build_tools" >&2; \
+            exit 1; \
+        fi && \
+        test ! -e /usr/lib/zig; \
+    else \
+        pacman -D --asexplicit paru base-devel zig binutils cmake clang llvm python python-pip; \
+    fi
 
 # 下载并安装 Mesa（高通 GPU，ANiri 的 kgsl 渲染依赖此定制包）
 RUN --mount=type=secret,id=github_token if [ "$ENABLE_QUALCOMM_MESA_ARG" = "true" ]; then \
