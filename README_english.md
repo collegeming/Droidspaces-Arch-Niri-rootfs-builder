@@ -135,7 +135,8 @@ Main inputs:
 
 5. Each archive passes `xz -t`, tar listing, and an independent SHA-256 check before the exact asset set is assembled.
 6. `publish_release=true` is allowed only on `main` with an explicit non-`candidate` version. The workflow checks that the tag and Release do not exist both before building and immediately before publication; replacement of any existing tag, Release, or asset is refused.
-7. Third-party actions are pinned to 40-character commit SHAs. Default permissions are `contents: read`; only the release job receives `contents: write`.
+7. Native Immutable Releases must be enabled in GitHub repository settings. After publication, the workflow requires REST `immutable=true`; the native protection locks the tag and assets. It applies only to Releases published after enablement and is not retroactive.
+8. Third-party actions are pinned to 40-character commit SHAs. Default permissions are `contents: read`; only the release job receives `contents: write`.
 
 This project does not trigger workflows automatically. A human must explicitly run the workflow. An old run or Release does not validate the current Builder commit.
 
@@ -248,7 +249,7 @@ The build/static layer can validate:
 
 - `bash -n` and ShellCheck for active Bash; YAML parsing and actionlint for the workflow; Dockerfile parsing.
 - active/legacy scope, sole workflow, removed active options, action SHAs, permissions, modes, symlinks, secret signatures, and hard-coded URLs.
-- output xz/tar integrity, filenames, variant count, SHA-256, metadata, and exact Release asset set; final archives also reject Android device-side assets, OpenH264/FFmpeg/x264 software-codec packages, and source-build residue.
+- output xz/tar integrity, filenames, variant count, SHA-256, metadata, and exact Release asset set; final archives also reject Android device-side assets, OpenH264/FFmpeg/x264 software-codec packages, and source-build residue; when `enable_dev_tools=false`, they also reject retained build toolchains such as paru/base-devel/Zig/Rust/GCC.
 - Lamco's AArch64 ELF, dependencies, metadata, SBOM/licenses, and refusal of software-H.264 dependencies.
 
 Unless a corresponding device test is recorded, the following remain **unverified**: target-phone import/boot, real GPU behavior, Android Surface lifecycle, MediaCodec, `mstsc` interoperability, end-to-end clipboard, host/NAT UI behavior, power, temperature, and long-duration stability. A successful Actions build is not a substitute for device validation.
