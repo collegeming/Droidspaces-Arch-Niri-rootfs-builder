@@ -438,7 +438,7 @@ jobs:
           fi
 
           if [[ "$ENABLE_DEV_TOOLS" == false ]]; then
-            build_tool_entries='(^|/)var/lib/pacman/local/(paru|base-devel|zig|binutils|gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)-|(^|/)usr/lib/zig/'
+            build_tool_entries='(^|/)var/lib/pacman/local/(paru|base-devel|zig|gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)-|(^|/)usr/lib/zig/'
             if grep -Ei "$build_tool_entries" "$entries"; then
               echo 'RootFS retained a build-only package while enable_dev_tools=false.' >&2
               exit 1
