@@ -678,37 +678,50 @@ jobs:
           done < "$existing_releases"
 
           cat > "$RUNNER_TEMP/release-body.md" <<EOF
-          Automated ARM64 Droidspaces Arch-Niri RootFS build.
+          # Droidspaces Arch-Niri RootFS $RELEASE_TAG（正式版）
 
-          Build provenance
+          ## RootFS 内容
+
+          - Arch Linux ARM64（aarch64）RootFS。
+          - niri $ANIRI_TAG：保留原生 Super/Win 语义（禁止 Win→Alt 翻译），链接 Arch libdisplay-info.so.3（非 Ubuntu .so.1）。
+          - 终端：kitty 与 ghostty 两个独立变体。
+          - 远程：$REMOTE_VARIANT。
+          - 不含 Android 设备侧资产（APK / daemon / Magisk / Surface / MediaCodec）。
+          - 不含 OpenH264 / x264 / FFmpeg 软件 H.264 编码链路。
+
+          ## 构建来源
+
           - Builder commit: $GITHUB_SHA
           - Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           - Version/tag: $RELEASE_TAG
           - Build mode: ${{ inputs.build_mode }}
           - Terminal request: $TERMINAL_INPUT
           - Remote variant: $REMOTE_VARIANT
-          - Arch base: $ARCH_BASE_IMAGE (ARM64 manifest $ARCH_BASE_ARM64_MANIFEST_DIGEST; layer $ARCH_BASE_LAYER_DIGEST)
+          - Arch base: $ARCH_BASE_IMAGE（ARM64 manifest $ARCH_BASE_ARM64_MANIFEST_DIGEST；layer $ARCH_BASE_LAYER_DIGEST）
 
-          Pinned components
-          - ANiri tuned: $ANIRI_REPOSITORY annotated tag $ANIRI_TAG (tag object $ANIRI_TAG_OBJECT), source commit $ANIRI_SOURCE_COMMIT, implementation baseline $ANIRI_IMPLEMENTATION_BASELINE, asset $ANIRI_ASSET, SHA256 $ANIRI_SHA256. The source contains the 74ce2a9 Anland implementation, minimal strict-Clippy fixes, and the final Arch release-verification workflow fix. Release: $ANIRI_RELEASE_URL
-          - ANiri provenance: build metadata $ANIRI_BUILD_METADATA (SHA256 $ANIRI_BUILD_METADATA_SHA256), SBOM $ANIRI_SBOM (SHA256 $ANIRI_SBOM_SHA256), successful build $ANIRI_BUILD_RUN_URL
-          - Android anland-bridge device-side prerequisite: $ANLAND_REPOSITORY annotated tag $ANLAND_TAG (tag object $ANLAND_TAG_OBJECT), source commit $ANLAND_SOURCE_COMMIT, feature baseline $ANLAND_FEATURE_BASELINE. Release: $ANLAND_RELEASE_URL; successful build: $ANLAND_BUILD_RUN_URL
-          - Android plain APK: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_PLAIN_APK (SHA256 $ANLAND_PLAIN_APK_SHA256)
-          - Android Tracy profiling APK: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_TRACY_APK (SHA256 $ANLAND_TRACY_APK_SHA256)
-          - Android daemon/Magisk ZIP: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_DAEMON_ZIP (SHA256 $ANLAND_DAEMON_ZIP_SHA256)
-          - Android checksum manifest: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_SHA256SUMS (SHA256 $ANLAND_SHA256SUMS_SHA256)
-          - Lamco: $LAMCO_REPOSITORY tag $LAMCO_TAG, commit $LAMCO_COMMIT, asset $LAMCO_ASSET, SHA256 $LAMCO_SHA256.
+          ## 固定组件
 
-          Runtime boundary
-          - ARM64 only. Native builds run on an ARM64 runner; QEMU builds explicitly target linux/arm64 from x86_64.
-          - Droidspaces is a privileged namespace + pivot_root container sharing the Android kernel, not PRoot. systemd 257 compatibility is intended for old kernels including 4.19.
-          - Android APK, root helper, Surface and MediaCodec components are device-side prerequisites and are not installed into this Linux RootFS.
-          - Lamco setup requires TLS, independent strong RDP credentials, a dedicated no-login user, and a bind-mounted private socket directory. No Lamco token or RDP credentials are embedded in this image.
-          - Hardware MediaCodec H.264 is the only H.264 path; there is no software fallback.
+          - ANiri tuned: $ANIRI_REPOSITORY annotated tag $ANIRI_TAG（tag object $ANIRI_TAG_OBJECT），source commit $ANIRI_SOURCE_COMMIT，implementation baseline $ANIRI_IMPLEMENTATION_BASELINE，asset $ANIRI_ASSET，SHA256 $ANIRI_SHA256。源码包含 74ce2a9 Anland 实现、极简 strict-Clippy 修复，以及最终 Arch release-verification workflow 修复。Release: $ANIRI_RELEASE_URL
+          - ANiri provenance: build metadata $ANIRI_BUILD_METADATA（SHA256 $ANIRI_BUILD_METADATA_SHA256），SBOM $ANIRI_SBOM（SHA256 $ANIRI_SBOM_SHA256），成功构建 $ANIRI_BUILD_RUN_URL
+          - Android anland-bridge 设备侧前置组件: $ANLAND_REPOSITORY annotated tag $ANLAND_TAG（tag object $ANLAND_TAG_OBJECT），source commit $ANLAND_SOURCE_COMMIT，feature baseline $ANLAND_FEATURE_BASELINE。Release: $ANLAND_RELEASE_URL；成功构建: $ANLAND_BUILD_RUN_URL
+          - Android 普通 APK: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_PLAIN_APK（SHA256 $ANLAND_PLAIN_APK_SHA256）
+          - Android Tracy 分析 APK: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_TRACY_APK（SHA256 $ANLAND_TRACY_APK_SHA256）
+          - Android daemon/Magisk ZIP: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_DAEMON_ZIP（SHA256 $ANLAND_DAEMON_ZIP_SHA256）
+          - Android 校验清单: https://github.com/$ANLAND_REPOSITORY/releases/download/$ANLAND_TAG/$ANLAND_SHA256SUMS（SHA256 $ANLAND_SHA256SUMS_SHA256）
+          - Lamco: $LAMCO_REPOSITORY tag $LAMCO_TAG，commit $LAMCO_COMMIT，asset $LAMCO_ASSET，SHA256 $LAMCO_SHA256。
 
-          Verification boundary
-          - The workflow verifies archive integrity, exact filenames, checksums, metadata, and publication asset set.
-          - Device import, target-phone graphics, Android viewer lifecycle, mstsc interoperability, thermals, and power have not been validated by this workflow.
+          ## 运行时边界
+
+          - 仅 ARM64。native 构建在 ARM64 runner 上运行；QEMU 构建从 x86_64 显式构建 linux/arm64。
+          - Droidspaces 是特权 namespace + pivot_root 容器（共享 Android 内核），不是 PRoot。systemd 257 兼容面向包括 4.19 在内的旧内核。
+          - Android APK、root helper、Surface 与 MediaCodec 组件是设备侧前置组件，不安装到此 Linux RootFS。
+          - Lamco 需要 TLS、独立强 RDP 凭据、专用无登录用户和 bind-mount 私有 socket 目录。本镜像不嵌入任何 Lamco token 或 RDP 凭据。
+          - 硬件 MediaCodec H.264 是唯一的 H.264 路径，没有软件回退。
+
+          ## 验证边界
+
+          - workflow 验证归档完整性、精确文件名、校验和、metadata 与发布 asset 集合。
+          - 设备导入、目标手机图形、Android viewer 生命周期、mstsc 互操作、热功耗未由本 workflow 验证。
           EOF
 
           git config user.name 'github-actions[bot]'
