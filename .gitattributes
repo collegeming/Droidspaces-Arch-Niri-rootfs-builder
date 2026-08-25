@@ -1,0 +1,7 @@
+# 所有文本文件统一使用 LF 行尾，避免 Windows/Git Bash 检出引入 CRLF，
+# 使 Git Bash 与 WSL 的 git 视图一致（Arch/GitHub Actions 均以 LF 为准）。
+* text=auto eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.Dockerfile text eol=lf
+*.md text eol=lf
