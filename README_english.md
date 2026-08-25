@@ -133,7 +133,7 @@ Main inputs:
    Droidspaces-Arch-Niri-Anland-aarch64-<version>-<remote>-<terminal>.tar.xz
    ```
 
-5. Each archive passes `xz -t`, tar listing, and an independent SHA-256 check before the exact asset set is assembled.
+5. Each archive passes a tar listing and content-gate check first; the release step then assembles the variants into the exact asset set and re-verifies SHA-256 and counts.
 6. `publish_release=true` is allowed only on `main` with an explicit non-`candidate` version. The workflow checks that the tag and Release do not exist both before building and immediately before publication; replacement of any existing tag, Release, or asset is refused.
 7. Native Immutable Releases must be enabled in GitHub repository settings. After publication, the workflow requires REST `immutable=true`; the native protection locks the tag and assets. It applies only to Releases published after enablement and is not retroactive.
 8. Third-party actions are pinned to 40-character commit SHAs. Default permissions are `contents: read`; only the release job receives `contents: write`.
