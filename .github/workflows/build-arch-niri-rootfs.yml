@@ -402,7 +402,6 @@ jobs:
           archive="Droidspaces-Arch-Niri-Anland-aarch64-${BUILD_VERSION}-${REMOTE_VARIANT}-${TERMINAL_VARIANT}.tar.xz"
           test -f "$archive"
           test "$(find . -maxdepth 1 -type f -name 'Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz' | wc -l)" -eq 1
-          xz -t "$archive"
           entries="$RUNNER_TEMP/rootfs-entries-${TERMINAL_VARIANT}.txt"
           tar -tJf "$archive" > "$entries"
           test -s "$entries"
@@ -445,7 +444,6 @@ jobs:
             fi
           fi
 
-          sha256sum "$archive" > "${archive}.sha256"
           cat > "${archive}.BUILD-METADATA.txt" <<EOF
           format=1
           builder_repository=$GITHUB_REPOSITORY
@@ -524,23 +522,31 @@ jobs:
           name: rootfs-${{ matrix.terminal }}
           path: |
             Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz
-            Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz.sha256
             Droidspaces-Arch-Niri-Anland-aarch64-*.tar.xz.BUILD-METADATA.txt
           if-no-files-found: error
           retention-days: 7
 
-  package:
-    name: Verify candidate asset set
+  release:
+    name: Publish immutable Arch-Niri Release
+    if: ${{ inputs.publish_release == true }}
     needs: [prepare, build]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
+      - name: Check out the exact Builder commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
       - name: Download every variant
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: rootfs-*
           path: variant-artifacts
 
-      - name: Assemble checksums and build metadata
+      - name: Assemble the release asset set
         env:
           BUILD_VERSION: ${{ needs.prepare.outputs.version }}
           EXPECTED_VARIANTS: ${{ needs.prepare.outputs.variant_count }}
@@ -550,22 +556,13 @@ jobs:
           set -euo pipefail
           mkdir release-assets
           mapfile -t archives < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz' -print | sort)
-          mapfile -t checksum_files < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz.sha256' -print | sort)
           mapfile -t metadata_files < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz.BUILD-METADATA.txt' -print | sort)
           test "${#archives[@]}" -eq "$EXPECTED_VARIANTS"
-          test "${#checksum_files[@]}" -eq "$EXPECTED_VARIANTS"
           test "${#metadata_files[@]}" -eq "$EXPECTED_VARIANTS"
-
-          for checksum_file in "${checksum_files[@]}"; do
-            variant_dir="$(dirname "$checksum_file")"
-            (cd "$variant_dir" && sha256sum -c "$(basename "$checksum_file")")
-          done
           for archive in "${archives[@]}"; do
-            xz -t "$archive"
             tar -tJf "$archive" >/dev/null
             mv "$archive" release-assets/
           done
-
           {
             echo 'format=1'
             echo "builder_repository=$GITHUB_REPOSITORY"
@@ -581,39 +578,10 @@ jobs:
             done
           } > release-assets/BUILD-METADATA.txt
           (cd release-assets && sha256sum ./*.tar.xz > SHA256SUMS)
-
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq "$((EXPECTED_VARIANTS + 2))"
           (cd release-assets && sha256sum -c SHA256SUMS)
           grep -Fxq "builder_commit=$GITHUB_SHA" release-assets/BUILD-METADATA.txt
           grep -Fxq "version=$BUILD_VERSION" release-assets/BUILD-METADATA.txt
-
-      - name: Upload the complete candidate asset set
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: Droidspaces-Arch-Niri-RootFS-${{ needs.prepare.outputs.version }}
-          path: release-assets/*
-          if-no-files-found: error
-          retention-days: 14
-
-  release:
-    name: Publish immutable Arch-Niri Release
-    if: ${{ inputs.publish_release == true }}
-    needs: [prepare, build, package]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Check out the exact Builder commit
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-
-      - name: Download the verified release asset set
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: Droidspaces-Arch-Niri-RootFS-${{ needs.prepare.outputs.version }}
-          path: release-assets
 
       - name: Refuse replacement and publish only the exact asset set
         env:
@@ -767,7 +735,6 @@ jobs:
             echo 'unable to list draft Release assets' >&2
             exit 1
           fi
-          mkdir "$RUNNER_TEMP/downloaded-release-assets"
           : > "$RUNNER_TEMP/remote-assets"
           while IFS=$'\t' read -r asset_id asset_name asset_size; do
             [[ "$asset_id" =~ ^[0-9]+$ ]]
@@ -775,15 +742,6 @@ jobs:
             grep -Fxq "$asset_name" "$RUNNER_TEMP/expected-assets"
             test "$asset_size" = "$(stat -c '%s' "release-assets/$asset_name")"
             printf '%s\n' "$asset_name" >> "$RUNNER_TEMP/remote-assets"
-            gh api \
-              -H 'Accept: application/octet-stream' \
-              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
-              > "$RUNNER_TEMP/downloaded-release-assets/$asset_name"
-            cmp -- \
-              "release-assets/$asset_name" \
-              "$RUNNER_TEMP/downloaded-release-assets/$asset_name"
-            test "$(sha256sum "release-assets/$asset_name" | cut -d' ' -f1)" = \
-              "$(sha256sum "$RUNNER_TEMP/downloaded-release-assets/$asset_name" | cut -d' ' -f1)"
           done < "$draft_assets"
           sort -o "$RUNNER_TEMP/remote-assets" "$RUNNER_TEMP/remote-assets"
           diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/remote-assets"

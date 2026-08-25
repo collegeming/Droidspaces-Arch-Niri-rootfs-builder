@@ -133,7 +133,7 @@ RootFS 默认 Linux 用户为 `colle`，构建参数可修改。镜像目前为 
    Droidspaces-Arch-Niri-Anland-aarch64-<version>-<remote>-<terminal>.tar.xz
    ```
 
-5. 每个 archive 先通过 `xz -t`、tar listing 和独立 SHA-256 校验，再汇总 exact asset set。
+5. 每个 archive 先通过 tar listing 与内容门禁校验；发布步骤再把各变体汇总为 exact asset set，并重新校验 SHA-256 与数量。
 6. `publish_release=true` 只允许从 `main` 和显式非 `candidate` 版本运行。workflow 在构建前、发布前分别验证 tag/Release 不存在；拒绝覆盖已有 tag、Release 或 asset。
 7. 仓库必须在 GitHub Settings 中启用原生 Immutable Releases。workflow 发布后要求 REST `immutable=true`；原生保护锁定 tag 和 assets。此设置只作用于启用后发布的 Release，不追溯旧 Release。
 8. 第三方 actions 固定 40 位 commit SHA；默认权限为 `contents: read`，仅 release job 提升为 `contents: write`。
