@@ -88,6 +88,10 @@ COPY scripts/install-lamco-anland-bridge.sh /usr/local/sbin/install-lamco-anland
 COPY scripts/setup-lamco-anland-bridge.sh /usr/local/sbin/setup-lamco-anland-bridge
 COPY scripts/check-lamco-anland-bridge.sh /usr/local/sbin/check-lamco-anland-bridge
 COPY scripts/lamco-anland-bridge.service /usr/lib/systemd/system/lamco-anland-bridge.service
+COPY scripts/install-anland-rdp-bridge.sh /usr/local/sbin/install-anland-rdp-bridge
+COPY scripts/setup-anland-rdp-bridge.sh /usr/local/sbin/setup-anland-rdp-bridge
+COPY scripts/check-anland-rdp-bridge.sh /usr/local/sbin/check-anland-rdp-bridge
+COPY scripts/anland-rdp-bridge.service /usr/lib/systemd/system/anland-rdp-bridge.service
 COPY scripts/wayvnc-start /usr/local/sbin/wayvnc-start
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/niri/default-config.kdl /usr/share/niri/default-config.kdl
@@ -100,8 +104,8 @@ RUN case "$TARGETPLATFORM" in \
     esac && \
     case "$TERMINAL_ARG" in kitty|ghostty) ;; \
         *) echo "ERROR: TERMINAL_ARG must be kitty or ghostty" >&2; exit 1 ;; esac && \
-    case "$REMOTE_ARG" in none|wayvnc|lamco) ;; \
-        *) echo "ERROR: REMOTE_ARG must be none, wayvnc, or lamco" >&2; exit 1 ;; esac && \
+    case "$REMOTE_ARG" in none|wayvnc|lamco|anland_rdp) ;; \
+        *) echo "ERROR: REMOTE_ARG must be none, wayvnc, lamco, or anland_rdp" >&2; exit 1 ;; esac && \
     case "$USERNAME" in \
         ''|*[!A-Za-z0-9_-]*|[0-9-]*) echo "ERROR: USERNAME is invalid" >&2; exit 1 ;; \
     esac && \
@@ -165,9 +169,11 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     # binutils 是基础镜像里 pacman→libmakepkg-dropins 的必需依赖，保留。
     pacman -S --noconfirm --needed upower noto-fonts noto-fonts-emoji && \
     pacman -S --noconfirm --needed --asdeps paru base-devel zig && \
-    # 远程访问方案（REMOTE_ARG）：none / wayvnc（默认，VNC 5900）/ lamco（RDP 3389）
+    # 远程访问方案（REMOTE_ARG）：none / wayvnc（默认，VNC 5900）/ lamco（RDP 3389，BUSL）/ anland_rdp（RDP 3389，MIT/Apache）
     # wayvnc：ALARM extra 预编译包，Wayland 原生 VNC，改动最小
     # lamco：固定下载并校验 anland-v0.2.0 ARM64 Release，不在镜像内编译 Rust
+    # anland_rdp：固定下载并校验 v0.1.0 ARM64 Release（anland-rdp-bridge，宽松许可）；
+    #   运行时依赖 libpipewire-0.3 / libspa-0.2，已在上方音频栈随包安装
     if [ "$REMOTE_ARG" = "wayvnc" ]; then \
         pacman -S --noconfirm --needed wayvnc; \
     elif [ "$REMOTE_ARG" = "lamco" ]; then \
@@ -175,6 +181,10 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
         chmod +x /usr/local/sbin/install-lamco-anland-bridge && \
         /usr/local/sbin/install-lamco-anland-bridge && \
         rm -f /usr/local/sbin/install-lamco-anland-bridge; \
+    elif [ "$REMOTE_ARG" = "anland_rdp" ]; then \
+        chmod +x /usr/local/sbin/install-anland-rdp-bridge && \
+        /usr/local/sbin/install-anland-rdp-bridge && \
+        rm -f /usr/local/sbin/install-anland-rdp-bridge; \
     fi && \
     # 终端选择（TERMINAL_ARG）：kitty（默认，已随上面 pacman 装好，直接跳过）
     # 或 ghostty（调用 scripts/build-ghostty.sh：官方稳定版 1.3.1 PKGBUILD +
@@ -546,12 +556,27 @@ RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
             /usr/local/sbin/setup-lamco-anland-bridge \
             /usr/local/sbin/check-lamco-anland-bridge && \
         chmod 0644 /usr/lib/systemd/system/lamco-anland-bridge.service; \
+    elif [ "$REMOTE_ARG" = "anland_rdp" ]; then \
+        useradd --system --user-group --no-create-home \
+            --home-dir /nonexistent --shell /usr/bin/nologin anland-rdp-bridge && \
+        test "$(id -Gn anland-rdp-bridge)" = "anland-rdp-bridge" && \
+        awk -F: '$1 == "anland-rdp-bridge" && $2 ~ /^!/ { found = 1 } END { exit !found }' \
+            /etc/shadow && \
+        test "$(getent passwd anland-rdp-bridge | cut -d: -f6-7)" = "/nonexistent:/usr/bin/nologin" && \
+        chmod 0755 \
+            /usr/local/sbin/setup-anland-rdp-bridge \
+            /usr/local/sbin/check-anland-rdp-bridge && \
+        chmod 0644 /usr/lib/systemd/system/anland-rdp-bridge.service; \
     else \
         rm -f \
             /usr/local/sbin/install-lamco-anland-bridge \
             /usr/local/sbin/setup-lamco-anland-bridge \
             /usr/local/sbin/check-lamco-anland-bridge \
-            /usr/lib/systemd/system/lamco-anland-bridge.service; \
+            /usr/lib/systemd/system/lamco-anland-bridge.service \
+            /usr/local/sbin/install-anland-rdp-bridge \
+            /usr/local/sbin/setup-anland-rdp-bridge \
+            /usr/local/sbin/check-anland-rdp-bridge \
+            /usr/lib/systemd/system/anland-rdp-bridge.service; \
     fi && \
     if [ "$REMOTE_ARG" != "wayvnc" ]; then \
         rm -f /usr/local/sbin/wayvnc-start; \
@@ -562,6 +587,13 @@ RUN if [ "$REMOTE_ARG" = "wayvnc" ]; then \
             /usr/local/sbin/setup-lamco-anland-bridge \
             /usr/local/sbin/check-lamco-anland-bridge \
             /usr/lib/systemd/system/lamco-anland-bridge.service; \
+    fi && \
+    if [ "$REMOTE_ARG" != "anland_rdp" ]; then \
+        rm -f \
+            /usr/local/sbin/install-anland-rdp-bridge \
+            /usr/local/sbin/setup-anland-rdp-bridge \
+            /usr/local/sbin/check-anland-rdp-bridge \
+            /usr/lib/systemd/system/anland-rdp-bridge.service; \
     fi
 
 # 注入 binfmt 服务脚本（与 Arch-KDE 相同的 systemd 方案）

@@ -97,8 +97,8 @@ case "$TERMINAL" in
     *) printf 'Error: terminal must be kitty, ghostty, or both.\n' >&2; exit 1 ;;
 esac
 case "$REMOTE" in
-    none|wayvnc|lamco) ;;
-    *) printf 'Error: remote must be none, wayvnc, or lamco.\n' >&2; exit 1 ;;
+    none|wayvnc|lamco|anland_rdp) ;;
+    *) printf 'Error: remote must be none, wayvnc, lamco, or anland_rdp.\n' >&2; exit 1 ;;
 esac
 for value in \
     "$NIRI_AUTOSTART" "$ENABLE_ZH_LOCALE" "$ENABLE_FCITX_RIME" \

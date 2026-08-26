@@ -1,0 +1,40 @@
+[Unit]
+Description=Anland RDP Bridge (permissively-licensed anland RDP server)
+Documentation=file:/usr/share/doc/anland-rdp-bridge/README.md
+After=network.target niri.service
+Requires=niri.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=anland-rdp-bridge
+Group=anland-rdp-bridge
+# The binary derives its cert/key/token dir from $HOME
+# ($HOME/.local/share/anland-rdp/); point HOME at the service data dir so
+# the self-signed cert + bridge token persist there, owned by the service
+# user. /var/lib is not under /home, so ProtectHome=true below is compatible.
+Environment=HOME=/var/lib/anland-rdp-bridge
+EnvironmentFile=/etc/anland-rdp-bridge/env
+ExecStartPre=+/usr/local/sbin/check-anland-rdp-bridge
+ExecStart=/usr/bin/anland_rdp_bridge
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/anland-rdp-bridge /run/anland-rdp
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+
+[Install]
+WantedBy=multi-user.target

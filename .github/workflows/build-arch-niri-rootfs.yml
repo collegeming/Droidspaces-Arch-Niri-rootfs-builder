@@ -45,6 +45,7 @@ on:
           - none
           - wayvnc
           - lamco
+          - anland_rdp
       niri_autostart:
         description: 自动启动 niri
         required: true
@@ -418,13 +419,24 @@ jobs:
 
           for required in \
             usr/bin/niri \
-            usr/bin/lamco-anland-bridge \
-            usr/lib/systemd/system/lamco-anland-bridge.service \
             usr/share/doc/droidspaces-arch-niri/ANIRI-PIN.txt \
             usr/share/doc/droidspaces-arch-niri/BUILD-COMPATIBILITY.txt
           do
             require_single_entry "$required"
           done
+          # Remote-variant-specific binaries + service units (only the selected
+          # remote is baked in; the others' scripts are stripped in the Dockerfile).
+          case "$REMOTE_VARIANT" in
+            lamco)
+              require_single_entry usr/bin/lamco-anland-bridge
+              require_single_entry usr/lib/systemd/system/lamco-anland-bridge.service
+              ;;
+            anland_rdp)
+              require_single_entry usr/bin/anland_rdp_bridge
+              require_single_entry usr/lib/systemd/system/anland-rdp-bridge.service
+              ;;
+            none|wayvnc) ;;
+          esac
           case "$TERMINAL_VARIANT" in
             kitty) require_single_entry usr/bin/kitty ;;
             ghostty) require_single_entry usr/bin/ghostty ;;
