@@ -84,7 +84,7 @@ is_bool() {
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { printf 'Error: VERSION contains unsafe characters.\n' >&2; exit 1; }
 [[ "$USERNAME" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || { printf 'Error: USERNAME is invalid.\n' >&2; exit 1; }
 case "$TERMINAL" in kitty|ghostty|both) ;; *) printf 'Error: terminal must be kitty, ghostty, or both.\n' >&2; exit 1 ;; esac
-case "$REMOTE" in none|wayvnc|lamco) ;; *) printf 'Error: remote must be none, wayvnc, or lamco.\n' >&2; exit 1 ;; esac
+case "$REMOTE" in none|wayvnc|lamco|anland_rdp) ;; *) printf 'Error: remote must be none, wayvnc, lamco, or anland_rdp.\n' >&2; exit 1 ;; esac
 for value in "$NIRI_AUTOSTART" "$ENABLE_ZH_LOCALE" "$ENABLE_FCITX_RIME" "$ENABLE_QUALCOMM_MESA" "$ENABLE_SYSTEMD257" "$ENABLE_USB_MANAGER" "$ENABLE_FIRMWARE" "$ENABLE_BINFMT" "$ENABLE_CONTAINER_INTEGRATION" "$ENABLE_8GEN2_WAYLAND" "$ENABLE_DEV_TOOLS" "$ENABLE_COMPRESSION_TOOLS" "$ENABLE_DOCKER" "$ENABLE_TMOE"; do
     is_bool "$value" || { printf 'Error: boolean options must be true or false (got %s).\n' "$value" >&2; exit 1; }
 done
