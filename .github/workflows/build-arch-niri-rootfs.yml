@@ -567,8 +567,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir release-assets
-          mapfile -t archives < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz' -print | sort)
-          mapfile -t metadata_files < <(find variant-artifacts -mindepth 2 -maxdepth 2 -type f -name '*.tar.xz.BUILD-METADATA.txt' -print | sort)
+          mapfile -t archives < <(find variant-artifacts -type f -name '*.tar.xz' -print | sort)
+          mapfile -t metadata_files < <(find variant-artifacts -type f -name '*.tar.xz.BUILD-METADATA.txt' -print | sort)
           test "${#archives[@]}" -eq "$EXPECTED_VARIANTS"
           test "${#metadata_files[@]}" -eq "$EXPECTED_VARIANTS"
           for archive in "${archives[@]}"; do
