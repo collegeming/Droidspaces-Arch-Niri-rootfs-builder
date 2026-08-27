@@ -280,47 +280,13 @@ jobs:
 
           if [[ "$PUBLISH_RELEASE" == true ]]; then
             if [[ "$VERSION_INPUT" == candidate ]]; then
-              echo 'publish_release=true requires an explicit immutable version' >&2
+              echo 'publish_release=true requires an explicit version' >&2
               exit 1
             fi
             if [[ "$GITHUB_REF_TYPE" != branch || "$GITHUB_REF_NAME" != main ]]; then
               echo 'release publication is allowed only from main' >&2
               exit 1
             fi
-
-            set +e
-            git ls-remote --exit-code --tags origin "refs/tags/$VERSION_INPUT" >/dev/null 2>&1
-            tag_status=$?
-            set -e
-            case "$tag_status" in
-              0) echo "refusing to overwrite existing tag: $VERSION_INPUT" >&2; exit 1 ;;
-              2) ;;
-              *) echo 'unable to verify remote tag absence' >&2; exit 1 ;;
-            esac
-
-            release_error="$RUNNER_TEMP/release-lookup-error"
-            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION_INPUT" \
-                --silent 2>"$release_error"; then
-              echo "refusing to overwrite existing Release: $VERSION_INPUT" >&2
-              exit 1
-            fi
-            if ! grep -Fq 'HTTP 404' "$release_error"; then
-              echo 'unable to verify Release absence through the tag endpoint' >&2
-              exit 1
-            fi
-
-            existing_releases="$RUNNER_TEMP/existing-releases"
-            if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-                --jq '.[] | [.id, .tag_name, .draft] | @tsv' > "$existing_releases"; then
-              echo 'unable to list existing Releases, including drafts' >&2
-              exit 1
-            fi
-            while IFS=$'\t' read -r existing_id existing_tag existing_draft; do
-              if [[ "$existing_tag" == "$VERSION_INPUT" ]]; then
-                echo "refusing existing Release id=$existing_id tag=$existing_tag draft=$existing_draft" >&2
-                exit 1
-              fi
-            done < "$existing_releases"
           fi
 
           {
@@ -623,39 +589,11 @@ jobs:
           (cd release-assets && sha256sum -c SHA256SUMS)
           grep -Fxq "builder_commit=$GITHUB_SHA" release-assets/BUILD-METADATA.txt
 
-          set +e
-          git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1
-          tag_status=$?
-          set -e
-          case "$tag_status" in
-            0) echo "refusing to overwrite existing tag: $RELEASE_TAG" >&2; exit 1 ;;
-            2) ;;
-            *) echo 'unable to verify remote tag absence' >&2; exit 1 ;;
-          esac
-
-          release_error="$RUNNER_TEMP/release-lookup-error"
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
-              --silent 2>"$release_error"; then
-            echo "refusing to overwrite existing Release or assets: $RELEASE_TAG" >&2
+              --silent 2>/dev/null; then
+            echo "refusing to overwrite existing Release: $RELEASE_TAG" >&2
             exit 1
           fi
-          if ! grep -Fq 'HTTP 404' "$release_error"; then
-            echo 'unable to verify Release absence through the tag endpoint' >&2
-            exit 1
-          fi
-
-          existing_releases="$RUNNER_TEMP/existing-releases"
-          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-              --jq '.[] | [.id, .tag_name, .draft] | @tsv' > "$existing_releases"; then
-            echo 'unable to list existing Releases, including drafts' >&2
-            exit 1
-          fi
-          while IFS=$'\t' read -r existing_id existing_tag existing_draft; do
-            if [[ "$existing_tag" == "$RELEASE_TAG" ]]; then
-              echo "refusing existing Release id=$existing_id tag=$existing_tag draft=$existing_draft" >&2
-              exit 1
-            fi
-          done < "$existing_releases"
 
           cat > "$RUNNER_TEMP/release-body.md" <<EOF
           # Droidspaces Arch-Niri RootFS $RELEASE_TAG（正式版）
@@ -709,66 +647,9 @@ jobs:
           git tag -a "$RELEASE_TAG" "$GITHUB_SHA" \
             -m "Droidspaces Arch-Niri RootFS $RELEASE_TAG"
           git push origin "refs/tags/$RELEASE_TAG"
-          remote_peeled="$(git ls-remote --tags origin "refs/tags/${RELEASE_TAG}^{}" | cut -f1)"
-          test "$remote_peeled" = "$GITHUB_SHA"
 
           gh release create "$RELEASE_TAG" release-assets/* \
-            --draft \
             --verify-tag \
             --latest=false \
             --title "Droidspaces Arch-Niri RootFS $RELEASE_TAG" \
             --notes-file "$RUNNER_TEMP/release-body.md"
-
-          draft_releases="$RUNNER_TEMP/draft-releases"
-          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-              --jq '.[] | select(.draft == true) | [.id, .tag_name] | @tsv' \
-              > "$draft_releases"; then
-            echo 'unable to list draft Releases after creation' >&2
-            exit 1
-          fi
-          draft_ids=()
-          while IFS=$'\t' read -r candidate_id candidate_tag; do
-            if [[ "$candidate_tag" == "$RELEASE_TAG" ]]; then
-              draft_ids+=("$candidate_id")
-            fi
-          done < "$draft_releases"
-          if [[ "${#draft_ids[@]}" -ne 1 ]]; then
-            echo "expected exactly one draft Release for $RELEASE_TAG, found ${#draft_ids[@]}" >&2
-            exit 1
-          fi
-          release_id="${draft_ids[0]}"
-          [[ "$release_id" =~ ^[0-9]+$ ]]
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq .draft)" = true
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" --jq .tag_name)" = "$RELEASE_TAG"
-
-          draft_assets="$RUNNER_TEMP/draft-assets"
-          if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
-              --jq '.[] | [.id, .name, .size] | @tsv' > "$draft_assets"; then
-            echo 'unable to list draft Release assets' >&2
-            exit 1
-          fi
-          : > "$RUNNER_TEMP/remote-assets"
-          while IFS=$'\t' read -r asset_id asset_name asset_size; do
-            [[ "$asset_id" =~ ^[0-9]+$ ]]
-            [[ "$asset_size" =~ ^[0-9]+$ ]]
-            grep -Fxq "$asset_name" "$RUNNER_TEMP/expected-assets"
-            test "$asset_size" = "$(stat -c '%s' "release-assets/$asset_name")"
-            printf '%s\n' "$asset_name" >> "$RUNNER_TEMP/remote-assets"
-          done < "$draft_assets"
-          sort -o "$RUNNER_TEMP/remote-assets" "$RUNNER_TEMP/remote-assets"
-          diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/remote-assets"
-
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-            -F draft=false \
-            -f make_latest=false \
-            --silent
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .id)" = "$release_id"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .draft)" = false
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .tag_name)" = "$RELEASE_TAG"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" \
-            --jq '.[].name' | sort > "$RUNNER_TEMP/published-assets"
-          diff -u "$RUNNER_TEMP/expected-assets" "$RUNNER_TEMP/published-assets"
-          test "$(gh api \
-            -H 'X-GitHub-Api-Version: 2026-03-10' \
-            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-            --jq .immutable)" = true

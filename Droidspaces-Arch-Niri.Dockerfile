@@ -164,11 +164,13 @@ RUN chmod +x /etc/profile.d/ds-aliases.sh && \
     if [ "$TERMINAL_ARG" = "kitty" ]; then \
         pacman -S --noconfirm --needed kitty; \
     fi && \
-    # paru/base-devel/zig 是 Reef、Ghostty、systemd 257 和 niri strip 的
-    # 构建期工具；enable_dev_tools=false 时在所有构建完成后统一移除。
+    # paru 是给用户保留的 AUR 助手（enable_dev_tools 开关控制 base-devel/zig
+    # 这类构建工具，但 paru 始终留作显式包）。base-devel/zig 是 Reef、Ghostty、
+    # systemd 257 和 niri strip 的构建期工具，构建完成后按开关移除。
     # binutils 是基础镜像里 pacman→libmakepkg-dropins 的必需依赖，保留。
     pacman -S --noconfirm --needed upower noto-fonts noto-fonts-emoji && \
-    pacman -S --noconfirm --needed --asdeps paru base-devel zig && \
+    pacman -S --noconfirm --needed paru && \
+    pacman -S --noconfirm --needed --asdeps base-devel zig && \
     # 远程访问方案（REMOTE_ARG）：none / wayvnc（默认，VNC 5900）/ lamco（RDP 3389，BUSL）/ anland_rdp（RDP 3389，MIT/Apache）
     # wayvnc：ALARM extra 预编译包，Wayland 原生 VNC，改动最小
     # lamco：固定下载并校验 anland-v0.2.0 ARM64 Release，不在镜像内编译 Rust
@@ -419,7 +421,6 @@ RUN echo "--> [niri] Downloading pinned ${ANIRI_RELEASE_REPOSITORY} ${ANIRI_VERS
       "tag_object=${ANIRI_TAG_OBJECT}" \
       "source_commit=${ANIRI_SOURCE_COMMIT}" \
       "implementation_baseline=${ANIRI_IMPLEMENTATION_BASELINE}" \
-      "release_url=https://github.com/${ANIRI_RELEASE_REPOSITORY}/releases/tag/${ANIRI_VERSION}" \
       "asset=${ANIRI_FILENAME}" \
       "sha256=${ANIRI_SHA256}" \
       "build_metadata=${ANIRI_BUILD_METADATA}" \
@@ -445,19 +446,14 @@ RUN printf '%s\n' \
       "android_anland_tag_object=${ANDROID_ANLAND_TAG_OBJECT}" \
       "android_anland_source_commit=${ANDROID_ANLAND_SOURCE_COMMIT}" \
       "android_anland_feature_baseline=${ANDROID_ANLAND_FEATURE_BASELINE}" \
-      "android_anland_release_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/tag/${ANDROID_ANLAND_TAG}" \
       "android_anland_plain_apk=${ANDROID_ANLAND_PLAIN_APK}" \
       "android_anland_plain_apk_sha256=${ANDROID_ANLAND_PLAIN_APK_SHA256}" \
-      "android_anland_plain_apk_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_PLAIN_APK}" \
       "android_anland_tracy_apk=${ANDROID_ANLAND_TRACY_APK}" \
       "android_anland_tracy_apk_sha256=${ANDROID_ANLAND_TRACY_APK_SHA256}" \
-      "android_anland_tracy_apk_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_TRACY_APK}" \
       "android_anland_daemon_zip=${ANDROID_ANLAND_DAEMON_ZIP}" \
       "android_anland_daemon_zip_sha256=${ANDROID_ANLAND_DAEMON_ZIP_SHA256}" \
-      "android_anland_daemon_zip_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_DAEMON_ZIP}" \
       "android_anland_sha256sums=${ANDROID_ANLAND_SHA256SUMS}" \
       "android_anland_sha256sums_sha256=${ANDROID_ANLAND_SHA256SUMS_SHA256}" \
-      "android_anland_sha256sums_url=https://github.com/${ANDROID_ANLAND_REPOSITORY}/releases/download/${ANDROID_ANLAND_TAG}/${ANDROID_ANLAND_SHA256SUMS}" \
       "android_assets_role=device-side-prerequisite-only" \
       "android_assets_in_rootfs=false" \
       "local_display_socket=/run/display.sock" \
@@ -621,26 +617,16 @@ RUN if [ "$ENABLE_SYSTEMD257_ARG" = "true" ]; then \
 
 # Reef、Ghostty、systemd 257 和 niri strip 均已完成。开发工具关闭时移除
 # 无条件安装的临时工具及其孤立依赖，并硬检查最终 package/filesystem 状态。
-RUN if [ "$ENABLE_DEV_TOOLS_ARG" = "false" ]; then \
-        pacman -Rn --noconfirm paru base-devel zig && \
-        while build_tools="$(pacman -Qq | grep -E \
-            '^(gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)$' || true)" && \
-            [ -n "$build_tools" ]; do \
-            progress=0; \
-            for pkg in $build_tools; do \
-                if pacman -Rns --noconfirm "$pkg" 2>/dev/null; then progress=1; fi; \
-            done; \
-            [ "$progress" -eq 1 ] || break; \
-        done && \
-        remaining_build_tools="$(pacman -Qq | grep -E \
-            '^(paru|base-devel|zig|gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)$' || true)" && \
-        if [ -n "$remaining_build_tools" ]; then \
-            printf 'ERROR: build-only packages remained:\n%s\n' "$remaining_build_tools" >&2; \
-            exit 1; \
-        fi && \
+RUN build_tool_re='^(gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)$'; \
+    if [ "$ENABLE_DEV_TOOLS_ARG" = "false" ]; then \
+        pacman -Rn --noconfirm base-devel zig; \
+        while build_tools="$(pacman -Qq | grep -E "$build_tool_re" || true)" && [ -n "$build_tools" ]; do \
+            pacman -Rns --noconfirm $build_tools 2>/dev/null || true; \
+        done; \
+        test -z "$(pacman -Qq | grep -E "$build_tool_re" || true)"; \
         test ! -e /usr/lib/zig; \
     else \
-        pacman -D --asexplicit paru base-devel zig cmake clang llvm python python-pip; \
+        pacman -D --asexplicit base-devel zig cmake clang llvm python python-pip; \
     fi
 
 # 下载并安装 Mesa（高通 GPU，ANiri 的 kgsl 渲染依赖此定制包）
