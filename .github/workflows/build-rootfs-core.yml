@@ -128,10 +128,14 @@ jobs:
             fail "无效的桌面环境：$DESKTOP_INPUT" \
               "Invalid desktop: $DESKTOP_INPUT"
           }
-          DISPLAY_BACKEND="$(display_backend_normalize "$DISPLAY_BACKEND_INPUT")" || {
-            fail "无效的显示后端：$DISPLAY_BACKEND_INPUT" \
-              "Invalid display backend: $DISPLAY_BACKEND_INPUT"
-          }
+          if [ "$DESKTOP" = "none" ]; then
+            DISPLAY_BACKEND="x11"
+          else
+            DISPLAY_BACKEND="$(display_backend_normalize "$DISPLAY_BACKEND_INPUT")" || {
+              fail "无效的显示后端：$DISPLAY_BACKEND_INPUT" \
+                "Invalid display backend: $DISPLAY_BACKEND_INPUT"
+            }
+          fi
           DESKTOP_AUTOSTART="$DESKTOP_AUTOSTART_INPUT"
           PULSE_AUDIO="$PULSEAUDIO_INPUT"
 
