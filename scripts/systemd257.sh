@@ -695,9 +695,8 @@ install_selected_packages() {
     apt)
       apt-get -o Dpkg::Options::=--force-confdef \
         -o Dpkg::Options::=--force-confold \
-        -o Dpkg::Options::=--force-remove-essential \
         install -y --no-install-recommends --allow-downgrades \
-        --allow-change-held-packages --auto-remove "${SELECTED_FILES[@]}"
+        --allow-change-held-packages --no-remove "${SELECTED_FILES[@]}"
       apt-get check
       ;;
     dnf)

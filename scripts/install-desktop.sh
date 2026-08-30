@@ -4,6 +4,20 @@ set -euo pipefail
 desktop="${1:-}"
 profile_dir="${DROIDSPACES_DESKTOP_PROFILE_DIR:-/usr/local/lib/droidspaces/desktops}"
 
+case "${ENABLE_systemd257_ARG:-false}" in
+    true)
+        if [[ "$desktop" != none ]]; then
+            echo "systemd 257 构建只支持 none 桌面，拒绝安装：$desktop" >&2
+            exit 1
+        fi
+        ;;
+    false) ;;
+    *)
+        echo "ENABLE_systemd257_ARG 只支持 true 或 false。" >&2
+        exit 1
+        ;;
+esac
+
 case "$desktop" in
     none)
         echo "--> 桌面配置：none"

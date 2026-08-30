@@ -77,6 +77,7 @@ jobs:
     outputs:
       templates: ${{ steps.find-templates.outputs.templates }}
       desktop: ${{ steps.find-templates.outputs.desktop }}
+      desktop_autostart: ${{ steps.find-templates.outputs.desktop_autostart }}
       display_backend: ${{ steps.find-templates.outputs.display_backend }}
       pulseaudio_effective: ${{ steps.find-templates.outputs.pulseaudio_effective }}
       build_id: ${{ steps.prep.outputs.build_id }}
@@ -95,6 +96,7 @@ jobs:
           DESKTOP_AUTOSTART_INPUT: ${{ inputs.desktop_autostart }}
           DESKTOP_INPUT: ${{ inputs.desktop }}
           DISPLAY_BACKEND_INPUT: ${{ inputs.display_backend }}
+          ENABLE_SYSTEMD257_INPUT: ${{ inputs.enable_systemd257 }}
           PULSEAUDIO_INPUT: ${{ inputs.PulseAudio }}
           UI_LANGUAGE: ${{ inputs.ui_language }}
           WAYLAND_PACKAGE_REPOSITORY: ${{ inputs.wayland_package_repository }}
@@ -138,6 +140,20 @@ jobs:
           fi
           DESKTOP_AUTOSTART="$DESKTOP_AUTOSTART_INPUT"
           PULSE_AUDIO="$PULSEAUDIO_INPUT"
+
+          if [ "$ENABLE_SYSTEMD257_INPUT" = "true" ]; then
+            [ "$TARGET" != "all-wayland" ] || {
+              fail "systemd 257 仅支持无桌面构建，不能与 all-wayland 一起使用。" \
+                "systemd 257 only supports desktop-free builds and cannot be combined with all-wayland."
+            }
+            if [ "$DESKTOP" != "none" ] || [ "$DESKTOP_AUTOSTART" != "false" ]; then
+              message "已启用 systemd 257：强制使用 none 桌面并关闭桌面开机自启动。" \
+                "systemd 257 is enabled: forcing desktop=none and disabling desktop auto-start."
+            fi
+            DESKTOP="none"
+            DISPLAY_BACKEND="x11"
+            DESKTOP_AUTOSTART="false"
+          fi
 
           if [[ ! "$WAYLAND_PACKAGE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
             fail "Wayland 软件包仓库必须使用公开的“所有者/仓库名”格式。" \
@@ -197,10 +213,13 @@ jobs:
           fi
           echo "templates=$TEMPLATES" >> "$GITHUB_OUTPUT"
           echo "desktop=$DESKTOP" >> "$GITHUB_OUTPUT"
+          echo "desktop_autostart=$DESKTOP_AUTOSTART" >> "$GITHUB_OUTPUT"
           echo "display_backend=$DISPLAY_BACKEND" >> "$GITHUB_OUTPUT"
           echo "pulseaudio_effective=$PULSE_AUDIO" >> "$GITHUB_OUTPUT"
           message "最终构建矩阵：$TEMPLATES" "Final decided build matrix: $TEMPLATES"
           message "桌面环境：$DESKTOP" "Desktop profile: $DESKTOP"
+          message "桌面开机自启动：$DESKTOP_AUTOSTART" \
+            "Desktop auto-start: $DESKTOP_AUTOSTART"
           message "显示后端：$DISPLAY_BACKEND" "Display backend: $DISPLAY_BACKEND"
           message "Wayland 软件包仓库：$WAYLAND_PACKAGE_REPOSITORY" \
             "Wayland package repository: $WAYLAND_PACKAGE_REPOSITORY"
@@ -250,7 +269,7 @@ jobs:
             -i "${{ matrix.template }}.Dockerfile" \
             -v "${{ needs.setup.outputs.build_id }}" \
             -K "${{ needs.setup.outputs.desktop }}" \
-            -L "${{ inputs.desktop_autostart }}" \
+            -L "${{ needs.setup.outputs.desktop_autostart }}" \
             -B "${{ needs.setup.outputs.display_backend }}" \
             -P "${{ needs.setup.outputs.pulseaudio_effective }}" \
             -g "${{ inputs.enable_zh_tz }}" \
@@ -309,7 +328,7 @@ jobs:
           BUILD_ID: ${{ needs.setup.outputs.build_id }}
           CUSTOM_USERNAME: ${{ inputs.custom_username }}
           DESKTOP: ${{ needs.setup.outputs.desktop }}
-          DESKTOP_AUTOSTART: ${{ inputs.desktop_autostart }}
+          DESKTOP_AUTOSTART: ${{ needs.setup.outputs.desktop_autostart }}
           DISPLAY_BACKEND: ${{ needs.setup.outputs.display_backend }}
           WAYLAND_PACKAGE_REPOSITORY: ${{ inputs.wayland_package_repository }}
           PULSE_AUDIO: ${{ needs.setup.outputs.pulseaudio_effective }}

@@ -81,7 +81,7 @@ on:
         type: boolean
         default: false
       enable_systemd257:
-        description: Use the managed systemd 257 package family on newer distributions
+        description: Use the managed systemd 257 package family (forces desktop to none)
         required: true
         type: boolean
         default: false

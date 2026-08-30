@@ -60,6 +60,18 @@ if ! DISPLAY_BACKEND="$(display_backend_normalize "$DISPLAY_BACKEND_INPUT")"; th
   exit 1
 fi
 case "$DESKTOP_AUTOSTART" in true|false) ;; *) echo "错误：-L 只支持 true 或 false。" >&2; exit 1 ;; esac
+case "$ENABLE_systemd257" in
+  true)
+    if [[ "$DESKTOP" != none || "$DESKTOP_AUTOSTART" != false ]]; then
+      echo "提示：systemd 257 已启用，强制使用 none 桌面并关闭桌面自启动。"
+    fi
+    DESKTOP="none"
+    DISPLAY_BACKEND="x11"
+    DESKTOP_AUTOSTART="false"
+    ;;
+  false) ;;
+  *) echo "错误：-S 只支持 true 或 false。" >&2; exit 1 ;;
+esac
 
 if [[ "$DESKTOP" == kde-mobile || "$DESKTOP" == gnome ]]; then
   DISPLAY_BACKEND="anland-wayland"

@@ -81,7 +81,7 @@ on:
         type: boolean
         default: true
       enable_systemd257:
-        description: 在较新发行版使用由包管理器管控的 systemd 257 包族
+        description: 使用由包管理器管控的 systemd 257 包族（强制桌面为 none）
         required: true
         type: boolean
         default: false
