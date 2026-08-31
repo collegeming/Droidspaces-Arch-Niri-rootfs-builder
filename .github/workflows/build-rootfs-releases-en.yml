@@ -81,7 +81,7 @@ on:
         type: boolean
         default: false
       enable_systemd257:
-        description: Use the managed systemd 257 package family (forces desktop to none)
+        description: Use the systemd 257 package family (none and standard KDE only)
         required: true
         type: boolean
         default: false

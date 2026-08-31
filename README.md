@@ -56,7 +56,7 @@
 - 开发工具：可选安装编译器、CMake、Python 开发环境等。
 - 压缩工具：可选安装 `zip`、`unzip`、`7z`、`xz`、`tar`、`gzip` 等工具。
 - Docker：可选在 RootFS 内安装 Docker 相关软件包。
-- 旧内核 systemd 兼容：可选在 systemd 主版本高于 257 的 apt、dnf 或 pacman 发行版中安装由包管理器管控的完整 systemd 257 包族；启用后强制使用 `none` 桌面，Debian 13 等已是 257 或更低版本时会自动跳过安装。
+- 旧内核 systemd 兼容：可选在 systemd 主版本高于 257 的 apt、dnf 或 pacman 发行版中安装由包管理器管控的完整 systemd 257 包族；只支持 `none` 和经过验证的普通 `KDE`，Debian 13 等已是 257 或更低版本时会自动跳过安装。
 - Wayland/Anland：通过独立的 [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) 仓库提供 ARM64 patched KWin/Xwayland；GNOME 在 Debian 13、Ubuntu 26.04 上使用独立的 patched Mutter/Xwayland 包族。
 - USB 设备管理：全部发行版内置 Droidspaces USB Manager，支持 USB 存储、ADB 设备节点、挂载、卸载和系统托盘。
 - Release 自动发布：构建完成后会把 RootFS `.tar.xz` 上传到 GitHub Release。
@@ -78,7 +78,7 @@ GitHub Actions 的主要输入项如下：
 | 修复 8Gen2 Wayland 花屏 (`enable_8gen2_wayland`) | `true`、`false` | `false` | 为 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch 写入 `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` 到 `/etc/environment`。 |
 | 集成 TMOE (`enable_tmoe`) | `true`、`false` | `true` | 集成 TMOE。 |
 | 移除 Ubuntu Snap (`nosnap`) | `true`、`false` | `false` | 只对 Ubuntu 有意义，用于移除 Snap、snapd 和可能重新安装 snapd 的 APT 策略。 |
-| systemd 257 旧内核兼容 (`enable_systemd257`) | `true`、`false` | `false` | 启用后强制 `desktop=none`、`desktop_autostart=false` 和 `display_backend=x11`；当前 systemd 主版本高于 257 时从 `droidspaces-package` 安装完整原生包族，257 及更低版本跳过安装。安装后锁定 systemd 相关包。 |
+| systemd 257 旧内核兼容 (`enable_systemd257`) | `true`、`false` | `false` | 只支持 `none` 和普通 `KDE`。普通 KDE 保留所选后端与自启动设置；其他桌面强制回退到 `none`，`all-wayland` 下则直接拒绝。当前 systemd 高于 257 时安装完整原生包族并锁定，257 及更低版本跳过安装。 |
 | 输入法 Fcitx5 支持 (`enable_srf`) | `true`、`false` | `false` | 安装 Fcitx5 输入法。 |
 | 跨架构支持 (`enable_binfmt`) | `true`、`false` | `false` | 在 RootFS 内加入 binfmt 跨架构支持组件。Arch 当前不建议使用。 |
 | NAT 和硬件识别支持 (`enable_yj`) | `true`、`false` | `true` | 启用容器硬件和网络识别增强。 |
@@ -108,7 +108,7 @@ GitHub Actions 的主要输入项如下：
 
 开启 `enable_systemd257` 后，RootFS 会运行 `scripts/systemd257.sh`。脚本会先检测发行版现有的 systemd 主版本：
 
-- 工作流在生成构建矩阵时强制使用 `none` 桌面、关闭桌面开机自启动并使用 `x11` 占位后端；`all-wayland` 与该选项互斥；
+- 支持白名单只有 `none` 和普通 `KDE`：普通 KDE 保留 X11/Anland Wayland 与桌面自启动设置；GNOME、KDE Mobile 及未来新增但未经验证的桌面会回退到 `none`，在 `all-wayland` 下则直接拒绝；
 - 257 或更低版本（例如 Debian 13、Ubuntu 24.04）直接跳过；
 - 高于 257 的 apt、dnf 和 pacman 系统从 `droidspaces-package` 的冻结兼容 Release `systemd257-packages` 安装对应发行版的完整 systemd 257 包族；后续包族先发布到不可变标签，再由 RootFS 一次性更新标签与校验元数据；
 - 安装由发行版包管理器完成；APT 事务禁止删除任何现有包，安装完成后锁定 systemd 相关软件包，防止后续升级覆盖兼容版本。

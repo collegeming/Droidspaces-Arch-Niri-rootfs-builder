@@ -142,17 +142,27 @@ jobs:
           PULSE_AUDIO="$PULSEAUDIO_INPUT"
 
           if [ "$ENABLE_SYSTEMD257_INPUT" = "true" ]; then
-            [ "$TARGET" != "all-wayland" ] || {
-              fail "systemd 257 仅支持无桌面构建，不能与 all-wayland 一起使用。" \
-                "systemd 257 only supports desktop-free builds and cannot be combined with all-wayland."
-            }
-            if [ "$DESKTOP" != "none" ] || [ "$DESKTOP_AUTOSTART" != "false" ]; then
-              message "已启用 systemd 257：强制使用 none 桌面并关闭桌面开机自启动。" \
-                "systemd 257 is enabled: forcing desktop=none and disabling desktop auto-start."
-            fi
-            DESKTOP="none"
-            DISPLAY_BACKEND="x11"
-            DESKTOP_AUTOSTART="false"
+            case "$DESKTOP" in
+              kde)
+                message "已启用 systemd 257：普通 KDE 位于验证支持白名单中。" \
+                  "systemd 257 is enabled: standard KDE is on the verified support allowlist."
+                ;;
+              none)
+                DISPLAY_BACKEND="x11"
+                DESKTOP_AUTOSTART="false"
+                ;;
+              *)
+                [ "$TARGET" != "all-wayland" ] || {
+                  fail "systemd 257 的 all-wayland 构建只支持普通 KDE。" \
+                    "systemd 257 all-wayland builds only support standard KDE."
+                }
+                message "systemd 257 尚不支持 $DESKTOP：强制使用 none 桌面并关闭桌面开机自启动。" \
+                  "systemd 257 does not support $DESKTOP: forcing desktop=none and disabling desktop auto-start."
+                DESKTOP="none"
+                DISPLAY_BACKEND="x11"
+                DESKTOP_AUTOSTART="false"
+                ;;
+            esac
           fi
 
           if [[ ! "$WAYLAND_PACKAGE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then

@@ -55,7 +55,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Optional development toolchain packages, including compilers, CMake, and Python development tooling.
 - Optional compression utilities such as `zip`, `unzip`, `7z`, `xz`, `tar`, and `gzip`.
 - Optional Docker packages inside the RootFS.
-- Optional old-kernel systemd compatibility: on apt, dnf, or pacman targets whose systemd major version is above 257, install a complete package-manager-owned systemd 257 family; enabling it forces the `none` desktop, while Debian 13 and other 257-or-older systems skip installation automatically.
+- Optional old-kernel systemd compatibility: on apt, dnf, or pacman targets whose systemd major version is above 257, install a complete package-manager-owned systemd 257 family; only `none` and verified standard `KDE` are supported, while Debian 13 and other 257-or-older systems skip installation automatically.
 - ARM64 Wayland/Anland support through the separate [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) repository: patched KWin/Xwayland for KDE, plus patched Mutter/Xwayland for GNOME on Debian 13 and Ubuntu 26.04.
 - USB device management on every distribution through Droidspaces USB Manager, including USB storage, ADB device nodes, mounting, unmounting, and a system tray interface.
 - Automatic Release publishing with the RootFS `.tar.xz` files.
@@ -77,7 +77,7 @@ The main GitHub Actions inputs are:
 | Fix Snapdragon 8 Gen 2 Wayland display corruption (`enable_8gen2_wayland`) | `true`, `false` | `false` | Writes `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` to `/etc/environment` for Debian 13, Ubuntu 26, Fedora 43/44, and Arch. |
 | Integrate TMOE (`enable_tmoe`) | `true`, `false` | `true` | Integrates TMOE. |
 | Remove Ubuntu Snap (`nosnap`) | `true`, `false` | `false` | Ubuntu-only option that removes Snap, snapd, and APT policy paths that may reinstall snapd. |
-| systemd 257 old-kernel compatibility (`enable_systemd257`) | `true`, `false` | `false` | Forces `desktop=none`, `desktop_autostart=false`, and `display_backend=x11`; installs the complete native family from `droidspaces-package` when the current systemd major is above 257, skips installation on 257 or older, and locks systemd packages afterward. |
+| systemd 257 old-kernel compatibility (`enable_systemd257`) | `true`, `false` | `false` | Supports only `none` and standard `KDE`. KDE keeps the selected backend and auto-start setting; other desktops fall back to `none`, or are rejected with `all-wayland`. Installs and locks the complete native family above systemd 257, and skips installation on 257 or older. |
 | Fcitx5 input method support (`enable_srf`) | `true`, `false` | `false` | Installs Fcitx5 input method support. |
 | Cross-architecture support (`enable_binfmt`) | `true`, `false` | `false` | Adds binfmt cross-architecture components inside the RootFS. Not recommended for Arch in this project. |
 | NAT and hardware recognition (`enable_yj`) | `true`, `false` | `true` | Enables container hardware and network recognition improvements. |
@@ -107,7 +107,7 @@ Audio mode details:
 
 When `enable_systemd257` is enabled, the build runs `scripts/systemd257.sh`. The script first detects the installed systemd major version:
 
-- matrix setup forces the `none` desktop, disables desktop auto-start, and uses `x11` as a placeholder backend; `all-wayland` is incompatible with this option;
+- the allowlist contains only `none` and standard `KDE`: KDE keeps its X11/Anland Wayland and auto-start settings; GNOME, KDE Mobile, and future unverified desktops fall back to `none`, or are rejected under `all-wayland`;
 - systemd 257 or older (for example Debian 13 and Ubuntu 24.04) is skipped;
 - apt, dnf, and pacman systems above 257 install their complete systemd 257 package family from the frozen compatibility Release `systemd257-packages` in `droidspaces-package`; later package sets are published under immutable tags before the RootFS updates its tag and pinned verification metadata together;
 - installation is handled by the native package manager; APT is forbidden from removing existing packages, and systemd-related packages are locked so a later upgrade does not overwrite the compatibility version.

@@ -81,7 +81,7 @@ on:
         type: boolean
         default: true
       enable_systemd257:
-        description: 使用由包管理器管控的 systemd 257 包族（强制桌面为 none）
+        description: 使用 systemd 257 包族（仅支持 none 和普通 KDE）
         required: true
         type: boolean
         default: false
