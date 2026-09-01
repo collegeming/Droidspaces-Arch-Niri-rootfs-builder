@@ -4,8 +4,8 @@ set -euo pipefail
 # The package archives are deliberately kept out of Git. Override the
 # repository when installing packages published by a fork.
 readonly DEFAULT_REPOSITORY="Goldzxcbug/droidspaces-package"
-readonly RELEASE_REPOSITORY="${ANLAND_RELEASE_REPOSITORY:-${ANLAND_GNOME_RELEASE_REPOSITORY:-$DEFAULT_REPOSITORY}}"
-RELEASE_TAG="${ANLAND_RELEASE_TAG:-${ANLAND_GNOME_RELEASE_TAG:-}}"
+readonly RELEASE_REPOSITORY="${ANLAND_GNOME_RELEASE_REPOSITORY:-$DEFAULT_REPOSITORY}"
+RELEASE_TAG="${ANLAND_GNOME_RELEASE_TAG:-}"
 readonly ROLLING_RELEASE_TAG="anland-gnome-packages"
 readonly MANIFEST_NAME="anland-gnome-manifest"
 readonly MAX_ARCHIVE_BYTES=$((512 * 1024 * 1024))
@@ -14,7 +14,7 @@ readonly SOURCE_PROBE_TIMEOUT_SECONDS=2
 readonly GITHUB_RELEASE_URL="https://github.com"
 readonly GITHUB_API_URL="https://api.github.com"
 readonly GH_PROXY_RELEASE_URL="https://gh-proxy.com/https://github.com"
-readonly GHPROXY_NET_RELEASE_URL="https://ghproxy.net/https://github.com"
+readonly CNB_RELEASE_URL="https://cnb.cool"
 readonly APT_HOLD_STATE="/var/lib/anland-gnome/apt-holds"
 
 WORK_DIR=""
@@ -101,8 +101,8 @@ require_root() {
     [[ "$script_path" = /* ]] || script_path="$PWD/$script_path"
     local status
     if sudo env \
-        "ANLAND_RELEASE_REPOSITORY=$RELEASE_REPOSITORY" \
-        "ANLAND_RELEASE_TAG=$RELEASE_TAG" \
+        "ANLAND_GNOME_RELEASE_REPOSITORY=$RELEASE_REPOSITORY" \
+        "ANLAND_GNOME_RELEASE_TAG=$RELEASE_TAG" \
         "ANLAND_GNOME_WORK_DIR=$WORK_DIR" \
         "ANLAND_GNOME_PACKAGE_DIR=$PACKAGE_DIR" \
         bash "$script_path" "$@"; then
@@ -304,38 +304,41 @@ resolve_official_archive_sha256() {
 }
 
 release_download_base() {
-    local source_url
-
     case "$DOWNLOAD_SOURCE" in
-        1) source_url="$GITHUB_RELEASE_URL" ;;
-        2) source_url="$GH_PROXY_RELEASE_URL" ;;
-        3) source_url="$GHPROXY_NET_RELEASE_URL" ;;
+        1) printf '%s/%s/releases/download/%s' "$GITHUB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
+        2) printf '%s/%s/releases/download/%s' "$GH_PROXY_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
+        3) printf '%s/%s/-/releases/download/%s' "$CNB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
         *) die "下载源选择无效。" "The selected download source is invalid." ;;
     esac
-    printf '%s/%s/releases/download/%s' "$source_url" "$RELEASE_REPOSITORY" "$RELEASE_TAG"
 }
 
 download_source_name() {
     case "$1" in
         1) printf 'GitHub' ;;
         2) printf 'gh-proxy.com' ;;
-        3) printf 'ghproxy.net' ;;
+        3) printf 'CNB' ;;
         *) return 1 ;;
     esac
 }
 
 download_source_probe_url() {
     local source="$1"
-    local source_url
 
     case "$source" in
-        1) source_url="$GITHUB_RELEASE_URL" ;;
-        2) source_url="$GH_PROXY_RELEASE_URL" ;;
-        3) source_url="$GHPROXY_NET_RELEASE_URL" ;;
+        1)
+            printf '%s/%s/releases/download/%s/%s' \
+                "$GITHUB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
+        2)
+            printf '%s/%s/releases/download/%s/%s' \
+                "$GH_PROXY_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
+        3)
+            printf '%s/%s/-/releases/download/%s/%s' \
+                "$CNB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
         *) return 1 ;;
     esac
-    printf '%s/%s/releases/download/%s/%s' \
-        "$source_url" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
 }
 
 format_latency() {
@@ -398,7 +401,7 @@ probe_download_source() {
 }
 
 select_download_source() {
-    local source latency choice
+    local source latency choice recommendation
 
     if [[ "$SKIP_SOURCE_PROBE" == true ]]; then
         log "已按参数选择 $(download_source_name "$DOWNLOAD_SOURCE")，跳过延迟测试。" \
@@ -410,8 +413,12 @@ select_download_source() {
         "Testing download-source latency (timeouts at ${SOURCE_PROBE_TIMEOUT_SECONDS} seconds)..."
     for source in 1 2 3; do
         latency="$(probe_download_source "$source")"
-        printf '%s. %s %s: %s\n' "$source" "$(download_source_name "$source")" \
-            "$(msg '延迟' 'latency')" "$latency"
+        recommendation=""
+        if [[ "$source" == "3" ]]; then
+            recommendation="$(msg '（推荐）' ' (recommended)')"
+        fi
+        printf '%s. %s%s %s: %s\n' "$source" "$(download_source_name "$source")" \
+            "$recommendation" "$(msg '延迟' 'latency')" "$latency"
     done
 
     while :; do
@@ -640,34 +647,22 @@ write_apt_hold_state() {
 }
 
 install_deb_packages() {
-    local -a archive_files files packages skipped_packages
+    local -a files packages
     local file package
 
     command -v apt-get >/dev/null 2>&1 || die "未找到 apt-get。" "apt-get was not found."
     command -v dpkg-deb >/dev/null 2>&1 || die "未找到 dpkg-deb。" "dpkg-deb was not found."
-    mapfile -t archive_files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.deb' -print | sort)
-    for file in "${archive_files[@]}"; do
-        package="$(dpkg-deb -f "$file" Package)"
-        case "$package" in
-            libmutter-test-*|mutter-*-tests|mutter-tests|mutter-dev-bin|mutter-doc)
-                skipped_packages+=("$package")
-                continue
-                ;;
-        esac
-        [[ -n "$package" ]] || die "无法读取 deb 包名。" "Could not determine a deb package name."
-        files+=("$file")
-        packages+=("$package")
-    done
+    mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.deb' -print | sort)
     ((${#files[@]} > 0)) || die "没有可安装的 deb 包。" "No installable deb packages were found."
 
-    if ((${#skipped_packages[@]} > 0)); then
-        log "跳过非运行时包：${skipped_packages[*]}。" \
-            "Skipping non-runtime packages: ${skipped_packages[*]}."
-    fi
     log "正在安装 ${#files[@]} 个 deb 包并自动处理依赖..." \
         "Installing ${#files[@]} deb packages and resolving dependencies..."
     apt-get install -y --allow-downgrades --allow-change-held-packages "${files[@]}"
 
+    for file in "${files[@]}"; do
+        package="$(dpkg-deb -f "$file" Package)"
+        [[ -n "$package" ]] && packages+=("$package")
+    done
     mapfile -t packages < <(printf '%s\n' "${packages[@]}" | sort -u)
     ((${#packages[@]} > 0)) || die "无法读取 deb 包名。" "Could not determine the deb package names."
 

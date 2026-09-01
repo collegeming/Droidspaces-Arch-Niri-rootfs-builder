@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 软件包归档不会存入 Git；安装 Fork 发布的软件包时可覆盖仓库地址。
+# The package archives are deliberately kept out of Git. Override the
+# repository when installing packages published by a fork.
 readonly DEFAULT_REPOSITORY="Goldzxcbug/droidspaces-package"
-readonly RELEASE_REPOSITORY="${ANLAND_RELEASE_REPOSITORY:-${ANLAND_KDE_RELEASE_REPOSITORY:-$DEFAULT_REPOSITORY}}"
-RELEASE_TAG="${ANLAND_RELEASE_TAG:-${ANLAND_KDE_RELEASE_TAG:-}}"
+readonly RELEASE_REPOSITORY="${ANLAND_KDE_RELEASE_REPOSITORY:-$DEFAULT_REPOSITORY}"
+RELEASE_TAG="${ANLAND_KDE_RELEASE_TAG:-}"
 readonly ROLLING_RELEASE_TAG="anland-kde-packages"
 readonly MANIFEST_NAME="anland-kde-manifest"
 readonly MAX_ARCHIVE_BYTES=$((512 * 1024 * 1024))
@@ -13,7 +14,7 @@ readonly SOURCE_PROBE_TIMEOUT_SECONDS=2
 readonly GITHUB_RELEASE_URL="https://github.com"
 readonly GITHUB_API_URL="https://api.github.com"
 readonly GH_PROXY_RELEASE_URL="https://gh-proxy.com/https://github.com"
-readonly GHPROXY_NET_RELEASE_URL="https://ghproxy.net/https://github.com"
+readonly CNB_RELEASE_URL="https://cnb.cool"
 readonly APT_HOLD_STATE="/var/lib/anland-kde/apt-holds"
 readonly DNF_MANAGED_BEGIN="# BEGIN anland-kde package holds"
 readonly DNF_MANAGED_END="# END anland-kde package holds"
@@ -106,8 +107,8 @@ require_root() {
     [[ "$script_path" = /* ]] || script_path="$PWD/$script_path"
     local status
     if sudo env \
-        "ANLAND_RELEASE_REPOSITORY=$RELEASE_REPOSITORY" \
-        "ANLAND_RELEASE_TAG=$RELEASE_TAG" \
+        "ANLAND_KDE_RELEASE_REPOSITORY=$RELEASE_REPOSITORY" \
+        "ANLAND_KDE_RELEASE_TAG=$RELEASE_TAG" \
         "ANLAND_KDE_WORK_DIR=$WORK_DIR" \
         "ANLAND_KDE_PACKAGE_DIR=$PACKAGE_DIR" \
         bash "$script_path" "$@"; then
@@ -336,38 +337,41 @@ resolve_official_archive_sha256() {
 }
 
 release_download_base() {
-    local source_url
-
     case "$DOWNLOAD_SOURCE" in
-        1) source_url="$GITHUB_RELEASE_URL" ;;
-        2) source_url="$GH_PROXY_RELEASE_URL" ;;
-        3) source_url="$GHPROXY_NET_RELEASE_URL" ;;
+        1) printf '%s/%s/releases/download/%s' "$GITHUB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
+        2) printf '%s/%s/releases/download/%s' "$GH_PROXY_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
+        3) printf '%s/%s/-/releases/download/%s' "$CNB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
         *) die "下载源选择无效。" "The selected download source is invalid." ;;
     esac
-    printf '%s/%s/releases/download/%s' "$source_url" "$RELEASE_REPOSITORY" "$RELEASE_TAG"
 }
 
 download_source_name() {
     case "$1" in
         1) printf 'GitHub' ;;
         2) printf 'gh-proxy.com' ;;
-        3) printf 'ghproxy.net' ;;
+        3) printf 'CNB' ;;
         *) return 1 ;;
     esac
 }
 
 download_source_probe_url() {
     local source="$1"
-    local source_url
 
     case "$source" in
-        1) source_url="$GITHUB_RELEASE_URL" ;;
-        2) source_url="$GH_PROXY_RELEASE_URL" ;;
-        3) source_url="$GHPROXY_NET_RELEASE_URL" ;;
+        1)
+            printf '%s/%s/releases/download/%s/%s' \
+                "$GITHUB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
+        2)
+            printf '%s/%s/releases/download/%s/%s' \
+                "$GH_PROXY_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
+        3)
+            printf '%s/%s/-/releases/download/%s/%s' \
+                "$CNB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
         *) return 1 ;;
     esac
-    printf '%s/%s/releases/download/%s/%s' \
-        "$source_url" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
 }
 
 format_latency() {
@@ -430,7 +434,7 @@ probe_download_source() {
 }
 
 select_download_source() {
-    local source latency choice
+    local source latency choice recommendation
 
     if [[ "$SKIP_SOURCE_PROBE" == true ]]; then
         log "已按参数选择 $(download_source_name "$DOWNLOAD_SOURCE")，跳过延迟测试。" \
@@ -442,8 +446,12 @@ select_download_source() {
         "Testing download-source latency (timeouts at ${SOURCE_PROBE_TIMEOUT_SECONDS} seconds)..."
     for source in 1 2 3; do
         latency="$(probe_download_source "$source")"
-        printf '%s. %s %s: %s\n' "$source" "$(download_source_name "$source")" \
-            "$(msg '延迟' 'latency')" "$latency"
+        recommendation=""
+        if [[ "$source" == "3" ]]; then
+            recommendation="$(msg '（推荐）' ' (recommended)')"
+        fi
+        printf '%s. %s%s %s: %s\n' "$source" "$(download_source_name "$source")" \
+            "$recommendation" "$(msg '延迟' 'latency')" "$latency"
     done
 
     while :; do
@@ -853,8 +861,8 @@ remove_managed_dnf_excludes() {
     local dnf_conf="$1"
     local temporary_conf mesa_stripped_conf transaction_conf
 
-    # 本地补丁 RPM 必须临时绕过两个锁定块；调用方会在 DNF 事务结束后
-    # 立即恢复原始配置。
+    # Local patched RPMs must bypass both hold blocks. The caller restores
+    # the original configuration immediately after the DNF transaction.
     temporary_conf="$(mktemp -t anland-kde-dnf.XXXXXXXX)"
     mesa_stripped_conf="$(mktemp -t anland-kde-dnf.XXXXXXXX)"
     transaction_conf="$(mktemp -t anland-kde-dnf.XXXXXXXX)"
@@ -975,35 +983,14 @@ configure_dnf_excludes() {
 }
 
 install_rpm_packages() {
-    local -a files packages dnf_install_options=('--allow-downgrade')
-    local -A expected_nevra_by_package=()
+    local -a files packages dnf_install_options=()
     local dnf_conf="/etc/dnf/dnf.conf"
     local dnf_backup
-    local file package expected_nevra actual_nevra
-    local verification_failed=false
 
     command -v dnf >/dev/null 2>&1 || die "未找到 dnf。" "dnf was not found."
     command -v rpm >/dev/null 2>&1 || die "未找到 rpm。" "rpm was not found."
     mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.rpm' -print | sort)
     ((${#files[@]} > 0)) || die "没有可安装的 rpm 包。" "No installable rpm packages were found."
-
-    for file in "${files[@]}"; do
-        package="$(rpm -qp --queryformat '%{NAME}' "$file")" || die \
-            "无法读取 rpm 包名：${file##*/}。" \
-            "Could not read the RPM package name: ${file##*/}."
-        expected_nevra="$(rpm -qp --queryformat '%{NAME}-%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}' "$file")" || die \
-            "无法读取 rpm NEVRA：${file##*/}。" \
-            "Could not read the RPM NEVRA: ${file##*/}."
-        [[ -n "$package" && -n "$expected_nevra" ]] || die \
-            "rpm 元数据不完整：${file##*/}。" \
-            "The RPM metadata is incomplete: ${file##*/}."
-        [[ -z "${expected_nevra_by_package[$package]+present}" ]] || die \
-            "下载包包含重复的 rpm 包名：${package}。" \
-            "The archive contains a duplicate RPM package name: ${package}."
-        expected_nevra_by_package["$package"]="$expected_nevra"
-        packages+=("$package")
-    done
-    mapfile -t packages < <(printf '%s\n' "${packages[@]}" | sort -u)
 
     log "正在安装 ${#files[@]} 个 rpm 包并自动处理依赖..." \
         "Installing ${#files[@]} rpm packages and resolving dependencies..."
@@ -1027,25 +1014,8 @@ install_rpm_packages() {
         die "无法恢复 DNF 锁定配置。" "Unable to restore the DNF hold configuration."
     fi
 
-    for package in "${packages[@]}"; do
-        if ! actual_nevra="$(rpm -q --queryformat '%{NAME}-%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}\n' "$package" 2>/dev/null)"; then
-            log "安装后找不到 rpm 包：${package}。" \
-                "The RPM package is missing after installation: ${package}."
-            verification_failed=true
-            continue
-        fi
-        if [[ "$actual_nevra" != "${expected_nevra_by_package[$package]}" ]]; then
-            log "rpm 版本不匹配：${package}，需要 ${expected_nevra_by_package[$package]}，实际为 ${actual_nevra//$'\n'/, }。" \
-                "RPM version mismatch for ${package}: expected ${expected_nevra_by_package[$package]}, got ${actual_nevra//$'\n'/, }."
-            verification_failed=true
-        fi
-    done
-    if [[ "$verification_failed" == true ]]; then
-        rm -f -- "$dnf_backup"
-        die "rpm 安装结果未通过 NEVRA 校验，未写入软件包锁定。" \
-            "The RPM transaction failed NEVRA verification; package holds were not written."
-    fi
-
+    mapfile -t packages < <(rpm -qp --queryformat '%{NAME}\n' "${files[@]}" | sort -u)
+    ((${#packages[@]} > 0)) || die "无法读取 rpm 包名。" "Could not determine the rpm package names."
     log "正在设置 DNF exclude（等效于 hold）..." "Applying DNF excludes (equivalent to hold)..."
     if ! configure_dnf_excludes; then
         install -m 0644 "$dnf_backup" "$dnf_conf" || true

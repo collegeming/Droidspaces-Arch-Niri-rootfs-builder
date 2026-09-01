@@ -9,9 +9,10 @@ readonly SOURCE_PROBE_TIMEOUT_SECONDS=2
 readonly GITHUB_URL="https://github.com"
 readonly GITHUB_API_URL="https://api.github.com"
 readonly GH_PROXY_URL="https://gh-proxy.com/https://github.com"
-readonly GHPROXY_NET_URL="https://ghproxy.net/https://github.com"
+readonly CNB_RELEASE_URL="https://cnb.cool"
 readonly MAX_ARCHIVE_BYTES=$((2 * 1024 * 1024 * 1024))
 readonly MAX_EXTRACTED_BYTES=$((6 * 1024 * 1024 * 1024))
+readonly DOWNLOAD_CACHE_DIR="/var/cache/hangover-wine"
 
 UI_LANG=en
 DOWNLOAD_SOURCE=""
@@ -24,6 +25,8 @@ ARCHIVE_NAME=""
 PACKAGE_DIR=""
 WORK_DIR=""
 RELEASE_METADATA=""
+APT_TEMPORARY_HOLDS=()
+BOOTSTRAP_PACKAGES=()
 
 detect_language() {
     local locale_name="${LC_ALL:-${LC_MESSAGES:-${LANG:-C}}}"
@@ -56,7 +59,7 @@ $(msg '用法' 'Usage'): $0 [--1|--2|--3]
   $(msg '不带参数：测试三个下载源的延迟后交互选择' 'No option: test all three sources, then choose interactively')
   --1, -1  GitHub
   --2, -2  gh-proxy.com
-  --3, -3  ghproxy.net
+  --3, -3  CNB
 EOF
 }
 
@@ -89,6 +92,9 @@ parse_arguments() {
 }
 
 cleanup() {
+    if ((${#APT_TEMPORARY_HOLDS[@]} > 0)) && command -v apt-mark >/dev/null 2>&1; then
+        apt-mark unhold "${APT_TEMPORARY_HOLDS[@]}" >/dev/null 2>&1 || true
+    fi
     if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
         rm -rf -- "$WORK_DIR"
     fi
@@ -188,7 +194,107 @@ require_root() {
         bash "$script_path" "$@"
 }
 
+protect_deb_system_packages() {
+    local package
+    local -a installed=() held=()
+    local -A was_held=()
+
+    command -v apt-mark >/dev/null 2>&1 || \
+        die "缺少命令：apt-mark。" "Required command is missing: apt-mark."
+    command -v dpkg-query >/dev/null 2>&1 || \
+        die "缺少命令：dpkg-query。" "Required command is missing: dpkg-query."
+
+    mapfile -t installed < <(
+        dpkg-query -W -f='${db:Status-Abbrev}\t${Package}\n' \
+            'systemd' 'systemd-*' 'libsystemd*' 'libudev*' 'udev' 2>/dev/null |
+            awk -F '\t' '$1 == "ii " { print $2 }' |
+            sort -u
+    )
+    ((${#installed[@]} > 0)) || \
+        die "未找到已安装的 systemd 包，拒绝继续修改容器。" \
+            "No installed systemd packages were found; refusing to modify the container."
+
+    mapfile -t held < <(apt-mark showhold 2>/dev/null || true)
+    for package in "${held[@]}"; do
+        was_held["${package%%:*}"]=1
+    done
+    for package in "${installed[@]}"; do
+        [[ -n "${was_held[$package]:-}" ]] || APT_TEMPORARY_HOLDS+=("$package")
+    done
+
+    if ((${#APT_TEMPORARY_HOLDS[@]} > 0)); then
+        log "正在为本次安装临时锁定 systemd/udev 包..." \
+            "Temporarily holding systemd/udev packages for this installation..."
+        if ! apt-mark hold "${APT_TEMPORARY_HOLDS[@]}" >/dev/null; then
+            apt-mark unhold "${APT_TEMPORARY_HOLDS[@]}" >/dev/null 2>&1 || true
+            APT_TEMPORARY_HOLDS=()
+            die "无法锁定 systemd/udev 包，拒绝继续安装。" \
+                "Could not hold the systemd/udev packages; refusing to continue."
+        fi
+    fi
+}
+
+protect_system_packages() {
+    # DNF and Pacman are constrained per transaction below.
+    case "$PACKAGE_KIND" in
+        deb) protect_deb_system_packages ;;
+        rpm|arch) ;;
+    esac
+}
+
+append_bootstrap_package() {
+    local package="$1"
+    local existing
+
+    for existing in "${BOOTSTRAP_PACKAGES[@]}"; do
+        [[ "$existing" == "$package" ]] && return
+    done
+    BOOTSTRAP_PACKAGES+=("$package")
+}
+
+require_command_package() {
+    command -v "$1" >/dev/null 2>&1 || append_bootstrap_package "$2"
+}
+
+collect_bootstrap_packages() {
+    BOOTSTRAP_PACKAGES=()
+
+    [[ -s /etc/ssl/certs/ca-certificates.crt || -s /etc/pki/tls/certs/ca-bundle.crt ]] || \
+        append_bootstrap_package ca-certificates
+    require_command_package curl curl
+    require_command_package jq jq
+    require_command_package sha256sum coreutils
+    require_command_package stat coreutils
+    require_command_package sort coreutils
+    require_command_package tar tar
+    require_command_package find findutils
+    require_command_package sed sed
+    require_command_package gzip gzip
+
+    case "$PACKAGE_KIND" in
+        deb)
+            require_command_package awk mawk
+            require_command_package dpkg-deb dpkg
+            ;;
+        rpm)
+            require_command_package awk gawk
+            require_command_package rpm rpm
+            ;;
+        arch)
+            require_command_package awk gawk
+            require_command_package pacman pacman
+            ;;
+    esac
+}
+
 bootstrap_dependencies() {
+    collect_bootstrap_packages
+    if ((${#BOOTSTRAP_PACKAGES[@]} == 0)); then
+        log "下载和校验工具已齐全，跳过包管理器事务。" \
+            "Download and verification tools are already available; skipping the package-manager transaction."
+        return
+    fi
+
     log "正在准备下载和校验工具..." "Preparing download and verification tools..."
     case "$PACKAGE_KIND" in
         deb)
@@ -211,44 +317,53 @@ bootstrap_dependencies() {
                 done
                 apt-get update
             fi
-            apt-get install -y --no-install-recommends ca-certificates curl jq coreutils tar gzip
+            apt-get install -y --no-install-recommends "${BOOTSTRAP_PACKAGES[@]}"
             ;;
         rpm)
-            dnf install -y --setopt=install_weak_deps=False ca-certificates curl jq coreutils tar gzip rpm
+            dnf install -y --setopt=install_weak_deps=False --exclude='systemd*' \
+                "${BOOTSTRAP_PACKAGES[@]}"
             ;;
         arch)
-            pacman -Syu --noconfirm --needed ca-certificates curl jq coreutils tar gzip
+            # A full upgrade would replace Droidspaces' patched systemd and break networking.
+            pacman -S --noconfirm --needed \
+                --ignore systemd,systemd-libs,systemd-sysvcompat \
+                "${BOOTSTRAP_PACKAGES[@]}"
             ;;
     esac
 
-    local command_name
-    for command_name in curl jq sha256sum stat tar find awk sed sort; do
-        command -v "$command_name" >/dev/null 2>&1 || \
-            die "缺少命令：$command_name。" "Required command is missing: $command_name."
-    done
+    collect_bootstrap_packages
+    ((${#BOOTSTRAP_PACKAGES[@]} == 0)) || \
+        die "仍缺少依赖包：${BOOTSTRAP_PACKAGES[*]}。" \
+            "Required packages are still unavailable: ${BOOTSTRAP_PACKAGES[*]}."
 }
 
 download_source_name() {
     case "$1" in
         1) printf 'GitHub' ;;
         2) printf 'gh-proxy.com' ;;
-        3) printf 'ghproxy.net' ;;
+        3) printf 'CNB' ;;
         *) return 1 ;;
     esac
 }
 
 download_source_probe_url() {
     local source="$1"
-    local prefix
 
     case "$source" in
-        1) prefix="$GITHUB_URL" ;;
-        2) prefix="$GH_PROXY_URL" ;;
-        3) prefix="$GHPROXY_NET_URL" ;;
+        1)
+            printf '%s/%s/releases/download/%s/%s' \
+                "$GITHUB_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
+        2)
+            printf '%s/%s/releases/download/%s/%s' \
+                "$GH_PROXY_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
+        3)
+            printf '%s/%s/-/releases/download/%s/%s' \
+                "$CNB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
+            ;;
         *) return 1 ;;
     esac
-    printf '%s/%s/releases/download/%s/%s' \
-        "$prefix" "$RELEASE_REPOSITORY" "$RELEASE_TAG" "$MANIFEST_NAME"
 }
 
 format_latency() {
@@ -284,7 +399,7 @@ probe_download_source() {
 }
 
 select_download_source() {
-    local source latency choice
+    local source latency choice recommendation
 
     if [[ "$SKIP_SOURCE_PROBE" == true ]]; then
         log "已按参数选择 $(download_source_name "$DOWNLOAD_SOURCE")，跳过延迟测试。" \
@@ -296,8 +411,12 @@ select_download_source() {
         "Testing download-source latency (timeouts at ${SOURCE_PROBE_TIMEOUT_SECONDS} seconds)..."
     for source in 1 2 3; do
         latency="$(probe_download_source "$source")"
-        printf '%s. %s %s: %s\n' "$source" "$(download_source_name "$source")" \
-            "$(msg '延迟' 'latency')" "$latency"
+        recommendation=""
+        if [[ "$source" == "3" ]]; then
+            recommendation="$(msg '（推荐）' ' (recommended)')"
+        fi
+        printf '%s. %s%s %s: %s\n' "$source" "$(download_source_name "$source")" \
+            "$recommendation" "$(msg '延迟' 'latency')" "$latency"
     done
 
     while :; do
@@ -319,19 +438,30 @@ select_download_source() {
 }
 
 release_download_base() {
-    local prefix
     case "$DOWNLOAD_SOURCE" in
-        1) prefix="$GITHUB_URL" ;;
-        2) prefix="$GH_PROXY_URL" ;;
-        3) prefix="$GHPROXY_NET_URL" ;;
+        1) printf '%s/%s/releases/download/%s' "$GITHUB_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
+        2) printf '%s/%s/releases/download/%s' "$GH_PROXY_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
+        3) printf '%s/%s/-/releases/download/%s' "$CNB_RELEASE_URL" "$RELEASE_REPOSITORY" "$RELEASE_TAG" ;;
         *) return 1 ;;
     esac
-    printf '%s/%s/releases/download/%s' "$prefix" "$RELEASE_REPOSITORY" "$RELEASE_TAG"
 }
 
 download_file() {
     local url="$1"
     local destination="$2"
+
+    if [[ -s "$destination" ]]; then
+        log "检测到未完成下载，正在续传：$(basename "$destination")" \
+            "Found an incomplete download; resuming: $(basename "$destination")"
+        if curl -fL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 1800 \
+            --continue-at - "$url" -o "$destination"; then
+            return 0
+        fi
+        log "服务器不支持续传或现有文件无效，准备重新下载：$(basename "$destination")" \
+            "The server rejected resume or the existing file is invalid; restarting: $(basename "$destination")"
+        rm -f -- "$destination"
+    fi
+
     curl -fL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 1800 \
         "$url" -o "$destination"
 }
@@ -494,15 +624,14 @@ validate_packages() {
 }
 
 download_and_extract() {
-    local base manifest archive attempt attempt_dir
+    local base manifest archive attempt
     WORK_DIR="$(mktemp -d -t hangover-wine.XXXXXXXX)"
+    install -d -m 0700 "$DOWNLOAD_CACHE_DIR"
+    chmod 0700 "$DOWNLOAD_CACHE_DIR"
     base="$(release_download_base)"
+    manifest="$DOWNLOAD_CACHE_DIR/$MANIFEST_NAME"
 
     for attempt in 1 2 3; do
-        attempt_dir="$WORK_DIR/attempt-$attempt"
-        mkdir -m 0700 "$attempt_dir"
-        manifest="$attempt_dir/$MANIFEST_NAME"
-
         log "正在从 $(download_source_name "$DOWNLOAD_SOURCE") 下载 Release 清单..." \
             "Downloading the Release manifest from $(download_source_name "$DOWNLOAD_SOURCE")..."
         if ! download_file "$base/$MANIFEST_NAME" "$manifest" || \
@@ -514,7 +643,7 @@ download_and_extract() {
         fi
         resolve_archive_name "$manifest"
 
-        archive="$attempt_dir/$ARCHIVE_NAME"
+        archive="$DOWNLOAD_CACHE_DIR/$ARCHIVE_NAME"
         log "正在下载 $TARGET_LABEL 软件包：$ARCHIVE_NAME" \
             "Downloading $TARGET_LABEL packages: $ARCHIVE_NAME"
         if ! download_file "$base/$ARCHIVE_NAME" "$archive" || \
@@ -526,8 +655,8 @@ download_and_extract() {
         fi
 
         validate_archive "$archive"
-        tar --no-same-owner --no-same-permissions -xzf "$archive" -C "$attempt_dir"
-        PACKAGE_DIR="$attempt_dir/hangover-wine-packages/$TARGET"
+        tar --no-same-owner --no-same-permissions -xzf "$archive" -C "$WORK_DIR"
+        PACKAGE_DIR="$WORK_DIR/hangover-wine-packages/$TARGET"
         [[ -d "$PACKAGE_DIR" ]] || die "解压后没有软件包目录。" "No package directory was extracted."
         validate_packages
         return
@@ -546,12 +675,12 @@ install_packages() {
             mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.deb' -print | sort)
             log "正在通过 APT 安装 ${#files[@]} 个包并处理依赖..." \
                 "Installing ${#files[@]} packages through APT and resolving dependencies..."
-            apt-get install -y --allow-downgrades "${files[@]}"
+            apt-get install -y --no-install-recommends --allow-downgrades "${files[@]}"
             ;;
         rpm)
             mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.rpm' -print | sort)
             log "正在通过 DNF 安装 Hangover Wine..." "Installing Hangover Wine through DNF..."
-            dnf install -y --allowerasing "${files[@]}"
+            dnf install -y --allowerasing --exclude='systemd*' "${files[@]}"
             ;;
         arch)
             mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.pkg.tar.*' -print | sort)
@@ -570,7 +699,8 @@ install_packages() {
                 die "pacman.conf 缺少 [options] 段。" "pacman.conf has no [options] section."
             fi
 
-            if ! pacman --config "$pacman_conf" -U --noconfirm "${files[@]}"; then
+            if ! pacman --config "$pacman_conf" -U --noconfirm \
+                --ignore systemd,systemd-libs,systemd-sysvcompat "${files[@]}"; then
                 die "Arch 软件包安装失败。" "Arch package installation failed."
             fi
             ;;
@@ -578,11 +708,14 @@ install_packages() {
 }
 
 main() {
+    local wine_version
+
     detect_language
     parse_arguments "$@"
     validate_release_settings
     detect_target
     require_root "$@"
+    protect_system_packages
     bootstrap_dependencies
     select_download_source
     log "下载源：$(download_source_name "$DOWNLOAD_SOURCE")" \
@@ -590,13 +723,17 @@ main() {
     download_and_extract
     install_packages
 
-    if command -v wine >/dev/null 2>&1; then
-        log "安装完成：$(wine --version 2>/dev/null || printf 'wine')" \
-            "Installation complete: $(wine --version 2>/dev/null || printf 'wine')"
-    else
+    if ! command -v wine >/dev/null 2>&1; then
         die "安装事务完成，但找不到 wine 命令。" \
             "The package transaction completed, but the wine command was not found."
     fi
+    if ! wine_version="$(wine --version 2>&1)"; then
+        die "wine 命令存在，但启动验证失败：$wine_version" \
+            "The wine command exists, but startup validation failed: $wine_version"
+    fi
+    log "安装完成：$wine_version" "Installation complete: $wine_version"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
