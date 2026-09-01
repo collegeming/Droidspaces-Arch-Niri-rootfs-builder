@@ -41,6 +41,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 
 - Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, and Arch.
 - Desktop choices for command-line only, KDE, KDE mobile, and GNOME RootFS images.
+- A unified maintenance TUI: run `droidspaces-tui`, `dstui`, or `ds-tui` in the container to install Mesa, Hangover Wine, Wine fonts, and Anland KDE/GNOME components.
 - Desktop auto-start and failure recovery using shared systemd service templates for X11, Plasma Wayland, Plasma Mobile, and GNOME Wayland, with rate-limited automatic restarts after failures.
 - Termux:X11 desktop startup support. X11 mode defaults to `DISPLAY=:5`.
 - PulseAudio forwarding through Unix socket, TCP, or disabled mode.

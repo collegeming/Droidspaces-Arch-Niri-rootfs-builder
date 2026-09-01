@@ -41,6 +41,7 @@
 
 - 多发行版 RootFS 构建：支持 Debian、Ubuntu、Fedora 和 Arch。
 - 桌面选择：支持命令行 RootFS、KDE、KDE mobile 和 GNOME。
+- 统一维护 TUI：容器内运行 `droidspaces-tui`、`dstui` 或 `ds-tui`，可安装 Mesa、Hangover Wine、Wine 字体及 Anland KDE/GNOME 组件。
 - 桌面自动启动与故障恢复：X11、Plasma Wayland、Plasma Mobile 和 GNOME Wayland 使用统一的 systemd 服务模板，异常退出后会限频自动重启。
 - Termux:X11 桌面启动：X11 模式下默认使用 `DISPLAY=:5`。
 - PulseAudio 音频转发：支持 Unix socket、TCP 和关闭音频转发。

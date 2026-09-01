@@ -11,7 +11,10 @@ This directory contains installers used while building the RootFS, maintenance t
 | `install-desktop.sh`, `desktops/*.sh` | RootFS build environment | Dispatches stable desktop profile slugs and owns package sets and desktop-specific environment variables. |
 | `configure-desktop.sh` | RootFS build environment | Writes desktop/backend configuration, invokes profile environment setup, and optionally installs the common auto-start service. |
 | `start-desktop-session.sh` | Linux container | Starts the selected session from `/etc/droidspaces-desktop.conf`. |
+| `droidspaces-tui.sh` | ARM64 Linux container | Provides a TMOE-style terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
 | `install-mesa.sh` | ARM64 Linux container | Installs the latest Android-container Mesa build and MediaCodec VA-API driver, then locks Mesa packages. |
+| `install-hangover-wine.sh` | ARM64 Linux container | Installs the Hangover Wine Release packages matching the current distribution. |
+| `install-winefonts.sh` | Linux container | Installs the Wine font bundle and refreshes the fontconfig cache. |
 | `install-anland-kde.sh` | ARM64 Linux container | Installs Anland patched KWin/Xwayland Release packages and locks them. |
 | `install-anland-gnome.sh` | ARM64 Debian/Ubuntu container | Installs Anland patched Mutter/Xwayland Release packages and locks them. |
 | `install-anland-desktop.sh` | RootFS build environment | Dispatches a desktop slug to the KDE or GNOME Anland installer. |
@@ -23,6 +26,34 @@ This directory contains installers used while building the RootFS, maintenance t
 | `bashrc.sh` | Linux user shell | Adds Docker aliases, thermal helpers, and an SSH file-transfer helper. |
 | `start/desktop-session.service` | Linux container systemd | Starts the selected desktop session through one common entry point. |
 | `binfmt/*` | Linux container systemd/kernel | Checks and mounts `binfmt_misc` for QEMU cross-architecture execution. |
+
+## Droidspaces TUI
+
+Built RootFS images provide the `droidspaces-tui` command with the shorter `dstui` and `ds-tui` aliases. It is a pure Bash terminal menu with no `dialog` dependency and works in a regular terminal or through `adb shell -t`:
+
+```bash
+droidspaces-tui
+# These two commands are equivalent
+dstui
+ds-tui
+```
+
+Run it from a repository checkout with:
+
+```bash
+./scripts/droidspaces-tui.sh
+```
+
+The main menu includes Mesa with MediaCodec VA-API, Hangover Wine, Wine fonts, Anland KDE, and Anland GNOME. A shared source setting selects automatic probing, GitHub, `gh-proxy.com`, or CNB. A fixed source is passed to the selected installer as `--1`, `--2`, or `--3`. The TUI marks components unsupported by the current distribution or architecture, while each standalone installer remains responsible for downloads, digest verification, installation, rollback, and package locking.
+
+Press `C` in the main menu to open cache management. The Hangover Release manifest can be removed by itself to recover from a stale manifest after a rolling Release update, or all downloads under `/var/cache/hangover-wine` can be removed. Both actions require confirmation, and cleaning all downloads means the package archive must be downloaded again on the next installation.
+
+An initial source can also be selected on startup:
+
+```bash
+droidspaces-tui --source cnb
+droidspaces-tui --source github
+```
 
 ## Mesa Installer
 
@@ -148,10 +179,12 @@ After changing a shell script, run at least a syntax check. Use ShellCheck when 
 
 ```bash
 bash -n scripts/install-mesa.sh
+bash -n scripts/droidspaces-tui.sh
 bash -n scripts/install-anland-kde.sh
 bash -n scripts/install-anland-gnome.sh
 bash -n scripts/install-usb-manager.sh
 shellcheck scripts/install-mesa.sh
+shellcheck scripts/droidspaces-tui.sh
 ```
 
 Changes to package installation or lock handling should also be tested in APT, DNF, and Pacman containers. Run each installer twice to verify idempotency.

@@ -24,13 +24,19 @@ ARG ANLAND_PACKAGE_REVISION=unknown
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
+COPY scripts/install-anland-gnome.sh /usr/local/sbin/install-anland-gnome
 COPY scripts/install-mesa.sh /usr/local/sbin/install-mesa
+COPY scripts/install-hangover-wine.sh /usr/local/sbin/install-hangover-wine
+COPY scripts/install-winefonts.sh /usr/local/sbin/install-winefonts
+COPY scripts/droidspaces-tui.sh /usr/local/bin/droidspaces-tui
 COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+    ln -s droidspaces-tui /usr/local/bin/dstui && \
+    ln -s droidspaces-tui /usr/local/bin/ds-tui && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
     sed -i '/NoExtract.*locale/d' /etc/pacman.conf && \
     sed -i '/NoExtract.*i18n/d' /etc/pacman.conf && \

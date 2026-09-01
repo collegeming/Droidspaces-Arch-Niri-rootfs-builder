@@ -39,14 +39,21 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 
 # 通用 Droidspaces USB Manager 安装器
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
+COPY scripts/install-anland-kde.sh /usr/local/sbin/install-anland-kde
+COPY scripts/install-anland-gnome.sh /usr/local/sbin/install-anland-gnome
 COPY scripts/install-mesa.sh /usr/local/sbin/install-mesa
+COPY scripts/install-hangover-wine.sh /usr/local/sbin/install-hangover-wine
+COPY scripts/install-winefonts.sh /usr/local/sbin/install-winefonts
+COPY scripts/droidspaces-tui.sh /usr/local/bin/droidspaces-tui
 COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-mesa /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh
+RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+    ln -s droidspaces-tui /usr/local/bin/dstui && \
+    ln -s droidspaces-tui /usr/local/bin/ds-tui
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl wget && \

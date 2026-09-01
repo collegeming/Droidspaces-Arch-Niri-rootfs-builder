@@ -11,7 +11,10 @@
 | `install-desktop.sh`、`desktops/*.sh` | RootFS 构建环境 | 按稳定 slug 分发桌面 profile，并维护软件包集合和桌面专属环境变量。 |
 | `configure-desktop.sh` | RootFS 构建环境 | 写入桌面/显示后端配置，调用 profile 环境配置并按需安装统一自启动服务。 |
 | `start-desktop-session.sh` | Linux 容器 | 根据 `/etc/droidspaces-desktop.conf` 启动实际桌面会话。 |
+| `droidspaces-tui.sh` | ARM64 Linux 容器 | 提供类似 TMOE 的统一终端菜单，调度 Mesa、Hangover Wine、Wine 字体和 Anland 安装器。 |
 | `install-mesa.sh` | ARM64 Linux 容器 | 安装最新版 Android 容器专用 Mesa 和 MediaCodec VA-API 驱动，并锁定 Mesa 包。 |
+| `install-hangover-wine.sh` | ARM64 Linux 容器 | 安装当前发行版对应的 Hangover Wine Release 包。 |
+| `install-winefonts.sh` | Linux 容器 | 安装 Wine 字体包并刷新 fontconfig 字体缓存。 |
 | `install-anland-kde.sh` | ARM64 Linux 容器 | 安装 Anland patched KWin/Xwayland Release 包，并锁定相关包。 |
 | `install-anland-gnome.sh` | ARM64 Debian/Ubuntu 容器 | 安装 Anland patched Mutter/Xwayland Release 包，并锁定相关包。 |
 | `install-anland-desktop.sh` | RootFS 构建环境 | 根据桌面 slug 分发到 KDE 或 GNOME Anland 安装器。 |
@@ -23,6 +26,34 @@
 | `bashrc.sh` | Linux 用户 shell | 提供 Docker 快捷命令、温度查看和 SSH 文件传输等辅助函数。 |
 | `start/desktop-session.service` | Linux 容器的 systemd | 通过统一入口自动启动所选桌面会话。 |
 | `binfmt/*` | Linux 容器的 systemd/内核 | 检查并挂载 `binfmt_misc`，为 QEMU 跨架构执行做准备。 |
+
+## Droidspaces TUI
+
+构建出的 RootFS 内置 `droidspaces-tui` 命令，并提供较短的 `dstui`、`ds-tui` 别名。它以纯 Bash 提供统一终端菜单，不依赖 `dialog`，可在普通终端或 `adb shell -t` 中运行：
+
+```bash
+droidspaces-tui
+# 以下两个命令等价
+dstui
+ds-tui
+```
+
+从仓库检出目录运行时使用：
+
+```bash
+./scripts/droidspaces-tui.sh
+```
+
+主菜单包含 Mesa 与 MediaCodec VA-API、Hangover Wine、Wine 字体、Anland KDE 和 Anland GNOME。下载源可以统一设为自动测速、GitHub、`gh-proxy.com` 或 CNB；固定来源会作为 `--1`、`--2` 或 `--3` 传给所选安装器。TUI 会根据当前发行版和架构标记不支持的组件，但下载、摘要校验、安装、回滚与软件包锁定仍由各独立安装器负责。
+
+主菜单的 `C` 进入缓存管理。可以只清理 Hangover Release 清单缓存，解决滚动 Release 更新后旧清单无法续传的问题；也可以清空 `/var/cache/hangover-wine` 下的全部下载缓存。两项操作都需要确认，清空全部缓存会导致下次安装重新下载软件包。
+
+也可以在启动时指定初始来源：
+
+```bash
+droidspaces-tui --source cnb
+droidspaces-tui --source github
+```
 
 ## Mesa 安装器
 
@@ -148,10 +179,12 @@ sudo download-firmware
 
 ```bash
 bash -n scripts/install-mesa.sh
+bash -n scripts/droidspaces-tui.sh
 bash -n scripts/install-anland-kde.sh
 bash -n scripts/install-anland-gnome.sh
 bash -n scripts/install-usb-manager.sh
 shellcheck scripts/install-mesa.sh
+shellcheck scripts/droidspaces-tui.sh
 ```
 
 涉及软件包安装和锁定配置的改动，还应分别在 APT、DNF 和 Pacman 容器中验证，并重复运行一次检查幂等性。
