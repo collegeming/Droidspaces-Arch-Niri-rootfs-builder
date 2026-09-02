@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-readonly TUI_VERSION="1.1"
+readonly TUI_VERSION="1.2"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly SCRIPT_PATH="$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
 readonly HANGOVER_CACHE_DIR="/var/cache/hangover-wine"
 readonly HANGOVER_MANIFEST_NAME="hangover-wine-manifest"
+readonly INSTALLED_TUI_PATH="/usr/local/bin/droidspaces-tui"
+readonly TUI_RELEASE_REPOSITORY="${DROIDSPACES_TUI_REPOSITORY:-Goldzxcbug/droidspaces-package}"
+readonly TUI_RELEASE_TAG="Gold-bug-tui"
+readonly TUI_BOOTSTRAP_NAME="install-tui.sh"
+readonly TUI_GITHUB_API_URL="${DROIDSPACES_TUI_API_URL:-https://api.github.com}"
+readonly TUI_GITHUB_DOWNLOAD_BASE="${DROIDSPACES_TUI_GITHUB_BASE:-https://github.com/$TUI_RELEASE_REPOSITORY/releases/download}"
+readonly TUI_PROXY_DOWNLOAD_BASE="${DROIDSPACES_TUI_PROXY_BASE:-https://gh-proxy.com/https://github.com/$TUI_RELEASE_REPOSITORY/releases/download}"
+readonly TUI_CNB_DOWNLOAD_BASE="${DROIDSPACES_TUI_CNB_BASE:-https://cnb.cool/goldzxcbug/droidspaces-package/-/releases/download}"
 
 UI_LANG="en"
 DOWNLOAD_SOURCE="auto"
@@ -14,6 +22,8 @@ SYSTEM_VERSION=""
 SYSTEM_LABEL="Unknown Linux"
 ARCHITECTURE="unknown"
 CACHE_ACTION=""
+UPDATE_WORK_DIR=""
+UPDATE_UPDATER_PATH=""
 
 COLOR_RESET=""
 COLOR_BOLD=""
@@ -469,6 +479,243 @@ manage_cache() {
     done
 }
 
+cleanup_update_files() {
+    if [[ -n "$UPDATE_WORK_DIR" && -d "$UPDATE_WORK_DIR" ]]; then
+        rm -rf -- "$UPDATE_WORK_DIR"
+    fi
+    UPDATE_WORK_DIR=""
+    UPDATE_UPDATER_PATH=""
+}
+
+fetch_tui_release_metadata() {
+    local output="$1"
+    local -a headers=(
+        --header 'Accept: application/vnd.github+json'
+        --header 'X-GitHub-Api-Version: 2022-11-28'
+        --header 'User-Agent: droidspaces-tui'
+    )
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        headers+=(--header "Authorization: Bearer $GITHUB_TOKEN")
+    fi
+    curl --fail --silent --show-error --location \
+        --retry 2 --retry-all-errors --connect-timeout 15 --max-time 60 \
+        "${headers[@]}" \
+        "$TUI_GITHUB_API_URL/repos/$TUI_RELEASE_REPOSITORY/releases/tags/$TUI_RELEASE_TAG" \
+        --output "$output"
+}
+
+tui_bootstrap_row() {
+    local metadata="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -er --arg tag "$TUI_RELEASE_TAG" --arg name "$TUI_BOOTSTRAP_NAME" '
+            if .tag_name != $tag then error("Release tag mismatch")
+            elif .draft != false then error("Release is a draft")
+            else . end
+            | [.assets[] | select(.name == $name)]
+            | if length != 1 then error("bootstrap asset is missing or duplicated")
+              else .[0] end
+            | if (.digest | type) != "string" or
+                 (.digest | test("^sha256:[0-9A-Fa-f]{64}$") | not)
+              then error("bootstrap asset has no valid SHA-256")
+              else [.id, (.digest | ascii_downcase | sub("^sha256:"; "")), .size, .updated_at] | @tsv
+              end
+        ' "$metadata"
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 - "$metadata" "$TUI_RELEASE_TAG" "$TUI_BOOTSTRAP_NAME" <<'PY'
+import json
+import re
+import sys
+
+path, expected_tag, expected_name = sys.argv[1:]
+with open(path, "r", encoding="utf-8") as stream:
+    release = json.load(stream)
+if release.get("tag_name") != expected_tag or release.get("draft") is not False:
+    raise SystemExit("Release tag mismatch or draft Release")
+assets = [item for item in release.get("assets", []) if item.get("name") == expected_name]
+if len(assets) != 1:
+    raise SystemExit("bootstrap asset is missing or duplicated")
+asset = assets[0]
+digest = asset.get("digest")
+if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9A-Fa-f]{64}", digest):
+    raise SystemExit("bootstrap asset has no valid SHA-256")
+print("\t".join((str(asset["id"]), digest[7:].lower(), str(asset["size"]), asset["updated_at"])))
+PY
+    else
+        printf '%s\n' "$(msg '缺少 JSON 解析器：需要 jq 或 python3。' \
+            'A JSON parser is required: install jq or python3.')" >&2
+        return 1
+    fi
+}
+
+download_tui_bootstrap() {
+    local expected_sha="$1" expected_size="$2" output="$3"
+    local source_name base actual_sha actual_size
+    local -a sources=()
+
+    case "$DOWNLOAD_SOURCE" in
+        auto) sources=(github proxy cnb) ;;
+        1) sources=(github) ;;
+        2) sources=(proxy) ;;
+        3) sources=(cnb) ;;
+    esac
+    for source_name in "${sources[@]}"; do
+        case "$source_name" in
+            github) base="$TUI_GITHUB_DOWNLOAD_BASE" ;;
+            proxy) base="$TUI_PROXY_DOWNLOAD_BASE" ;;
+            cnb) base="$TUI_CNB_DOWNLOAD_BASE" ;;
+        esac
+        rm -f -- "$output"
+        printf '%s\n' "$(msg "正在从 $source_name 获取一次性安装脚本..." \
+            "Downloading the one-time installer from $source_name...")"
+        if ! curl --fail --silent --show-error --location \
+            --retry 2 --retry-all-errors --connect-timeout 15 --max-time 120 \
+            --output "$output" "$base/$TUI_RELEASE_TAG/$TUI_BOOTSTRAP_NAME"; then
+            continue
+        fi
+        actual_size="$(stat -c '%s' "$output")"
+        actual_sha="$(sha256sum "$output" | awk '{print $1}')"
+        if [[ "$actual_size" == "$expected_size" && "$actual_sha" == "$expected_sha" ]]; then
+            chmod 0755 "$output"
+            return 0
+        fi
+        printf '%s\n' "$(msg '一次性安装脚本校验失败。' \
+            'The one-time installer failed verification.')" >&2
+    done
+    return 1
+}
+
+prepare_updater() {
+    local candidate metadata_before metadata_after row_before row_after
+    local asset_id expected_sha expected_size updated_at command_name
+
+    cleanup_update_files
+    candidate="$SCRIPT_DIR/install-tui.sh"
+    if [[ -x "$candidate" ]]; then
+        UPDATE_UPDATER_PATH="$candidate"
+        return 0
+    fi
+    for command_name in awk bash chmod curl mktemp rm sha256sum stat; do
+        command -v "$command_name" >/dev/null 2>&1 || {
+            printf '%s\n' "$(msg "缺少命令：$command_name" "Required command is missing: $command_name")" >&2
+            return 1
+        }
+    done
+
+    UPDATE_WORK_DIR="$(mktemp -d -t droidspaces-tui-update.XXXXXXXX)" || return 1
+    metadata_before="$UPDATE_WORK_DIR/release-before.json"
+    metadata_after="$UPDATE_WORK_DIR/release-after.json"
+    UPDATE_UPDATER_PATH="$UPDATE_WORK_DIR/$TUI_BOOTSTRAP_NAME"
+    fetch_tui_release_metadata "$metadata_before" || { cleanup_update_files; return 1; }
+    row_before="$(tui_bootstrap_row "$metadata_before")" || { cleanup_update_files; return 1; }
+    IFS=$'\t' read -r asset_id expected_sha expected_size updated_at <<< "$row_before"
+    download_tui_bootstrap "$expected_sha" "$expected_size" "$UPDATE_UPDATER_PATH" || {
+        cleanup_update_files
+        return 1
+    }
+    bash -n "$UPDATE_UPDATER_PATH" || { cleanup_update_files; return 1; }
+    fetch_tui_release_metadata "$metadata_after" || { cleanup_update_files; return 1; }
+    row_after="$(tui_bootstrap_row "$metadata_after")" || { cleanup_update_files; return 1; }
+    if [[ "$row_before" != "$row_after" ]]; then
+        printf '%s\n' "$(msg '下载期间 Release 已变化，请重试。' \
+            'The Release changed during download; try again.')" >&2
+        cleanup_update_files
+        return 1
+    fi
+    return 0
+}
+
+run_update_check() {
+    local updater
+    local -a source_argument=(--source "$DOWNLOAD_SOURCE")
+
+    clear_screen
+    draw_header
+    printf '\n%b%s%b\n\n' "$COLOR_BOLD" "$(msg '检查更新' 'Check for updates')" "$COLOR_RESET"
+    if ! prepare_updater; then
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '无法取得经过校验的一次性安装脚本。' \
+                'Could not obtain a verified one-time installer.')" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+    updater="$UPDATE_UPDATER_PATH"
+    if ! "$updater" "${source_argument[@]}" --check --only all; then
+        printf '\n%b%s%b\n' "$COLOR_RED" \
+            "$(msg '检查更新失败。' 'The update check failed.')" "$COLOR_RESET"
+    fi
+    cleanup_update_files
+    pause_menu
+}
+
+run_update() {
+    local scope="$1" label="$2" updater status
+    local -a source_argument=(--source "$DOWNLOAD_SOURCE")
+
+    clear_screen
+    draw_header
+    printf '\n%b%s%b\n\n' "$COLOR_BOLD" "$label" "$COLOR_RESET"
+    confirm_run "$label" || return
+    if ! prepare_updater; then
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '无法取得经过校验的一次性安装脚本。' \
+                'Could not obtain a verified one-time installer.')" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+    updater="$UPDATE_UPDATER_PATH"
+    printf '\n'
+    if "$updater" "${source_argument[@]}" --only "$scope" --yes; then
+        status=0
+    else
+        status=$?
+    fi
+    if ((status != 0)); then
+        cleanup_update_files
+        printf '\n%b%s%b\n' "$COLOR_RED" \
+            "$(msg "更新失败，退出码：$status。" "Update failed with exit code $status.")" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+
+    if [[ "$scope" == tui || "$scope" == all ]]; then
+        if [[ -x "$INSTALLED_TUI_PATH" ]]; then
+            printf '\n%s\n' "$(msg 'TUI 已更新，正在重新启动。' 'The TUI was updated and will now restart.')"
+            cleanup_update_files
+            exec "$INSTALLED_TUI_PATH" --source "$DOWNLOAD_SOURCE"
+        fi
+    fi
+    cleanup_update_files
+    printf '\n%b%s%b\n' "$COLOR_GREEN" "$(msg '更新完成。' 'Update completed.')" "$COLOR_RESET"
+    pause_menu
+}
+
+manage_updates() {
+    local choice
+    while :; do
+        clear_screen
+        draw_header
+        printf '\n%b%s%b\n\n' "$COLOR_BOLD" "$(msg '更新管理' 'Update management')" "$COLOR_RESET"
+        printf '  %b[1]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" \
+            "$(msg '检查更新' 'Check for updates')"
+        printf '  %b[2]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" \
+            "$(msg '更新 TUI' 'Update the TUI')"
+        printf '  %b[3]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" \
+            "$(msg '更新受管安装脚本' 'Update managed installer scripts')"
+        printf '  %b[4]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" \
+            "$(msg '更新全部' 'Update everything')"
+        printf '  %b[0]%b %s\n\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '返回' 'Back')"
+        printf '%s: ' "$(msg '请选择' 'Select')"
+        IFS= read -r choice || return
+        case "$choice" in
+            1) run_update_check ;;
+            2) run_update tui "$(msg '更新 TUI' 'Update the TUI')" ;;
+            3) run_update scripts "$(msg '更新受管安装脚本' 'Update managed installer scripts')" ;;
+            4) run_update all "$(msg '更新全部' 'Update everything')" ;;
+            0|q|Q) return ;;
+        esac
+    done
+}
+
 show_about() {
     clear_screen
     draw_header
@@ -496,6 +743,7 @@ main_menu() {
         printf '\n'
         printf '  %b[S]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '切换下载源' 'Change download source')"
         printf '  %b[C]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '清理下载缓存' 'Clean download cache')"
+        printf '  %b[U]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '检查与安装更新' 'Check for and install updates')"
         printf '  %b[A]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '关于与支持范围' 'About and support')"
         printf '  %b[Q]%b %s\n\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '退出' 'Quit')"
         printf '%s: ' "$(msg '请选择' 'Select')"
@@ -508,6 +756,7 @@ main_menu() {
             5) run_component "gnome" "Anland GNOME" ;;
             s) select_download_source ;;
             c) manage_cache ;;
+            u) manage_updates ;;
             a) show_about ;;
             q|0) return ;;
         esac
@@ -515,6 +764,7 @@ main_menu() {
 }
 
 handle_signal() {
+    cleanup_update_files
     printf '\n'
     exit 130
 }
@@ -533,6 +783,7 @@ main() {
         "需要交互式终端，请通过 adb shell -t 或普通终端运行。" \
         "An interactive terminal is required; use adb shell -t or a regular terminal."
     trap handle_signal HUP INT TERM
+    trap cleanup_update_files EXIT
     main_menu
     clear_screen
     printf '%s\n' "$(msg '已退出 Droidspaces 工具箱。' 'Exited Droidspaces Toolkit.')"

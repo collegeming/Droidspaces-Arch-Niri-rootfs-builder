@@ -48,6 +48,8 @@ The main menu includes Mesa with MediaCodec VA-API, Hangover Wine, Wine fonts, A
 
 Press `C` in the main menu to open cache management. The Hangover Release manifest can be removed by itself to recover from a stale manifest after a rolling Release update, or all downloads under `/var/cache/hangover-wine` can be removed. Both actions require confirmation, and cleaning all downloads means the package archive must be downloaded again on the next installation.
 
+Press `U` to open update management. It can check for updates, update only the TUI, update only managed installer scripts, or update everything. The TUI temporarily obtains the one-time installer from the fixed `Gold-bug-tui` tag, verifies GitHub, `gh-proxy.com`, or CNB downloads against SHA-256 values from the GitHub Release API, backs up old files before replacement, and removes the temporary installer when finished.
+
 An initial source can also be selected on startup:
 
 ```bash

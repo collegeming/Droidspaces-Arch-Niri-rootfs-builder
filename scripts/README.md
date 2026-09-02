@@ -48,6 +48,8 @@ ds-tui
 
 主菜单的 `C` 进入缓存管理。可以只清理 Hangover Release 清单缓存，解决滚动 Release 更新后旧清单无法续传的问题；也可以清空 `/var/cache/hangover-wine` 下的全部下载缓存。两项操作都需要确认，清空全部缓存会导致下次安装重新下载软件包。
 
+主菜单的 `U` 进入更新管理，可检查更新、只更新 TUI、只更新受管安装脚本，或更新全部。TUI 会临时获取固定标签 `Gold-bug-tui` 中的一次性安装脚本，以 GitHub Release API 的 SHA-256 校验 GitHub、`gh-proxy.com` 或 CNB 下载，在替换前备份旧文件，并在操作结束后删除临时脚本。
+
 也可以在启动时指定初始来源：
 
 ```bash
