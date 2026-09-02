@@ -415,7 +415,10 @@ jobs:
           fi
 
           if [[ "$ENABLE_DEV_TOOLS" == false ]]; then
-            build_tool_entries='(^|/)var/lib/pacman/local/(paru|base-devel|zig|gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)-[0-9:]|(^|/)usr/lib/zig/'
+            # 与 Dockerfile 的 build_tool_re 对齐（8926c84 起 paru 是用户保留
+            # 的 AUR 助手、base-devel/zig 被显式 -Rn 移除）：门禁只查真正的
+            # build-only 包，不再把常驻的 paru/base-devel/zig 当残留。
+            build_tool_entries='(^|/)var/lib/pacman/local/(gcc|make|autoconf|automake|bison|cargo|ccache|clang([0-9]+)?|cmake|cpio|debugedit|elfutils|fakeroot|flex|gdb|gdb-common|groff|libtool|lld([0-9]+)?|llvm[0-9]+(-libs)?|m4|meson|ninja|patch|pkgconf|rust|rustup|texinfo|which)-[0-9:]|(^|/)usr/lib/zig/'
             if grep -Ei "$build_tool_entries" "$entries"; then
               echo 'RootFS retained a build-only package while enable_dev_tools=false.' >&2
               exit 1
