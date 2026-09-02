@@ -48,7 +48,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Optional Chinese locale with `zh_CN.UTF-8` and `Asia/Shanghai` timezone.
 - Optional Fcitx5 input method. Chinese input addons are installed when Chinese localization is enabled.
 - Snapdragon GPU support using configuration from `mesa-for-android-container`.
-- All seven distributions use `scripts/install-mesa.sh` to install the matching ARM64 Mesa driver and latest `droidspaces-media-decode` VA-API driver, then lock only the related Mesa packages. The Anland KDE and GNOME installers separately hold KWin/Xwayland and Mutter/Xwayland. Source selection, integrity verification, and hold mechanisms are documented in the [scripts directory guide](scripts/README_english.md#mesa-installer).
+- All seven distributions use `scripts/tui/install-mesa.sh` to install the matching ARM64 Mesa driver and latest `droidspaces-media-decode` VA-API driver, then lock only the related Mesa packages. The Anland KDE and GNOME installers separately hold KWin/Xwayland and Mutter/Xwayland. Source selection, integrity verification, and hold mechanisms are documented in the [scripts directory guide](scripts/README_english.md#mesa-installer).
 - Native ARM64 Google Chrome: every desktop profile replaces Chromium with Chrome Stable. Debian/Ubuntu and Fedora use Google's official repositories; Arch uses the ARM64 AUR packaging recipe.
 - Optional Snapdragon 8 Gen 2 Wayland display-corruption fix through a Turnip UBWC environment setting.
 - Container integration improvements for common Android/Droidspaces hardware, network, and group recognition.
@@ -229,18 +229,18 @@ Wayland support depends on [anland](https://github.com/superturtlee/anland) and 
 
 ### One-Click Installation of Anland KDE Release Packages
 
-`scripts/install-anland-kde.sh` detects the ARM64 distribution, installs matching patched KWin/Xwayland packages from the fixed rolling Release in `Goldzxcbug/droidspaces-package` by default, and locks the related packages. Supported systems, download mirrors, integrity checks, options, and standalone installation details are documented in the [scripts directory guide](scripts/README_english.md#anland-kde-installer).
+`scripts/tui/install-anland-kde.sh` detects the ARM64 distribution, installs matching patched KWin/Xwayland packages from the fixed rolling Release in `Goldzxcbug/droidspaces-package` by default, and locks the related packages. Supported systems, download mirrors, integrity checks, options, and standalone installation details are documented in the [scripts directory guide](scripts/README_english.md#anland-kde-installer).
 
 Run it from the repository root:
 
 ```bash
-sudo ./scripts/install-anland-kde.sh
+sudo ./scripts/tui/install-anland-kde.sh
 ```
 
 The GNOME installer supports Debian 13 and Ubuntu 26 ARM64 and reads the fixed `anland-gnome-packages` Release:
 
 ```bash
-sudo ./scripts/install-anland-gnome.sh
+sudo ./scripts/tui/install-anland-gnome.sh
 ```
 
 Recommended build options:
@@ -388,6 +388,9 @@ sudo download-firmware
 │   ├── configure-desktop.sh
 │   ├── install-desktop.sh
 │   ├── start-desktop-session.sh
+│   ├── binfmt/
+│   │   ├── qemu-binfmt-register.service
+│   │   └── qemu-binfmt-register.sh
 │   ├── desktops/
 │   │   ├── gnome.sh
 │   │   ├── kde.sh
@@ -397,18 +400,19 @@ sudo download-firmware
 │   │   └── desktop-config.sh
 │   ├── start/
 │   │   └── desktop-session.service
+│   ├── tui/
+│   │   ├── droidspaces-tui.sh
+│   │   ├── install-anland-gnome.sh
+│   │   ├── install-anland-kde.sh
+│   │   ├── install-hangover-wine.sh
+│   │   ├── install-mesa.sh
+│   │   └── install-winefonts.sh
 │   ├── bashrc.sh
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── install-anland-desktop.sh
-│   ├── install-anland-gnome.sh
-│   ├── install-anland-kde.sh
-│   ├── install-mesa.sh
 │   ├── nosnap.sh
 │   └── systemd257.sh
-├── scripts/binfmt/
-│   ├── qemu-binfmt-register.service
-│   └── qemu-binfmt-register.sh
 └── .github/workflows/
     ├── build-rootfs-core.yml
     ├── build-rootfs-releases-en.yml

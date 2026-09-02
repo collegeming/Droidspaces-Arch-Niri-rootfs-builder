@@ -48,7 +48,7 @@
 - 中文环境：可选启用 `zh_CN.UTF-8` 和 `Asia/Shanghai` 时区。
 - 输入法：可选安装 Fcitx5；启用中文环境时会额外安装中文输入支持。
 - Snapdragon GPU 支持：集成来自 `mesa-for-android-container` 的高通 GPU 相关配置。
-- 全部七个发行版通过 `scripts/install-mesa.sh` 安装对应的 ARM64 Mesa 驱动及最新版 `droidspaces-media-decode` VA-API 驱动，并仅锁定相关 Mesa 包。KWin/Xwayland 与 Mutter/Xwayland 分别由 Anland KDE、GNOME 安装器锁定。镜像源选择、完整性校验和各发行版锁定机制见 [scripts 目录说明](scripts/README.md#mesa-安装器)。
+- 全部七个发行版通过 `scripts/tui/install-mesa.sh` 安装对应的 ARM64 Mesa 驱动及最新版 `droidspaces-media-decode` VA-API 驱动，并仅锁定相关 Mesa 包。KWin/Xwayland 与 Mutter/Xwayland 分别由 Anland KDE、GNOME 安装器锁定。镜像源选择、完整性校验和各发行版锁定机制见 [scripts 目录说明](scripts/README.md#mesa-安装器)。
 - 原生 ARM64 Google Chrome：全部桌面模式以 Chrome Stable 取代 Chromium；Debian/Ubuntu 和 Fedora 使用 Google 官方软件源，Arch 使用 AUR 的 ARM64 打包配方。
 
 - 骁龙 8 Gen 2 Wayland 花屏修复：可选将 Turnip UBWC 修复开关写入 RootFS 环境变量。
@@ -230,18 +230,18 @@ Wayland 支持依赖 [anland](https://github.com/superturtlee/anland) 和 [`droi
 
 ### 一键安装 Anland KDE Release 包
 
-`scripts/install-anland-kde.sh` 会自动识别 ARM64 发行版，默认从 `Goldzxcbug/droidspaces-package` 的固定滚动 Release 安装匹配的 patched KWin/Xwayland 包，并锁定相关软件包。支持的系统、下载镜像、完整性校验、参数和独立安装方法已移至 [scripts 目录说明](scripts/README.md#anland-kde-安装器)。
+`scripts/tui/install-anland-kde.sh` 会自动识别 ARM64 发行版，默认从 `Goldzxcbug/droidspaces-package` 的固定滚动 Release 安装匹配的 patched KWin/Xwayland 包，并锁定相关软件包。支持的系统、下载镜像、完整性校验、参数和独立安装方法已移至 [scripts 目录说明](scripts/README.md#anland-kde-安装器)。
 
 从仓库根目录运行：
 
 ```bash
-sudo ./scripts/install-anland-kde.sh
+sudo ./scripts/tui/install-anland-kde.sh
 ```
 
 GNOME 对应的安装器只支持 Debian 13 与 Ubuntu 26 ARM64，并读取固定的 `anland-gnome-packages` Release：
 
 ```bash
-sudo ./scripts/install-anland-gnome.sh
+sudo ./scripts/tui/install-anland-gnome.sh
 ```
 
 推荐构建选项：
@@ -389,6 +389,9 @@ sudo download-firmware
 │   ├── configure-desktop.sh
 │   ├── install-desktop.sh
 │   ├── start-desktop-session.sh
+│   ├── binfmt/
+│   │   ├── qemu-binfmt-register.service
+│   │   └── qemu-binfmt-register.sh
 │   ├── desktops/
 │   │   ├── gnome.sh
 │   │   ├── kde.sh
@@ -398,18 +401,19 @@ sudo download-firmware
 │   │   └── desktop-config.sh
 │   ├── start/
 │   │   └── desktop-session.service
+│   ├── tui/
+│   │   ├── droidspaces-tui.sh
+│   │   ├── install-anland-gnome.sh
+│   │   ├── install-anland-kde.sh
+│   │   ├── install-hangover-wine.sh
+│   │   ├── install-mesa.sh
+│   │   └── install-winefonts.sh
 │   ├── bashrc.sh
 │   ├── download-firmware
 │   ├── install-usb-manager.sh
 │   ├── install-anland-desktop.sh
-│   ├── install-anland-gnome.sh
-│   ├── install-anland-kde.sh
-│   ├── install-mesa.sh
 │   ├── nosnap.sh
 │   └── systemd257.sh
-├── scripts/binfmt/
-│   ├── qemu-binfmt-register.service
-│   └── qemu-binfmt-register.sh
 └── .github/workflows/
     ├── build-rootfs-core.yml
     ├── build-rootfs-releases-en.yml

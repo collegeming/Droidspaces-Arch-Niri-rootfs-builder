@@ -11,12 +11,12 @@ This directory contains installers used while building the RootFS, maintenance t
 | `install-desktop.sh`, `desktops/*.sh` | RootFS build environment | Dispatches stable desktop profile slugs and owns package sets and desktop-specific environment variables. |
 | `configure-desktop.sh` | RootFS build environment | Writes desktop/backend configuration, invokes profile environment setup, and optionally installs the common auto-start service. |
 | `start-desktop-session.sh` | Linux container | Starts the selected session from `/etc/droidspaces-desktop.conf`. |
-| `droidspaces-tui.sh` | ARM64 Linux container | Provides a TMOE-style terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
-| `install-mesa.sh` | ARM64 Linux container | Installs the latest Android-container Mesa build and MediaCodec VA-API driver, then locks Mesa packages. |
-| `install-hangover-wine.sh` | ARM64 Linux container | Installs the Hangover Wine Release packages matching the current distribution. |
-| `install-winefonts.sh` | Linux container | Installs the Wine font bundle and refreshes the fontconfig cache. |
-| `install-anland-kde.sh` | ARM64 Linux container | Installs Anland patched KWin/Xwayland Release packages and locks them. |
-| `install-anland-gnome.sh` | ARM64 Debian/Ubuntu container | Installs Anland patched Mutter/Xwayland Release packages and locks them. |
+| `tui/droidspaces-tui.sh` | ARM64 Linux container | Provides a TMOE-style terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
+| `tui/install-mesa.sh` | ARM64 Linux container | Installs the latest Android-container Mesa build and MediaCodec VA-API driver, then locks Mesa packages. |
+| `tui/install-hangover-wine.sh` | ARM64 Linux container | Installs the Hangover Wine Release packages matching the current distribution. |
+| `tui/install-winefonts.sh` | Linux container | Installs the Wine font bundle and refreshes the fontconfig cache. |
+| `tui/install-anland-kde.sh` | ARM64 Linux container | Installs Anland patched KWin/Xwayland Release packages and locks them. |
+| `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu container | Installs Anland patched Mutter/Xwayland Release packages and locks them. |
 | `install-anland-desktop.sh` | RootFS build environment | Dispatches a desktop slug to the KDE or GNOME Anland installer. |
 | `lib/anland-build.sh` | RootFS build host | Resolves the Anland package family, Release tag, and revision for native/QEMU builds. |
 | `install-usb-manager.sh` | Linux container | Installs Droidspaces USB Manager, distribution dependencies, launchers, and user permissions. |
@@ -41,7 +41,7 @@ ds-tui
 Run it from a repository checkout with:
 
 ```bash
-./scripts/droidspaces-tui.sh
+./scripts/tui/droidspaces-tui.sh
 ```
 
 The main menu includes Mesa with MediaCodec VA-API, Hangover Wine, Wine fonts, Anland KDE, and Anland GNOME. Chinese environments default to CNB, while other languages default to GitHub. A shared source setting can select automatic probing, GitHub, `gh-proxy.com`, or CNB. A fixed source is passed to the selected installer as `--1`, `--2`, or `--3`. The TUI marks components unsupported by the current distribution or architecture, while each standalone installer remains responsible for downloads, digest verification, installation, rollback, and package locking.
@@ -66,15 +66,15 @@ The installer strictly validates Release tags, asset names, and official downloa
 Run interactively from the repository root:
 
 ```bash
-sudo ./scripts/install-mesa.sh
+sudo ./scripts/tui/install-mesa.sh
 ```
 
 With no option, the script probes all three sources and prompts for a choice. Select a source directly for unattended builds:
 
 ```bash
-sudo ./scripts/install-mesa.sh --1  # GitHub
-sudo ./scripts/install-mesa.sh --2  # gh-proxy.com
-sudo ./scripts/install-mesa.sh --3  # ghproxy.net
+sudo ./scripts/tui/install-mesa.sh --1  # GitHub
+sudo ./scripts/tui/install-mesa.sh --2  # gh-proxy.com
+sudo ./scripts/tui/install-mesa.sh --3  # ghproxy.net
 ```
 
 The source options are mutually exclusive and apply to both the Mesa and media decode driver downloads. `-1`, `-2`, and `-3` are equivalent short options; use `--help` for built-in help. Third-party sources still require access to `api.github.com` for trusted metadata, plus `jq` and `sha256sum`. Downloads use either `curl` or `wget`.
@@ -105,7 +105,7 @@ All seven Dockerfiles and the reusable workflow already use the generic profile 
 `install-anland-kde.sh` reads `anland-kde-manifest` from the fixed `anland-kde-packages` rolling Release in `Goldzxcbug/droidspaces-package` by default, then installs the matching patched KWin/Xwayland packages for Debian 13, Ubuntu 26.04, Fedora 43/44, or Arch Linux on ARM64.
 
 ```bash
-sudo ./scripts/install-anland-kde.sh
+sudo ./scripts/tui/install-anland-kde.sh
 ```
 
 It also accepts `--1`, `--2`, or `--3` for GitHub, `gh-proxy.com`, or `ghproxy.net`; with no option, it probes the sources and prompts. Both the manifest and archive from a mirror are checked against GitHub API digests. Messages follow the system locale, and APT holds, DNF excludes, or Pacman `IgnorePkg` entries prevent upgrades from replacing the installed packages.
@@ -114,7 +114,7 @@ To install packages published by a public fork, override only the repository. Th
 
 ```bash
 sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
-  ./scripts/install-anland-kde.sh --1
+  ./scripts/tui/install-anland-kde.sh --1
 ```
 
 The Anland host module, app, SELinux policy, bind mount, and Droidspaces permissions must still be configured as described in the [project Wayland and Anland setup](../README_english.md#wayland-and-anland-setup).
@@ -124,14 +124,14 @@ The Anland host module, app, SELinux policy, bind mount, and Droidspaces permiss
 `install-anland-gnome.sh` reads `anland-gnome-manifest` from the fixed `anland-gnome-packages` rolling Release and installs patched Mutter/Xwayland runtime packages for Debian 13 or Ubuntu 26.04 on ARM64, skipping test and development packages in the archive. Its source selection, mirror digest checks, and arguments match the KDE installer; APT holds prevent upgrades from replacing the result.
 
 ```bash
-sudo ./scripts/install-anland-gnome.sh
+sudo ./scripts/tui/install-anland-gnome.sh
 ```
 
 Override the GNOME repository variable when using packages from a public fork:
 
 ```bash
 sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
-  ./scripts/install-anland-gnome.sh --1
+  ./scripts/tui/install-anland-gnome.sh --1
 ```
 
 ## USB Manager Installer
@@ -180,13 +180,13 @@ It installs `zstd` and `linux-firmware`, decompresses `.zst` files under `/lib/f
 After changing a shell script, run at least a syntax check. Use ShellCheck when it is installed:
 
 ```bash
-bash -n scripts/install-mesa.sh
-bash -n scripts/droidspaces-tui.sh
-bash -n scripts/install-anland-kde.sh
-bash -n scripts/install-anland-gnome.sh
+bash -n scripts/tui/install-mesa.sh
+bash -n scripts/tui/droidspaces-tui.sh
+bash -n scripts/tui/install-anland-kde.sh
+bash -n scripts/tui/install-anland-gnome.sh
 bash -n scripts/install-usb-manager.sh
-shellcheck scripts/install-mesa.sh
-shellcheck scripts/droidspaces-tui.sh
+shellcheck scripts/tui/install-mesa.sh
+shellcheck scripts/tui/droidspaces-tui.sh
 ```
 
 Changes to package installation or lock handling should also be tested in APT, DNF, and Pacman containers. Run each installer twice to verify idempotency.

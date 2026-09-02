@@ -11,12 +11,12 @@
 | `install-desktop.sh`、`desktops/*.sh` | RootFS 构建环境 | 按稳定 slug 分发桌面 profile，并维护软件包集合和桌面专属环境变量。 |
 | `configure-desktop.sh` | RootFS 构建环境 | 写入桌面/显示后端配置，调用 profile 环境配置并按需安装统一自启动服务。 |
 | `start-desktop-session.sh` | Linux 容器 | 根据 `/etc/droidspaces-desktop.conf` 启动实际桌面会话。 |
-| `droidspaces-tui.sh` | ARM64 Linux 容器 | 提供类似 TMOE 的统一终端菜单，调度 Mesa、Hangover Wine、Wine 字体和 Anland 安装器。 |
-| `install-mesa.sh` | ARM64 Linux 容器 | 安装最新版 Android 容器专用 Mesa 和 MediaCodec VA-API 驱动，并锁定 Mesa 包。 |
-| `install-hangover-wine.sh` | ARM64 Linux 容器 | 安装当前发行版对应的 Hangover Wine Release 包。 |
-| `install-winefonts.sh` | Linux 容器 | 安装 Wine 字体包并刷新 fontconfig 字体缓存。 |
-| `install-anland-kde.sh` | ARM64 Linux 容器 | 安装 Anland patched KWin/Xwayland Release 包，并锁定相关包。 |
-| `install-anland-gnome.sh` | ARM64 Debian/Ubuntu 容器 | 安装 Anland patched Mutter/Xwayland Release 包，并锁定相关包。 |
+| `tui/droidspaces-tui.sh` | ARM64 Linux 容器 | 提供类似 TMOE 的统一终端菜单，调度 Mesa、Hangover Wine、Wine 字体和 Anland 安装器。 |
+| `tui/install-mesa.sh` | ARM64 Linux 容器 | 安装最新版 Android 容器专用 Mesa 和 MediaCodec VA-API 驱动，并锁定 Mesa 包。 |
+| `tui/install-hangover-wine.sh` | ARM64 Linux 容器 | 安装当前发行版对应的 Hangover Wine Release 包。 |
+| `tui/install-winefonts.sh` | Linux 容器 | 安装 Wine 字体包并刷新 fontconfig 字体缓存。 |
+| `tui/install-anland-kde.sh` | ARM64 Linux 容器 | 安装 Anland patched KWin/Xwayland Release 包，并锁定相关包。 |
+| `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu 容器 | 安装 Anland patched Mutter/Xwayland Release 包，并锁定相关包。 |
 | `install-anland-desktop.sh` | RootFS 构建环境 | 根据桌面 slug 分发到 KDE 或 GNOME Anland 安装器。 |
 | `lib/anland-build.sh` | RootFS 构建宿主 | 为 native/QEMU 构建统一解析 Anland 包族、Release tag 和 revision。 |
 | `install-usb-manager.sh` | Linux 容器 | 安装 Droidspaces USB Manager、发行版依赖、菜单入口和用户权限。 |
@@ -41,7 +41,7 @@ ds-tui
 从仓库检出目录运行时使用：
 
 ```bash
-./scripts/droidspaces-tui.sh
+./scripts/tui/droidspaces-tui.sh
 ```
 
 主菜单包含 Mesa 与 MediaCodec VA-API、Hangover Wine、Wine 字体、Anland KDE 和 Anland GNOME。中文环境默认使用 CNB，其他语言环境默认使用 GitHub；下载源也可以统一改为自动测速、GitHub、`gh-proxy.com` 或 CNB。固定来源会作为 `--1`、`--2` 或 `--3` 传给所选安装器。TUI 会根据当前发行版和架构标记不支持的组件，但下载、摘要校验、安装、回滚与软件包锁定仍由各独立安装器负责。
@@ -66,15 +66,15 @@ droidspaces-tui --source github
 从仓库根目录交互运行：
 
 ```bash
-sudo ./scripts/install-mesa.sh
+sudo ./scripts/tui/install-mesa.sh
 ```
 
 未指定参数时，脚本会测试三个下载源并提示选择。也可以直接指定来源，适合无人值守构建：
 
 ```bash
-sudo ./scripts/install-mesa.sh --1  # GitHub
-sudo ./scripts/install-mesa.sh --2  # gh-proxy.com
-sudo ./scripts/install-mesa.sh --3  # ghproxy.net
+sudo ./scripts/tui/install-mesa.sh --1  # GitHub
+sudo ./scripts/tui/install-mesa.sh --2  # gh-proxy.com
+sudo ./scripts/tui/install-mesa.sh --3  # ghproxy.net
 ```
 
 三个来源选项互斥，并同时作用于 Mesa 与媒体解码驱动下载。`-1`、`-2`、`-3` 是对应的短参数，`--help` 可查看内置帮助。第三方源仍需访问 `api.github.com` 取得可信元数据，并需要 `jq` 和 `sha256sum`；下载由 `curl` 或 `wget` 完成。
@@ -105,7 +105,7 @@ sudo ./scripts/install-mesa.sh --3  # ghproxy.net
 `install-anland-kde.sh` 默认从 `Goldzxcbug/droidspaces-package` 的固定滚动 Release `anland-kde-packages` 读取 `anland-kde-manifest`，为 Debian 13、Ubuntu 26.04、Fedora 43/44 或 Arch Linux ARM64 安装匹配版本的 patched KWin/Xwayland 包。
 
 ```bash
-sudo ./scripts/install-anland-kde.sh
+sudo ./scripts/tui/install-anland-kde.sh
 ```
 
 它同样支持 `--1`、`--2`、`--3` 选择 GitHub、`gh-proxy.com` 或 `ghproxy.net`；省略时测速后交互选择。镜像下载的清单与归档均使用 GitHub API digest 校验。脚本按系统 locale 输出中文或英文，并通过 APT hold、DNF exclude 或 Pacman `IgnorePkg` 防止系统更新覆盖安装结果。
@@ -114,7 +114,7 @@ sudo ./scripts/install-anland-kde.sh
 
 ```bash
 sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
-  ./scripts/install-anland-kde.sh --1
+  ./scripts/tui/install-anland-kde.sh --1
 ```
 
 Anland 宿主模块、App、SELinux、绑定挂载和 Droidspaces 权限仍需按[项目主页的 Wayland 和 Anland 配置](../README.md#wayland-和-anland-配置)完成。
@@ -124,14 +124,14 @@ Anland 宿主模块、App、SELinux、绑定挂载和 Droidspaces 权限仍需�
 `install-anland-gnome.sh` 默认从固定滚动 Release `anland-gnome-packages` 读取 `anland-gnome-manifest`，为 Debian 13 或 Ubuntu 26.04 ARM64 安装 patched Mutter/Xwayland 运行时包，并跳过归档中的测试/开发包。下载源选择、镜像 digest 校验和命令行参数与 KDE 安装器一致；安装结果通过 APT hold 防止升级覆盖。
 
 ```bash
-sudo ./scripts/install-anland-gnome.sh
+sudo ./scripts/tui/install-anland-gnome.sh
 ```
 
 使用公开 Fork 的包时同时覆盖 GNOME 仓库变量：
 
 ```bash
 sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
-  ./scripts/install-anland-gnome.sh --1
+  ./scripts/tui/install-anland-gnome.sh --1
 ```
 
 ## USB Manager 安装器
@@ -180,13 +180,13 @@ sudo download-firmware
 修改 shell 脚本后，至少运行语法检查；安装了 ShellCheck 时也应执行静态检查：
 
 ```bash
-bash -n scripts/install-mesa.sh
-bash -n scripts/droidspaces-tui.sh
-bash -n scripts/install-anland-kde.sh
-bash -n scripts/install-anland-gnome.sh
+bash -n scripts/tui/install-mesa.sh
+bash -n scripts/tui/droidspaces-tui.sh
+bash -n scripts/tui/install-anland-kde.sh
+bash -n scripts/tui/install-anland-gnome.sh
 bash -n scripts/install-usb-manager.sh
-shellcheck scripts/install-mesa.sh
-shellcheck scripts/droidspaces-tui.sh
+shellcheck scripts/tui/install-mesa.sh
+shellcheck scripts/tui/droidspaces-tui.sh
 ```
 
 涉及软件包安装和锁定配置的改动，还应分别在 APT、DNF 和 Pacman 容器中验证，并重复运行一次检查幂等性。
