@@ -9,9 +9,9 @@
 set -euo pipefail
 
 readonly REPOSITORY="collegeming/anland-rdp-bridge"
-readonly RELEASE_TAG="v0.1.0"
+readonly RELEASE_TAG="v0.2.0"
 readonly ASSET="anland-rdp-bridge-aarch64-linux.tar.gz"
-readonly ASSET_SHA256="2109226b53268bc7781bd5690290b165f18027973a6df99c18112a1dd92ce447"
+readonly ASSET_SHA256="053fdaca5e763d9e191d75a488592c9bffbb6ac7b6426366323d34c7d639c5f1"
 readonly BINARY_NAME="anland_rdp_bridge"
 readonly RELEASE_URL="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
 
