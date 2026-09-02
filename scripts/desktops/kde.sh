@@ -20,6 +20,7 @@ configure_environment() {
                 ANLAND=1
                 ANLAND_SOCKET=/run/display.sock
                 ANLAND_DRM_DEVICE=/dev/dri/renderD128
+                ANLAND_SKIP_IMPLICIT_SYNC_WAIT=1
             )
             case "$ID" in
                 arch|archarm|archlinux)

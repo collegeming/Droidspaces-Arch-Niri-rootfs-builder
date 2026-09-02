@@ -44,7 +44,7 @@ ds-tui
 ./scripts/droidspaces-tui.sh
 ```
 
-主菜单包含 Mesa 与 MediaCodec VA-API、Hangover Wine、Wine 字体、Anland KDE 和 Anland GNOME。下载源可以统一设为自动测速、GitHub、`gh-proxy.com` 或 CNB；固定来源会作为 `--1`、`--2` 或 `--3` 传给所选安装器。TUI 会根据当前发行版和架构标记不支持的组件，但下载、摘要校验、安装、回滚与软件包锁定仍由各独立安装器负责。
+主菜单包含 Mesa 与 MediaCodec VA-API、Hangover Wine、Wine 字体、Anland KDE 和 Anland GNOME。中文环境默认使用 CNB，其他语言环境默认使用 GitHub；下载源也可以统一改为自动测速、GitHub、`gh-proxy.com` 或 CNB。固定来源会作为 `--1`、`--2` 或 `--3` 传给所选安装器。TUI 会根据当前发行版和架构标记不支持的组件，但下载、摘要校验、安装、回滚与软件包锁定仍由各独立安装器负责。
 
 主菜单的 `C` 进入缓存管理。可以只清理 Hangover Release 清单缓存，解决滚动 Release 更新后旧清单无法续传的问题；也可以清空 `/var/cache/hangover-wine` 下的全部下载缓存。两项操作都需要确认，清空全部缓存会导致下次安装重新下载软件包。
 

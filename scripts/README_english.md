@@ -44,7 +44,7 @@ Run it from a repository checkout with:
 ./scripts/droidspaces-tui.sh
 ```
 
-The main menu includes Mesa with MediaCodec VA-API, Hangover Wine, Wine fonts, Anland KDE, and Anland GNOME. A shared source setting selects automatic probing, GitHub, `gh-proxy.com`, or CNB. A fixed source is passed to the selected installer as `--1`, `--2`, or `--3`. The TUI marks components unsupported by the current distribution or architecture, while each standalone installer remains responsible for downloads, digest verification, installation, rollback, and package locking.
+The main menu includes Mesa with MediaCodec VA-API, Hangover Wine, Wine fonts, Anland KDE, and Anland GNOME. Chinese environments default to CNB, while other languages default to GitHub. A shared source setting can select automatic probing, GitHub, `gh-proxy.com`, or CNB. A fixed source is passed to the selected installer as `--1`, `--2`, or `--3`. The TUI marks components unsupported by the current distribution or architecture, while each standalone installer remains responsible for downloads, digest verification, installation, rollback, and package locking.
 
 Press `C` in the main menu to open cache management. The Hangover Release manifest can be removed by itself to recover from a stale manifest after a rolling Release update, or all downloads under `/var/cache/hangover-wine` can be removed. Both actions require confirmation, and cleaning all downloads means the package archive must be downloaded again on the next installation.
 
