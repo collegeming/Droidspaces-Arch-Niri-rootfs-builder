@@ -44,7 +44,7 @@ ds-tui
 ./scripts/tui/droidspaces-tui.sh
 ```
 
-主菜单包含 Mesa 与 MediaCodec VA-API、Hangover Wine、Wine 字体、Anland KDE 和 Anland GNOME。中文环境默认使用 CNB，其他语言环境默认使用 GitHub；下载源也可以统一改为自动测速、GitHub、`gh-proxy.com` 或 CNB。固定来源会作为 `--1`、`--2` 或 `--3` 传给所选安装器。TUI 会根据当前发行版和架构标记不支持的组件，但下载、摘要校验、安装、回滚与软件包锁定仍由各独立安装器负责。
+主菜单包含 Mesa 与 MediaCodec VA-API、Hangover Wine、Wine 字体及当前 RootFS 对应的桌面更新项，只显示黄色“检测到更新”、绿色“当前已是最新版本”或红色“未安装”。桌面更新项严格解析 `/etc/droidspaces-desktop.conf`：KDE/KDE mobile 只显示 Anland KDE，GNOME 只显示 Anland GNOME；`none` 或未知桌面进入选择页，可选择 Anland KWin 或 GNOME。旧 RootFS 缺少配置文件时才按已安装的 Anland 组件兜底，无法判断时同样进入选择页。选择组件后进入版本详情，可更新、安装或卸载。版本查询在后台并发运行，动态 Braille 符号表示正在查询，单项 10 秒内未取得有效版本时显示“超时”，且查询不会阻塞菜单输入。版本检测在启动 TUI 时运行，进入菜单、返回或输入无效内容不会重新检测；安装或卸载实际开始执行后，返回主菜单时会自动刷新一次。输入内容可见并支持退格，Loading 使用原地重绘，避免反复清屏闪烁。卸载 Mesa、KWin 或 Mutter 补丁会恢复发行版官方包，Hangover Wine 和 Wine 字体则移除自身内容。中文环境默认使用 CNB，其他语言环境默认使用 GitHub；下载源也可以统一改为自动测速、GitHub、`gh-proxy.com` 或 CNB。
 
 主菜单的 `C` 进入缓存管理。可以只清理 Hangover Release 清单缓存，解决滚动 Release 更新后旧清单无法续传的问题；也可以清空 `/var/cache/hangover-wine` 下的全部下载缓存。两项操作都需要确认，清空全部缓存会导致下次安装重新下载软件包。
 
