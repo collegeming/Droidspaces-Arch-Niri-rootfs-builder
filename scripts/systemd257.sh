@@ -258,11 +258,12 @@ fetch_official_release_metadata() {
 release_asset_sha256() {
   local digest
 
+  # 专用包标签可标记为 prerelease，以免占用仓库的 Latest release；草稿仍不可使用。
   if ! digest="$(jq -er --arg name "$ARCHIVE_NAME" --arg tag "$RELEASE_TAG" '
     if .tag_name != $tag then
       error("release tag mismatch")
-    elif (.draft // false) or (.prerelease // false) then
-      error("release is not a stable release")
+    elif (.draft // false) then
+      error("release is still a draft")
     else
       [.assets[]? | select((.name // "") == $name) | .digest]
       | if length == 1 then .[0] else error("asset digest is not unique") end
