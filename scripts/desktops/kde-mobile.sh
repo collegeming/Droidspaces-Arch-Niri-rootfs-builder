@@ -43,7 +43,7 @@ install_apt() {
             apt-get install -y --no-install-recommends \
                 dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji wayland-utils xserver-xorg dbus-user-session \
                 plasma-nano plasma-mobile plasma-mobile-phone maliit-keyboard maliit-framework \
-                kwin-wayland pipewire pipewire-pulse wireplumber powerdevil plasma-pa upower pulseaudio-utils \
+                kwin-wayland pipewire pipewire-alsa pipewire-pulse wireplumber powerdevil plasma-pa upower pulseaudio-utils \
                 konsole dolphin kate kinfocenter mesa-utils vulkan-tools \
                 systemsettings plasma-systemmonitor kde-config-screenlocker kio-extras xdg-user-dirs \
                 dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kimageformat6-plugins plasma-settings angelfish \
@@ -57,7 +57,7 @@ install_apt() {
             apt-get install -y --no-install-recommends \
                 dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji wayland-utils xserver-xorg dbus-user-session \
                 plasma-nano plasma-mobile plasma-mobile-phone maliit-keyboard maliit-framework maliit-server-qt6 \
-                kwin-wayland pipewire pipewire-pulse wireplumber powerdevil plasma-pa upower pulseaudio-utils \
+                kwin-wayland pipewire pipewire-alsa pipewire-pulse wireplumber powerdevil plasma-pa upower pulseaudio-utils \
                 konsole dolphin kate kinfocenter mesa-utils vulkan-tools \
                 systemsettings plasma-systemmonitor kde-config-screenlocker kio-extras xdg-user-dirs \
                 dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kimageformat6-plugins plasma-settings angelfish \
@@ -83,7 +83,7 @@ install_fedora() {
     dnf install -y --setopt=install_weak_deps=False \
         dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts xorg-x11-server-Xorg wayland-utils \
         plasma-nano plasma-mobile maliit-keyboard maliit-framework \
-        kwin pipewire pipewire-pulseaudio wireplumber powerdevil plasma-pa upower pulseaudio-utils \
+        kwin pipewire pipewire-alsa pipewire-pulseaudio wireplumber powerdevil plasma-pa upower pulseaudio-utils \
         konsole dolphin kate kinfocenter glx-utils vulkan-tools \
         systemsettings plasma-systemmonitor kscreenlocker kio-extras xdg-user-dirs \
         dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers kf6-kimageformats plasma-settings angelfish \
@@ -98,7 +98,7 @@ install_arch() {
         xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop plasma-workspace \
         plasma-mobile plasma-settings plasma-camera plasma-keyboard plasma-nano \
         kwin kwin-x11 qt6-wayland qt6-svg qt6-virtualkeyboard wayland-utils xorg-server \
-        pipewire pipewire-pulse wireplumber powerdevil plasma-pa upower \
+        pipewire pipewire-alsa pipewire-pulse wireplumber powerdevil plasma-pa upower \
         kscreen ark konsole qmlkonsole dolphin kate kinfocenter mesa-utils libpulse vulkan-tools \
         aha clinfo dmidecode kfind plasma-systemmonitor filelight glmark2 vkmark \
         systemsettings kscreenlocker kio-extras xdg-user-dirs \
