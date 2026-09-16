@@ -17,6 +17,7 @@
 | `tui/install-winefonts.sh` | Linux 容器 | 安装 Wine 字体包并刷新 fontconfig 字体缓存。 |
 | `tui/install-anland-kde.sh` | ARM64 Linux 容器 | 安装 Anland patched KWin/Xwayland Release 包，并锁定相关包。 |
 | `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu 容器 | 安装 Anland patched Mutter/Xwayland Release 包，并锁定相关包。 |
+| `tui/install-anland-next.sh` | ARM64 Debian/Ubuntu/Fedora/Arch 容器 | 安装 Anland Next session 包（mini-wm + patched Xwayland + patched bubblewrap）。 |
 | `install-anland-desktop.sh` | RootFS 构建环境 | 根据桌面 slug 分发到 KDE 或 GNOME Anland 安装器。 |
 | `lib/anland-build.sh` | RootFS 构建宿主 | 为 native/QEMU 构建统一解析 Anland 包族、Release tag 和 revision。 |
 | `install-usb-manager.sh` | Linux 容器 | 安装 Droidspaces USB Manager、发行版依赖、菜单入口和用户权限。 |
@@ -134,6 +135,25 @@ sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
   ./scripts/tui/install-anland-gnome.sh --1
 ```
 
+## Anland Next 安装器
+
+`install-anland-next.sh` 默认从固定滚动 Release `anland-session-packages` 读取 `anland-session-manifest`，为 Debian 13、Ubuntu 26.04、Fedora 43/44 或 Arch Linux ARM64 安装 `anland-session` 包。下载源选择、镜像 digest 校验和命令行参数与 KDE 安装器一致。
+
+```bash
+sudo ./scripts/tui/install-anland-next.sh
+```
+
+包内是三个预编译产物：`anland-miniwm`，以及打过 kgsl/turnip glamor 补丁的 Xwayland 与打过 mountinfo 索引补丁的 bubblewrap。后两者装在 `/usr/lib/anland/`，由会话把它前置到 PATH，发行版的同名二进制不会被覆盖，因此**不需要**像 KDE/GNOME 那样做软件包锁定 —— 这个包不替换任何发行版文件。
+
+会话本体是包内的 `/usr/bin/anland-session`（会话 D-Bus + wayland 链接 + rootless Xwayland + mini-wm），配合 `/usr/lib/systemd/user/anland-session.service` 使用，不往用户家目录写任何东西。
+
+使用公开 Fork 的包时覆盖仓库变量：
+
+```bash
+sudo ANLAND_NEXT_RELEASE_REPOSITORY=owner/repository \
+  ./scripts/tui/install-anland-next.sh --1
+```
+
 ## USB Manager 安装器
 
 `install-usb-manager.sh` 支持 Debian/Ubuntu、Fedora 和 Arch，自动安装 PyQt5、ADB、udev、NTFS、exFAT 等依赖，并安装 `usb-manager`、`usb-passthrough` 和 `usb-storage-passthrough` 命令。
@@ -184,6 +204,7 @@ bash -n scripts/tui/install-mesa.sh
 bash -n scripts/tui/droidspaces-tui.sh
 bash -n scripts/tui/install-anland-kde.sh
 bash -n scripts/tui/install-anland-gnome.sh
+bash -n scripts/tui/install-anland-next.sh
 bash -n scripts/install-usb-manager.sh
 shellcheck scripts/tui/install-mesa.sh
 shellcheck scripts/tui/droidspaces-tui.sh

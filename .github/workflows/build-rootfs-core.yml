@@ -174,7 +174,7 @@ jobs:
               "Custom username must be a 1-32 character Linux username."
           fi
 
-          if [ "$DESKTOP" = "kde-mobile" ] || [ "$DESKTOP" = "gnome" ]; then
+          if [ "$DESKTOP" = "kde-mobile" ] || [ "$DESKTOP" = "gnome" ] || [ "$DESKTOP" = "anland-next" ]; then
             DISPLAY_BACKEND="anland-wayland"
           fi
           if [ "$DESKTOP" = "none" ] && [ "$DESKTOP_AUTOSTART" = "true" ]; then

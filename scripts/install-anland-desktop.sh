@@ -8,6 +8,7 @@ shift
 case "$desktop" in
     kde|kde-mobile) installer="/usr/local/sbin/install-anland-kde" ;;
     gnome) installer="/usr/local/sbin/install-anland-gnome" ;;
+    anland-next) installer="/usr/local/sbin/install-anland-next" ;;
     *)
         echo "桌面 $desktop 没有 Anland 软件包安装器。" >&2
         exit 1

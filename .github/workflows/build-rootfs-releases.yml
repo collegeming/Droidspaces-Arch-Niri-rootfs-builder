@@ -33,13 +33,14 @@ on:
           - KDE
           - KDE mobile
           - GNOME
+          - Anland Next
       desktop_autostart:
         description: 桌面开机自启动
         required: true
         type: boolean
         default: true
       display_backend:
-        description: 显示后端（KDE mobile/GNOME 固定使用 Anland Wayland）
+        description: 显示后端（KDE mobile/GNOME/Anland Next 固定使用 Anland Wayland）
         required: true
         type: choice
         default: anland-wayland

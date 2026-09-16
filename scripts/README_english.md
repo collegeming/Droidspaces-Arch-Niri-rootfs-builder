@@ -17,6 +17,7 @@ This directory contains installers used while building the RootFS, maintenance t
 | `tui/install-winefonts.sh` | Linux container | Installs the Wine font bundle and refreshes the fontconfig cache. |
 | `tui/install-anland-kde.sh` | ARM64 Linux container | Installs Anland patched KWin/Xwayland Release packages and locks them. |
 | `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu container | Installs Anland patched Mutter/Xwayland Release packages and locks them. |
+| `tui/install-anland-next.sh` | ARM64 Debian/Ubuntu/Fedora/Arch container | Installs the Anland Next session package (mini-wm + patched Xwayland + patched bubblewrap). |
 | `install-anland-desktop.sh` | RootFS build environment | Dispatches a desktop slug to the KDE or GNOME Anland installer. |
 | `lib/anland-build.sh` | RootFS build host | Resolves the Anland package family, Release tag, and revision for native/QEMU builds. |
 | `install-usb-manager.sh` | Linux container | Installs Droidspaces USB Manager, distribution dependencies, launchers, and user permissions. |
@@ -134,6 +135,25 @@ sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
   ./scripts/tui/install-anland-gnome.sh --1
 ```
 
+## Anland Next Installer
+
+`install-anland-next.sh` reads `anland-session-manifest` from the fixed `anland-session-packages` rolling Release and installs the `anland-session` package for Debian 13, Ubuntu 26.04, Fedora 43/44, or Arch Linux on ARM64. Its source selection, mirror digest checks, and arguments match the KDE installer.
+
+```bash
+sudo ./scripts/tui/install-anland-next.sh
+```
+
+The package carries three prebuilt components: `anland-miniwm`, a Xwayland patched for kgsl/turnip glamor, and a bubblewrap patched for the mountinfo index. The latter two live in `/usr/lib/anland/`, which the session puts first on `PATH`; the distribution binaries are never replaced, so unlike KDE/GNOME **no package locking is needed** — this package overwrites nothing.
+
+The session itself is the packaged `/usr/bin/anland-session` (session D-Bus + wayland link + rootless Xwayland + mini-wm) together with `/usr/lib/systemd/user/anland-session.service`, and nothing is written into a user's home directory.
+
+To use packages from a public fork, override the repository variable:
+
+```bash
+sudo ANLAND_NEXT_RELEASE_REPOSITORY=owner/repository \
+  ./scripts/tui/install-anland-next.sh --1
+```
+
 ## USB Manager Installer
 
 `install-usb-manager.sh` supports Debian/Ubuntu, Fedora, and Arch. It installs PyQt5, ADB, udev, NTFS, exFAT, and other matching dependencies, followed by the `usb-manager`, `usb-passthrough`, and `usb-storage-passthrough` commands.
@@ -184,6 +204,7 @@ bash -n scripts/tui/install-mesa.sh
 bash -n scripts/tui/droidspaces-tui.sh
 bash -n scripts/tui/install-anland-kde.sh
 bash -n scripts/tui/install-anland-gnome.sh
+bash -n scripts/tui/install-anland-next.sh
 bash -n scripts/install-usb-manager.sh
 shellcheck scripts/tui/install-mesa.sh
 shellcheck scripts/tui/droidspaces-tui.sh

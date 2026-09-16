@@ -41,6 +41,7 @@ COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/tui/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 COPY scripts/tui/install-anland-gnome.sh /usr/local/sbin/install-anland-gnome
+COPY scripts/tui/install-anland-next.sh /usr/local/sbin/install-anland-next
 COPY scripts/tui/install-mesa.sh /usr/local/sbin/install-mesa
 COPY scripts/tui/install-hangover-wine.sh /usr/local/sbin/install-hangover-wine
 COPY scripts/tui/install-winefonts.sh /usr/local/sbin/install-winefonts

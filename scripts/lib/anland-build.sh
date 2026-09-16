@@ -8,6 +8,9 @@ anland_package_family() {
     case "$desktop" in
         kde|kde-mobile) printf '%s\n' kde ;;
         gnome) printf '%s\n' gnome ;;
+        # Release 是 anland-session-packages / anland-session-manifest，
+        # 正好是 anland-${family}-packages / anland-${family}-manifest 的形状。
+        anland-next) printf '%s\n' session ;;
         *) return 1 ;;
     esac
 }
@@ -18,7 +21,7 @@ anland_prepare_release() {
     local revision="${3:-}"
     local manifest release_manifest
 
-    case "$family" in kde|gnome) ;; *) return 1 ;; esac
+    case "$family" in kde|gnome|session) ;; *) return 1 ;; esac
     [[ "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
         echo "错误：Wayland 软件包仓库必须是 owner/repository 格式。" >&2
         return 1

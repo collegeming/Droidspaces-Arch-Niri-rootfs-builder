@@ -27,21 +27,21 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 
 | Build target | Base image | Desktop profiles | Anland Wayland | Notes |
 | --- | --- | --- | --- | --- |
-| `Debian-13` | `debian:trixie` | `none`, `KDE`, `KDE mobile`, `GNOME` | Supported | GNOME is Anland Wayland-only. |
+| `Debian-13` | `debian:trixie` | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next` | Supported | GNOME is Anland Wayland-only. |
 | `Ubuntu-24` | `ubuntu:24.04` | `none`, `KDE` | Not supported | Supports `nosnap`. |
 | `Ubuntu-25` | `ubuntu:25.10` | `none`, `KDE` | Not supported | Supports `nosnap`. |
-| `Ubuntu-26` | `ubuntu:26.04` | `none`, `KDE`, `KDE mobile`, `GNOME` | Supported | Supports `nosnap`; GNOME is Anland Wayland-only. |
-| `Fedora-43` | `fedora:43` | `none`, `KDE`, `KDE mobile` | Supported | Some devices require hardware access to avoid flicker or crashes. |
-| `Fedora-44` | `fedora:44` | `none`, `KDE`, `KDE mobile` | Supported | Some devices require hardware access. |
-| `Arch` | `ogarcia/archlinux` | `none`, `KDE`, `KDE mobile` | Supported | Uses ARM64 Arch patched KWin/Xwayland; this project's QEMU/binfmt flow is not recommended for Arch at the moment. |
+| `Ubuntu-26` | `ubuntu:26.04` | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next` | Supported | Supports `nosnap`; GNOME is Anland Wayland-only. |
+| `Fedora-43` | `fedora:43` | `none`, `KDE`, `KDE mobile`, `Anland Next` | Supported | Some devices require hardware access to avoid flicker or crashes. |
+| `Fedora-44` | `fedora:44` | `none`, `KDE`, `KDE mobile`, `Anland Next` | Supported | Some devices require hardware access. |
+| `Arch` | `ogarcia/archlinux` | `none`, `KDE`, `KDE mobile`, `Anland Next` | Supported | Uses ARM64 Arch patched KWin/Xwayland; this project's QEMU/binfmt flow is not recommended for Arch at the moment. |
 
-`all` filters Dockerfile templates through the selected desktop/backend capabilities, so GNOME builds only `Debian-13` and `Ubuntu-26`. For KDE profiles, `all-wayland` builds all five Wayland targets; for GNOME, it builds those two targets. KDE Mobile and GNOME both force Anland Wayland.
+`all` filters Dockerfile templates through the selected desktop/backend capabilities, so GNOME builds only `Debian-13` and `Ubuntu-26`. For KDE profiles, `all-wayland` builds all five Wayland targets; for GNOME, it builds those two targets. KDE Mobile, GNOME, and Anland Next all force Anland Wayland.
 
 ## Feature Overview
 
 - Multi-distribution RootFS builds for Debian, Ubuntu, Fedora, and Arch.
 - Desktop choices for command-line only, KDE, KDE mobile, and GNOME RootFS images.
-- A unified maintenance TUI: run `droidspaces-tui`, `dstui`, or `ds-tui` in the container to install Mesa, Hangover Wine, Wine fonts, and Anland KDE/GNOME components.
+- A unified maintenance TUI: run `droidspaces-tui`, `dstui`, or `ds-tui` in the container to install Mesa, Hangover Wine, Wine fonts, Anland KDE/GNOME components, and the standalone Anland Next session.
 - Desktop auto-start and failure recovery using shared systemd service templates for X11, Plasma Wayland, Plasma Mobile, and GNOME Wayland, with rate-limited automatic restarts after failures.
 - Termux:X11 desktop startup support. X11 mode defaults to `DISPLAY=:5`.
 - PulseAudio forwarding through Unix socket, TCP, or disabled mode.
@@ -154,6 +154,7 @@ When `desktop_autostart` is enabled, the build installs `desktop-session.service
 | KDE + Anland Wayland | `desktop-session.service` | `startplasma-wayland` |
 | KDE Mobile + Anland Wayland | `desktop-session.service` | `startplasmamobile` |
 | GNOME + Anland Wayland | `desktop-session.service` | `gnome-session --session=gnome` (the build writes the GNOME session variables to `/etc/environment`) |
+| Anland Next + Anland Wayland | `desktop-session.service` | `/usr/bin/anland-session` (the packaged session itself: session D-Bus + wayland link + rootless Xwayland + mini-wm, with no desktop environment involved) |
 
 This service runs as UID 1000 and loads `/etc/environment`. If the desktop process fails, systemd restarts it after 2 seconds. If it fails more than 5 times within 60 seconds, systemd temporarily stops retrying to prevent a crash loop. A normal exit does not trigger a restart.
 
@@ -248,7 +249,7 @@ Recommended build options:
 | Option | Recommended value |
 | --- | --- |
 | `build_target` | `Ubuntu-26` |
-| `desktop` | `KDE`, `KDE mobile`, or `GNOME` |
+| `desktop` | `KDE`, `KDE mobile`, `GNOME`, or `Anland Next` |
 | `desktop_autostart` | `true` |
 | `display_backend` | `anland-wayland` |
 | `PulseAudio` | No manual setting required; it becomes `none` when Anland is enabled |
@@ -273,7 +274,7 @@ Host-side setup:
 startplasma-wayland
 ```
 
-If `KDE mobile` or `GNOME` is selected, the workflow forces Wayland on. GNOME also selects the patched Mutter/Xwayland package family.
+If `KDE mobile`, `GNOME`, or `Anland Next` is selected, the workflow forces Wayland on. GNOME selects the patched Mutter/Xwayland package family; `Anland Next` uses the session package with patched mini-wm/Xwayland/bubblewrap.
 
 ## Droidspaces USB Manager
 
@@ -404,6 +405,7 @@ sudo download-firmware
 │   │   ├── droidspaces-tui.sh
 │   │   ├── install-anland-gnome.sh
 │   │   ├── install-anland-kde.sh
+│   │   ├── install-anland-next.sh
 │   │   ├── install-hangover-wine.sh
 │   │   ├── install-mesa.sh
 │   │   └── install-winefonts.sh
@@ -427,6 +429,7 @@ The KDE and GNOME Wayland package workflows and fixed rolling Releases live in [
 - Ubuntu 24 and Ubuntu 25 currently use the X11 path.
 - `KDE mobile` mode is supported on Debian 13, Ubuntu 26, Fedora 43/44, and Arch.
 - `GNOME` supports only Debian 13 and Ubuntu 26 with Anland Wayland; X11 is not supported.
+- `Anland Next` supports Debian 13, Ubuntu 26, Fedora 43/44, and Arch, on Anland Wayland only; it provides a session (Xwayland + mini-wm), not a desktop environment.
 - When `anland-wayland` is selected, the workflow disables PulseAudio forwarding because the Anland app provides its own audio path.
 - Fedora may require hardware access on some devices to avoid flicker or crashes.
 - Ubuntu and Debian may lag or freeze if `noseccomp` is disabled or the kernel lacks `USER_NS`.

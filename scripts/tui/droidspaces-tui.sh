@@ -19,6 +19,7 @@ readonly TUI_GITHUB_API_URL="${DROIDSPACES_TUI_API_URL:-https://api.github.com}"
 readonly TUI_GITHUB_DOWNLOAD_BASE="${DROIDSPACES_TUI_GITHUB_BASE:-https://github.com/$TUI_RELEASE_REPOSITORY/releases/download}"
 readonly TUI_PROXY_DOWNLOAD_BASE="${DROIDSPACES_TUI_PROXY_BASE:-https://gh-proxy.com/https://github.com/$TUI_RELEASE_REPOSITORY/releases/download}"
 readonly TUI_CNB_DOWNLOAD_BASE="${DROIDSPACES_TUI_CNB_BASE:-https://cnb.cool/goldzxcbug/droidspaces-package/-/releases/download}"
+readonly LINUXMIRRORS_SCRIPT_URL="https://linuxmirrors.cn/main.sh"
 
 UI_LANG="en"
 DOWNLOAD_SOURCE=""
@@ -29,6 +30,7 @@ ARCHITECTURE="unknown"
 CACHE_ACTION=""
 UPDATE_WORK_DIR=""
 UPDATE_UPDATER_PATH=""
+MIRROR_WORK_DIR=""
 COMPONENT_VERSION_WORK_DIR=""
 COMPONENT_VERSION_DEADLINE=0
 COMPONENT_STATUS_CHANGED=false
@@ -44,7 +46,7 @@ MENU_ESCAPE_SEQUENCE=""
 MENU_TTY_ECHO_DISABLED=false
 DYNAMIC_MENU_DRAWN=false
 
-readonly -a COMPONENT_NAMES=(mesa hangover fonts kde gnome)
+readonly -a COMPONENT_NAMES=(mesa hangover fonts kde gnome anland-next)
 readonly -a SPINNER_FRAMES=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
 declare -A COMPONENT_CURRENT_VERSIONS=()
 declare -A COMPONENT_UPSTREAM_VERSIONS=()
@@ -205,7 +207,9 @@ set_desktop_component() {
 }
 
 detect_desktop_component() {
-    local line desktop="" backend="" desktop_lines=0 backend_lines=0
+    local line desktop="" desktop_lines=0
+
+    set_desktop_component none
 
     if [[ -e "$DESKTOP_CONFIG" || -L "$DESKTOP_CONFIG" ]]; then
         if [[ -f "$DESKTOP_CONFIG" && ! -L "$DESKTOP_CONFIG" && -r "$DESKTOP_CONFIG" ]]; then
@@ -215,15 +219,10 @@ detect_desktop_component() {
                         desktop="${line#DESKTOP=}"
                         ((desktop_lines += 1))
                         ;;
-                    DISPLAY_BACKEND=*)
-                        backend="${line#DISPLAY_BACKEND=}"
-                        ((backend_lines += 1))
-                        ;;
                 esac
             done < "$DESKTOP_CONFIG"
-            if ((desktop_lines == 1 && backend_lines == 1)) && \
-                [[ "$desktop" =~ ^(none|[a-z][a-z0-9-]*)$ ]] && \
-                [[ "$backend" =~ ^(x11|anland-wayland)$ ]]; then
+            if ((desktop_lines == 1)) && \
+                [[ "$desktop" =~ ^(none|[a-z][a-z0-9-]*)$ ]]; then
                 set_desktop_component "$desktop"
             fi
         fi
@@ -436,6 +435,13 @@ clean_cache_as_root() {
     esac
 }
 
+cleanup_mirror_files() {
+    if [[ -n "$MIRROR_WORK_DIR" && -d "$MIRROR_WORK_DIR" ]]; then
+        rm -rf -- "$MIRROR_WORK_DIR"
+    fi
+    MIRROR_WORK_DIR=""
+}
+
 draw_header() {
     printf '%b%s%b\n' "$COLOR_BLUE" "====================================================" "$COLOR_RESET"
     printf '  %b%s%b  %b%s%b\n' \
@@ -454,6 +460,7 @@ installer_names() {
         fonts) printf '%s\n%s\n' "install-winefonts.sh" "install-winefonts" ;;
         kde) printf '%s\n%s\n' "install-anland-kde.sh" "install-anland-kde" ;;
         gnome) printf '%s\n%s\n' "install-anland-gnome.sh" "install-anland-gnome" ;;
+        anland-next) printf '%s\n%s\n' "install-anland-next.sh" "install-anland-next" ;;
         *) return 1 ;;
     esac
 }
@@ -519,6 +526,12 @@ component_supported() {
         gnome)
             case "$SYSTEM_ID:$SYSTEM_VERSION" in
                 debian:13*|ubuntu:26.04*) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+        anland-next)
+            case "$SYSTEM_ID:$SYSTEM_VERSION" in
+                arch:*|archarm:*|debian:13*|ubuntu:26.04*|fedora:43*|fedora:44*) return 0 ;;
                 *) return 1 ;;
             esac
             ;;
@@ -604,6 +617,9 @@ detected_component_package_version() {
         gnome)
             version="$(installed_package_version mutter-common mutter)" || true
             ;;
+        anland-next)
+            version="$(installed_package_version anland-session)" || true
+            ;;
     esac
     if [[ -n "$version" ]]; then
         printf '%s' "$version"
@@ -657,6 +673,9 @@ managed_component_installed() {
         gnome)
             [[ -s /var/lib/anland-gnome/apt-holds ]]
             ;;
+        anland-next)
+            detected_component_package_version anland-next >/dev/null 2>&1
+            ;;
         *) return 1 ;;
     esac
 }
@@ -676,6 +695,11 @@ component_versions_match() {
         kde|gnome)
             current="${current#*:}"
             [[ "$current" == "$upstream"-* ]]
+            ;;
+        anland-next)
+            # Debian uses the bare package version; RPM and pacman append
+            # their package-release suffixes to the same upstream version.
+            [[ "$current" == "$upstream" || "$current" == "$upstream"-* ]]
             ;;
         *) return 1 ;;
     esac
@@ -732,6 +756,32 @@ component_release_parts() {
             case "$SYSTEM_ID:$SYSTEM_VERSION" in
                 debian:13*) prefix="anland-gnome-debian13-mutter-"; suffix="-arm64.tar.gz" ;;
                 ubuntu:26.04*) prefix="anland-gnome-ubuntu2604-mutter-"; suffix="-arm64.tar.gz" ;;
+                *) return 1 ;;
+            esac
+            ;;
+        anland-next)
+            tag="anland-session-packages"
+            case "$SYSTEM_ID:$SYSTEM_VERSION" in
+                arch:*|archarm:*|archlinux:*)
+                    prefix="anland-session-arch-anland-session-"
+                    suffix="-aarch64.pkg.tar.zst"
+                    ;;
+                debian:13*)
+                    prefix="anland-session-debian13-anland-session_"
+                    suffix="_arm64.deb"
+                    ;;
+                ubuntu:26.04*)
+                    prefix="anland-session-ubuntu2604-anland-session_"
+                    suffix="_arm64.deb"
+                    ;;
+                fedora:43*)
+                    prefix="anland-session-fedora43-anland-session-"
+                    suffix=".aarch64.rpm"
+                    ;;
+                fedora:44*)
+                    prefix="anland-session-fedora44-anland-session-"
+                    suffix=".aarch64.rpm"
+                    ;;
                 *) return 1 ;;
             esac
             ;;
@@ -837,7 +887,7 @@ component_versions_pending() {
 
 component_visible() {
     case "$1" in
-        mesa|hangover|fonts) return 0 ;;
+        mesa|hangover|fonts|anland-next) return 0 ;;
         kde|gnome)
             [[ "$DESKTOP_COMPONENT_MODE" == choose || "$DESKTOP_COMPONENT" == "$1" ]]
             ;;
@@ -1295,6 +1345,192 @@ manage_cache() {
     done
 }
 
+switch_system_mirrors() {
+    local script_path status
+
+    clear_screen
+    draw_header
+    printf '\n%b%s%b\n\n' "$COLOR_BOLD" \
+        "$(msg '切换系统软件源' 'Switch system software mirrors')" "$COLOR_RESET"
+    printf '%s\n' "$(msg \
+        '此操作使用 LinuxMirrors 为当前容器选择并配置发行版软件源。' \
+        'This uses LinuxMirrors to select and configure repositories for the current container.')"
+    printf '%s\n' "$(msg \
+        '来源脚本：' 'Source script:')"
+    printf '  %s\n\n' "$LINUXMIRRORS_SCRIPT_URL"
+    printf '%b%s%b\n\n' "$COLOR_YELLOW" \
+        "$(msg \
+            '远程脚本将以 root 身份运行，并可能修改系统软件源配置。' \
+            'The remote script will run as root and may modify system repository configuration.')" \
+        "$COLOR_RESET"
+
+    if ((EUID != 0)) && ! command -v sudo >/dev/null 2>&1; then
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '该操作需要 root 权限，且系统未安装 sudo。' \
+                'This operation requires root access, and sudo is unavailable.')" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+    command -v curl >/dev/null 2>&1 || {
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '缺少 curl，无法下载 LinuxMirrors 脚本。' \
+                'curl is unavailable, so the LinuxMirrors script cannot be downloaded.')" "$COLOR_RESET"
+        pause_menu
+        return
+    }
+    confirm_run "$(msg '切换系统软件源' 'switch system software mirrors')" || return 0
+
+    MIRROR_WORK_DIR="$(mktemp -d -t droidspaces-linuxmirrors.XXXXXXXX)" || {
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '无法创建临时目录。' 'Could not create a temporary directory.')" "$COLOR_RESET"
+        pause_menu
+        return
+    }
+    chmod 0700 "$MIRROR_WORK_DIR" || true
+    script_path="$MIRROR_WORK_DIR/main.sh"
+    printf '\n%b%s%b\n' "$COLOR_BLUE" \
+        "$(msg '正在下载并检查 LinuxMirrors 脚本。' \
+            'Downloading and checking the LinuxMirrors script.')" "$COLOR_RESET"
+    if ! curl --fail --silent --show-error --location \
+        --retry 2 --retry-all-errors --connect-timeout 15 --max-time 180 \
+        "$LINUXMIRRORS_SCRIPT_URL" --output "$script_path" || \
+        [[ ! -s "$script_path" ]] || ! bash -n "$script_path"; then
+        cleanup_mirror_files
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg 'LinuxMirrors 脚本下载或语法检查失败。' \
+                'The LinuxMirrors script failed to download or pass syntax checking.')" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+
+    printf '\n%b%s%b\n\n' "$COLOR_BLUE" \
+        "$(msg 'LinuxMirrors 脚本即将启动。' 'Starting the LinuxMirrors script.')" "$COLOR_RESET"
+    if ((EUID == 0)); then
+        if bash "$script_path"; then
+            status=0
+        else
+            status=$?
+        fi
+    else
+        if sudo -- bash "$script_path"; then
+            status=0
+        else
+            status=$?
+        fi
+    fi
+    cleanup_mirror_files
+
+    if ((status == 0)); then
+        printf '\n%b%s%b\n' "$COLOR_GREEN" \
+            "$(msg '系统软件源切换完成。' 'System software mirror switching completed.')" "$COLOR_RESET"
+    else
+        printf '\n%b%s%b\n' "$COLOR_RED" \
+            "$(msg "系统软件源切换失败，退出码：$status。" \
+                "System software mirror switching failed with exit code $status.")" "$COLOR_RESET"
+    fi
+    pause_menu
+}
+
+reclaim_sparse_storage() {
+    local root_info root_source root_fstype root_options status
+
+    clear_screen
+    draw_header
+    printf '\n%b%s%b\n\n' "$COLOR_BOLD" \
+        "$(msg '回收存储空间（稀疏镜像）' 'Reclaim storage (sparse image)')" "$COLOR_RESET"
+    printf '%s\n' "$(msg \
+        '此操作用于正常启动的 rootfs.img 稀疏镜像容器。' \
+        'This action is for a normally started rootfs.img sparse-image container.')"
+    printf '%s\n' "$(msg \
+        '只修剪根文件系统中未使用的块，不会删除现有文件。' \
+        'Only unused root-filesystem blocks are trimmed; existing files are not deleted.')"
+    printf '%s\n\n' "$(msg \
+        '宿主端实际占用空间可能减少；镜像的逻辑文件大小通常不变。' \
+        'Host-side allocated space may decrease; the image logical size usually stays unchanged.')"
+
+    if ! command -v findmnt >/dev/null 2>&1; then
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '缺少 findmnt，无法确认根文件系统类型。' \
+                'findmnt is unavailable, so the root filesystem type cannot be verified.')" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+    if ! command -v fstrim >/dev/null 2>&1; then
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '缺少 fstrim，请先安装 util-linux。' \
+                'fstrim is unavailable; install util-linux first.')" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+    if ! root_info="$(findmnt -rnT / -o SOURCE,FSTYPE,OPTIONS 2>/dev/null)" || \
+        [[ -z "$root_info" || "$root_info" == *$'\n'* ]]; then
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg '无法唯一识别根文件系统挂载。' \
+                'The root filesystem mount could not be identified uniquely.')" "$COLOR_RESET"
+        pause_menu
+        return
+    fi
+    read -r root_source root_fstype root_options <<< "$root_info"
+    if [[ "$root_fstype" != ext4 || \
+        ! "$root_source" =~ ^/dev/(block/)?loop[0-9]+(\[[^]]+\])?$ || \
+        ",$root_options," != *,rw,* ]]; then
+        printf '%b%s%b\n' "$COLOR_YELLOW" \
+            "$(msg \
+                '根文件系统不是可写的 Ext4 loop 镜像，已取消操作。' \
+                'The root filesystem is not a writable Ext4 loop image; the operation was cancelled.')" \
+            "$COLOR_RESET"
+        printf '%s: %s (%s, %s)\n' "$(msg '检测结果' 'Detected')" \
+            "$root_source" "$root_fstype" "$root_options"
+        pause_menu
+        return
+    fi
+
+    printf '%s: %s (%s)\n\n' "$(msg '根镜像设备' 'Root image device')" \
+        "$root_source" "$root_fstype"
+    confirm_run "$(msg '回收根镜像的未使用空间' \
+        'reclaim unused space from the root image')" || return 0
+
+    printf '\n%b%s%b\n\n' "$COLOR_BLUE" \
+        "$(msg '正在修剪根文件系统，请勿中断容器。' \
+            'Trimming the root filesystem; do not stop the container.')" "$COLOR_RESET"
+    if ((EUID == 0)); then
+        if fstrim -v /; then
+            status=0
+        else
+            status=$?
+        fi
+    else
+        if ! command -v sudo >/dev/null 2>&1; then
+            printf '%b%s%b\n' "$COLOR_RED" \
+                "$(msg '该操作需要 root 权限，且系统未安装 sudo。' \
+                    'This operation requires root access, and sudo is unavailable.')" "$COLOR_RESET"
+            pause_menu
+            return
+        fi
+        if sudo -- fstrim -v /; then
+            status=0
+        else
+            status=$?
+        fi
+    fi
+
+    printf '\n'
+    if ((status == 0)); then
+        printf '%b%s%b\n' "$COLOR_GREEN" \
+            "$(msg \
+                '修剪完成。请在 Android 宿主端查看 rootfs.img 的实际占用空间。' \
+                'Trim completed. Check the allocated space used by rootfs.img on the Android host.')" \
+            "$COLOR_RESET"
+    else
+        printf '%b%s%b\n' "$COLOR_RED" \
+            "$(msg \
+                "修剪失败，退出码：$status。可能是权限不足、挂载已变为只读，或内核、loop 设备、宿主文件系统不支持 discard。" \
+                "Trim failed with exit code $status. Access may be denied, the mount may be read-only, or the kernel, loop device, or host filesystem may not support discard.")" \
+            "$COLOR_RESET"
+    fi
+    pause_menu
+}
+
 cleanup_update_files() {
     if [[ -n "$UPDATE_WORK_DIR" && -d "$UPDATE_WORK_DIR" ]]; then
         rm -rf -- "$UPDATE_WORK_DIR"
@@ -1537,11 +1773,14 @@ show_about() {
     draw_header
     printf '\n%b%s%b\n\n' "$COLOR_BOLD" "$(msg '关于' 'About')" "$COLOR_RESET"
     printf '%s\n' "$(msg \
-        '此工具统一调用仓库内的五个独立安装器；下载、校验、安装和软件包锁定仍由各安装器负责。' \
-        'This tool dispatches the five standalone installers. Each installer still owns download, verification, installation, and package locking.')"
+        '此工具统一调用仓库内的六个独立安装器；下载、校验、安装和软件包管理仍由各安装器负责。' \
+        'This tool dispatches the six standalone installers. Each installer still owns download, verification, installation, and package management.')"
     printf '\n%s\n' "$(msg \
         'GNOME Anland 仅支持 Debian 13 和 Ubuntu 26.04；KDE Anland 还支持 Fedora 43/44 与 Arch Linux。' \
         'GNOME Anland supports Debian 13 and Ubuntu 26.04. KDE Anland also supports Fedora 43/44 and Arch Linux.')"
+    printf '\n%s\n' "$(msg \
+        'Anland Next session 支持 Debian 13、Ubuntu 26.04、Fedora 43/44 和 Arch Linux。' \
+        'Anland Next session supports Debian 13, Ubuntu 26.04, Fedora 43/44, and Arch Linux.')"
     printf '\n%s\n' "$(msg \
         '桌面更新项根据 /etc/droidspaces-desktop.conf 中的 DESKTOP 字段选择。' \
         'The desktop update entry is selected by the DESKTOP field in /etc/droidspaces-desktop.conf.')"
@@ -1570,9 +1809,14 @@ main_menu() {
                     "$(msg 'Anland 桌面组件' 'Anland desktop components')" \
                     "$(desktop_selection_status_display)"
             fi
+            print_component_status "5" "Anland Next session" "anland-next"
             printf '\n'
             printf '  %b[S]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '切换下载源' 'Change download source')"
             printf '  %b[C]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '清理下载缓存' 'Clean download cache')"
+            printf '  %b[R]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" \
+                "$(msg '回收存储空间（稀疏镜像）' 'Reclaim storage (sparse image)')"
+            printf '  %b[M]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" \
+                "$(msg '切换系统软件源' 'Switch system software mirrors')"
             printf '  %b[U]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '检查与安装更新' 'Check for and install updates')"
             printf '  %b[A]%b %s\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '关于与支持范围' 'About and support')"
             printf '  %b[Q]%b %s\n\n' "$COLOR_CYAN" "$COLOR_RESET" "$(msg '退出' 'Quit')"
@@ -1588,7 +1832,7 @@ main_menu() {
         choice="$MENU_CHOICE"
         [[ -n "$choice" ]] || continue
         case "${choice,,}" in
-            0|1|2|3|4|q|s|c|u|a) restore_dynamic_menu_echo ;;
+            0|1|2|3|4|5|q|s|c|r|m|u|a) restore_dynamic_menu_echo ;;
             *) continue ;;
         esac
         case "${choice,,}" in
@@ -1602,14 +1846,18 @@ main_menu() {
                     desktop_component_selection_menu
                 fi
                 ;;
+            5) component_menu "anland-next" "Anland Next session" ;;
             s) select_download_source ;;
             c) manage_cache ;;
+            r) reclaim_sparse_storage ;;
+            m) switch_system_mirrors ;;
             u) manage_updates ;;
             a) show_about ;;
             q|0) return ;;
         esac
         if [[ "$COMPONENT_REFRESH_REQUIRED" == true ]]; then
             COMPONENT_REFRESH_REQUIRED=false
+            detect_desktop_component
             start_component_version_checks
         fi
         begin_dynamic_menu
@@ -1619,6 +1867,7 @@ main_menu() {
 handle_signal() {
     restore_dynamic_menu_echo
     stop_component_version_workers
+    cleanup_mirror_files
     cleanup_update_files
     printf '\n'
     exit 130
@@ -1627,6 +1876,7 @@ handle_signal() {
 cleanup_all() {
     restore_dynamic_menu_echo
     stop_component_version_workers
+    cleanup_mirror_files
     cleanup_update_files
 }
 

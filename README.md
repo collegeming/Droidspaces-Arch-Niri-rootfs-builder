@@ -27,21 +27,21 @@
 
 | 构建目标 | 基础镜像 | 桌面 profile | Anland Wayland | 备注 |
 | --- | --- | --- | --- | --- |
-| `Debian-13` | `debian:trixie` | `none`、`KDE`、`KDE mobile`、`GNOME` | 支持 | GNOME 仅支持 Anland Wayland。 |
+| `Debian-13` | `debian:trixie` | `none`、`KDE`、`KDE mobile`、`GNOME`、`Anland Next` | 支持 | GNOME 仅支持 Anland Wayland。 |
 | `Ubuntu-24` | `ubuntu:24.04` | `none`、`KDE` | 不支持 | 支持 `nosnap`。 |
 | `Ubuntu-25` | `ubuntu:25.10` | `none`、`KDE` | 不支持 | 支持 `nosnap`。 |
-| `Ubuntu-26` | `ubuntu:26.04` | `none`、`KDE`、`KDE mobile`、`GNOME` | 支持 | 支持 `nosnap`，GNOME 仅支持 Anland Wayland。 |
-| `Fedora-43` | `fedora:43` | `none`、`KDE`、`KDE mobile` | 支持 | 某些设备需要启用硬件访问。 |
-| `Fedora-44` | `fedora:44` | `none`、`KDE`、`KDE mobile` | 支持 | 某些设备需要启用硬件访问。 |
-| `Arch` | `ogarcia/archlinux` | `none`、`KDE`、`KDE mobile` | 支持 | 使用 ARM64 Arch patched KWin/Xwayland；当前不建议使用本项目的 QEMU/binfmt 跨架构方案。 |
+| `Ubuntu-26` | `ubuntu:26.04` | `none`、`KDE`、`KDE mobile`、`GNOME`、`Anland Next` | 支持 | 支持 `nosnap`，GNOME 仅支持 Anland Wayland。 |
+| `Fedora-43` | `fedora:43` | `none`、`KDE`、`KDE mobile`、`Anland Next` | 支持 | 某些设备需要启用硬件访问。 |
+| `Fedora-44` | `fedora:44` | `none`、`KDE`、`KDE mobile`、`Anland Next` | 支持 | 某些设备需要启用硬件访问。 |
+| `Arch` | `ogarcia/archlinux` | `none`、`KDE`、`KDE mobile`、`Anland Next` | 支持 | 使用 ARM64 Arch patched KWin/Xwayland；当前不建议使用本项目的 QEMU/binfmt 跨架构方案。 |
 
-`all` 会按桌面/后端能力过滤 Dockerfile：GNOME 只构建 `Debian-13` 和 `Ubuntu-26`。`all-wayland` 在 `KDE` 和 `KDE mobile` 模式下构建五个 Wayland 目标，在 `GNOME` 模式下只构建上述两个目标；`KDE mobile` 和 `GNOME` 都会强制启用 Anland Wayland。
+`all` 会按桌面/后端能力过滤 Dockerfile：GNOME 只构建 `Debian-13` 和 `Ubuntu-26`。`all-wayland` 在 `KDE` 和 `KDE mobile` 模式下构建五个 Wayland 目标，在 `GNOME` 模式下只构建上述两个目标；`KDE mobile`、`GNOME` 和 `Anland Next` 都会强制启用 Anland Wayland。
 
 ## 功能概览
 
 - 多发行版 RootFS 构建：支持 Debian、Ubuntu、Fedora 和 Arch。
 - 桌面选择：支持命令行 RootFS、KDE、KDE mobile 和 GNOME。
-- 统一维护 TUI：容器内运行 `droidspaces-tui`、`dstui` 或 `ds-tui`，可安装 Mesa、Hangover Wine、Wine 字体及 Anland KDE/GNOME 组件。
+- 统一维护 TUI：容器内运行 `droidspaces-tui`、`dstui` 或 `ds-tui`，可安装 Mesa、Hangover Wine、Wine 字体及 Anland KDE/GNOME 组件，以及独立的 Anland Next session。
 - 桌面自动启动与故障恢复：X11、Plasma Wayland、Plasma Mobile 和 GNOME Wayland 使用统一的 systemd 服务模板，异常退出后会限频自动重启。
 - Termux:X11 桌面启动：X11 模式下默认使用 `DISPLAY=:5`。
 - PulseAudio 音频转发：支持 Unix socket、TCP 和关闭音频转发。
@@ -155,6 +155,7 @@ Release 通常包含：
 | KDE + Anland Wayland | `desktop-session.service` | `startplasma-wayland` |
 | KDE Mobile + Anland Wayland | `desktop-session.service` | `startplasmamobile` |
 | GNOME + Anland Wayland | `desktop-session.service` | `gnome-session --session=gnome`（构建时将 GNOME 会话变量写入 `/etc/environment`） |
+| Anland Next + Anland Wayland | `desktop-session.service` | `/usr/bin/anland-session`（包内的会话本体：会话 D-Bus + wayland 链接 + rootless Xwayland + mini-wm，不经过任何桌面环境） |
 
 该服务以 UID 1000 用户运行并读取 `/etc/environment`。桌面进程异常退出时会在 2 秒后自动重启；如果 60 秒内启动失败超过 5 次，systemd 会暂时停止重试，防止形成崩溃循环。正常退出不会触发自动重启。
 
@@ -249,7 +250,7 @@ sudo ./scripts/tui/install-anland-gnome.sh
 | 选项 | 推荐值 |
 | --- | --- |
 | `build_target` | `Ubuntu-26` |
-| `desktop` | `KDE`、`KDE mobile` 或 `GNOME` |
+| `desktop` | `KDE`、`KDE mobile`、`GNOME` 或 `Anland Next` |
 | `desktop_autostart` | `true` |
 | `display_backend` | `anland-wayland` |
 | `PulseAudio` | 无需手动设置，启用 Anland 后会变为 `none` |
@@ -274,7 +275,7 @@ sudo ./scripts/tui/install-anland-gnome.sh
 startplasma-wayland
 ```
 
-如果选择 `KDE mobile` 或 `GNOME`，工作流会强制启用 Wayland；GNOME 还会自动改用 patched Mutter/Xwayland 包族。
+如果选择 `KDE mobile`、`GNOME` 或 `Anland Next`，工作流会强制启用 Wayland；GNOME 会改用 patched Mutter/Xwayland 包族，`Anland Next` 使用 patched mini-wm/Xwayland/bubblewrap 的 session 包。
 
 ## Droidspaces USB Manager
 
@@ -405,6 +406,7 @@ sudo download-firmware
 │   │   ├── droidspaces-tui.sh
 │   │   ├── install-anland-gnome.sh
 │   │   ├── install-anland-kde.sh
+│   │   ├── install-anland-next.sh
 │   │   ├── install-hangover-wine.sh
 │   │   ├── install-mesa.sh
 │   │   └── install-winefonts.sh
@@ -428,6 +430,7 @@ KDE 与 GNOME Wayland 包的构建工作流和固定滚动 Release 已移到 [`d
 - Ubuntu 24 和 Ubuntu 25 当前按 X11 路径使用。
 - `KDE mobile` 模式支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。
 - `GNOME` 仅支持 Debian 13、Ubuntu 26 和 Anland Wayland，不支持 X11。
+- `Anland Next` 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch，仅支持 Anland Wayland；它提供的是会话（Xwayland + mini-wm）而不是桌面环境。
 - 选择 `anland-wayland` 后，工作流会关闭 PulseAudio 转发，因为 Anland App 自带音频路径。
 - Fedora 在部分设备上需要硬件访问，否则可能闪屏或崩溃。
 - Ubuntu 和 Debian 在未启用 `noseccomp` 或内核缺少 `USER_NS` 时，可能出现卡顿。
