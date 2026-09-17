@@ -10,10 +10,6 @@ configure_environment() {
     # 只放 anland 这条链路真正读或发布的变量：ANLAND_RUNTIME_DIR 是宿主
     # runtime dir 的容器视角（droidspaces 绑定挂载到 /run/anland），三个 GPU
     # 变量是 kgsl/freedreno 路径，XDG_SESSION_TYPE 由会话转发给应用。
-    # DISPLAY + QT_QPA_PLATFORM=xcb 让容器里从任意终端直接敲应用就能起来：
-    # 容器里只有 Xwayland 一个 X 服务器，-displayfd 拿到的就是 :0；不指定 xcb
-    # 的话 Qt 会因为 XDG_SESSION_TYPE=wayland 先试 Wayland 插件、失败、再回退，
-    # 每次启动刷一屏错。
     # WAYLAND_DISPLAY 故意不写：会话会检查 $ANLAND_RUNTIME_DIR/$WAYLAND_DISPLAY
     # 处的宿主 socket，再把应用侧的 wayland-anland 链接发布出去，写死任一种
     # 都会把会话弄坏。
@@ -24,7 +20,7 @@ configure_environment() {
         GALLIUM_DRIVER=kgsl
         FD_FORCE_KGSL=1
         DISPLAY=:0
-        QT_QPA_PLATFORM=xcb
+        QT_QPA_PLATFORM=wayland
     )
 
     [[ "$backend" == anland-wayland ]] || {
@@ -35,7 +31,11 @@ configure_environment() {
     touch "$environment_file"
     for assignment in "${assignments[@]}"; do
         key="${assignment%%=*}"
-        grep -q "^${key}=" "$environment_file" || printf '%s\n' "$assignment" >> "$environment_file"
+        if [[ "$key" == QT_QPA_PLATFORM ]] && grep -q "^${key}=" "$environment_file"; then
+            sed -i "s|^${key}=.*|${assignment}|" "$environment_file"
+        else
+            grep -q "^${key}=" "$environment_file" || printf '%s\n' "$assignment" >> "$environment_file"
+        fi
     done
 }
 
@@ -47,7 +47,7 @@ install_apt() {
     case "$ID:$VERSION_ID" in
         debian:13)
             apt-get install -y --no-install-recommends \
-                dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji pipewire pipewire-alsa pipewire-pulse \
+                dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji qt6-wayland pipewire pipewire-alsa pipewire-pulse \
                 wireplumber ark upower konsole dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools \
                 dbus-user-session clinfo dmidecode wayland-utils kfind \
                 filelight glmark2 vkmark kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
@@ -56,7 +56,7 @@ install_apt() {
             ;;
         ubuntu:26.04)
             apt-get install -y --no-install-recommends \
-                dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji pipewire pipewire-alsa pipewire-pulse \
+                dbus-x11 x11-xserver-utils fonts-noto-cjk fonts-noto-color-emoji qt6-wayland pipewire pipewire-alsa pipewire-pulse \
                 wireplumber ark upower konsole dolphin kate kinfocenter mesa-utils pulseaudio-utils vulkan-tools \
                 dbus-user-session clinfo dmidecode wayland-utils kfind filelight \
                 glmark2 vkmark kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
@@ -79,7 +79,7 @@ install_fedora() {
 
     dnf install -y --setopt=install_weak_deps=False \
         dbus-x11 xrandr xset xrdb xhost google-noto-cjk-fonts google-noto-emoji-color-fonts pipewire pipewire-alsa \
-        pipewire-pulseaudio wireplumber ark upower konsole dolphin kate kinfocenter glx-utils pulseaudio-utils \
+        pipewire-pulseaudio wireplumber ark upower konsole dolphin kate kinfocenter qt6-qtwayland glx-utils pulseaudio-utils \
         vulkan-tools clinfo dmidecode wayland-utils kfind \
         filelight glmark2 vkmark kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kf6-kimageformats libcanberra-gtk3 gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop
@@ -87,7 +87,7 @@ install_fedora() {
 
 install_arch() {
     pacman -S --noconfirm --needed \
-        xorg-xrandr noto-fonts-cjk noto-fonts-emoji pipewire pipewire-alsa pipewire-pulse wireplumber ark upower konsole \
+        xorg-xrandr noto-fonts-cjk noto-fonts-emoji qt6-wayland pipewire pipewire-alsa pipewire-pulse wireplumber ark upower konsole \
         dolphin kate kinfocenter mesa-utils libpulse vulkan-tools clinfo dmidecode wayland-utils kfind \
         filelight glmark2 vkmark kio-extras xdg-user-dirs dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
         kimageformats libcanberra gstreamer gst-plugins-base gst-plugins-good sound-theme-freedesktop

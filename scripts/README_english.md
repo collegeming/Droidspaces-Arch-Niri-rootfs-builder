@@ -147,6 +147,8 @@ The package carries three prebuilt components: `anland-miniwm`, a Xwayland patch
 
 The session itself is the packaged `/usr/bin/anland-session` (session D-Bus + wayland link + rootless Xwayland + mini-wm) together with `/usr/lib/systemd/user/anland-session.service`, and nothing is written into a user's home directory.
 
+The Anland Next profile defaults Qt 6 applications to native Wayland and explicitly installs its platform plugin; an interactive user shell imports `~/.anlandx-env` while the session is running. Kate launchers consistently use `kate -b`, avoiding its no-window exit in a minimal session. Legacy X11/XCB applications remain compatible through the packaged Xwayland, without injecting additional Qt/X11 scaling variables.
+
 To use packages from a public fork, override the repository variable:
 
 ```bash

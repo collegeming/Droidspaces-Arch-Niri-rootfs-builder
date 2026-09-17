@@ -147,6 +147,8 @@ sudo ./scripts/tui/install-anland-next.sh
 
 会话本体是包内的 `/usr/bin/anland-session`（会话 D-Bus + wayland 链接 + rootless Xwayland + mini-wm），配合 `/usr/lib/systemd/user/anland-session.service` 使用，不往用户家目录写任何东西。
 
+Anland Next profile 默认让 Qt 6 应用使用原生 Wayland，并显式安装对应平台插件；直接通过终端启动时，用户 shell 会读取运行中的 `~/.anlandx-env`。
+
 使用公开 Fork 的包时覆盖仓库变量：
 
 ```bash
