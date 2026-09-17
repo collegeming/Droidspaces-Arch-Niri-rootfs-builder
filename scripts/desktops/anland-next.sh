@@ -7,17 +7,24 @@ configure_environment() {
     local backend="${1:-}"
     local environment_file="${ROOTFS_DIR:-}/etc/environment"
     local assignment key
+    # 只放 anland 这条链路真正读或发布的变量：ANLAND_RUNTIME_DIR 是宿主
+    # runtime dir 的容器视角（droidspaces 绑定挂载到 /run/anland），三个 GPU
+    # 变量是 kgsl/freedreno 路径，XDG_SESSION_TYPE 由会话转发给应用。
+    # DISPLAY + QT_QPA_PLATFORM=xcb 让容器里从任意终端直接敲应用就能起来：
+    # 容器里只有 Xwayland 一个 X 服务器，-displayfd 拿到的就是 :0；不指定 xcb
+    # 的话 Qt 会因为 XDG_SESSION_TYPE=wayland 先试 Wayland 插件、失败、再回退，
+    # 每次启动刷一屏错。
+    # WAYLAND_DISPLAY 故意不写：会话会检查 $ANLAND_RUNTIME_DIR/$WAYLAND_DISPLAY
+    # 处的宿主 socket，再把应用侧的 wayland-anland 链接发布出去，写死任一种
+    # 都会把会话弄坏。
     local -a assignments=(
-        XCURSOR_SIZE=48
         XDG_SESSION_TYPE=wayland
-        QT_QPA_PLATFORM=wayland
         ANLAND_RUNTIME_DIR=/run/anland
         MESA_LOADER_DRIVER_OVERRIDE=kgsl
         GALLIUM_DRIVER=kgsl
         FD_FORCE_KGSL=1
-        ANLAND=1
-        ANLAND_SOCKET=/run/display.sock
-        ANLAND_DRM_DEVICE=/dev/dri/renderD128
+        DISPLAY=:0
+        QT_QPA_PLATFORM=xcb
     )
 
     [[ "$backend" == anland-wayland ]] || {
