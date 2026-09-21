@@ -33,10 +33,11 @@ COPY scripts/tui/install-winefonts.sh /usr/local/sbin/install-winefonts
 COPY scripts/tui/droidspaces-tui.sh /usr/local/bin/droidspaces-tui
 COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
+COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
@@ -191,45 +192,8 @@ RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [跳过] 未开启 Mesa 驱动安装"; \
     fi
 
-# 通过 AUR 安装原生 ARM64 Google Chrome，替换 Chromium。
-RUN if [ "$DESKTOP" != "none" ]; then \
-        : > /tmp/chrome-build-packages && \
-        for package in $(pacman -Sgq base-devel); do \
-            if ! pacman -Qq "$package" >/dev/null 2>&1; then \
-                printf '%s\n' "$package" >> /tmp/chrome-build-packages; \
-            fi; \
-        done && \
-        pacman -S --noconfirm --needed base-devel git && \
-        useradd --system --create-home --home-dir /tmp/chrome-build --shell /bin/bash chrome-build && \
-        runuser -u chrome-build -- git clone --depth=1 https://aur.archlinux.org/google-chrome.git /tmp/chrome-build/google-chrome && \
-        grep -Eq '^[[:space:]]*arch = aarch64$' /tmp/chrome-build/google-chrome/.SRCINFO && \
-        grep -Eq '^[[:space:]]*source_aarch64 = https://dl\.google\.com/linux/chrome/deb/.+_arm64\.deb$' /tmp/chrome-build/google-chrome/.SRCINFO && \
-        grep -Eq '^[[:space:]]*sha512sums_aarch64 = [0-9a-fA-F]{128}$' /tmp/chrome-build/google-chrome/.SRCINFO && \
-        CHROME_DEPENDENCIES="$(sed -n 's/^[[:space:]]*depends = //p' /tmp/chrome-build/google-chrome/.SRCINFO | sed 's/[<>=].*$//' | sort -u)" && \
-        [ -n "$CHROME_DEPENDENCIES" ] && \
-        if printf '%s\n' "$CHROME_DEPENDENCIES" | grep -Eqv '^[A-Za-z0-9@._+][A-Za-z0-9@._+:-]*$'; then \
-            echo "AUR 配方包含无效的 Chrome 依赖" >&2; \
-            exit 1; \
-        fi && \
-        pacman -S --noconfirm --needed --asdeps $CHROME_DEPENDENCIES && \
-        runuser -u chrome-build -- bash -c 'cd "$1" && makepkg --cleanbuild --clean --noconfirm' _ /tmp/chrome-build/google-chrome && \
-        CHROME_PACKAGE="$(find /tmp/chrome-build/google-chrome -maxdepth 1 -type f -name 'google-chrome-*.pkg.tar.*' ! -name '*.sig' -print -quit)" && \
-        [ -n "$CHROME_PACKAGE" ] && \
-        [ "$(find /tmp/chrome-build/google-chrome -maxdepth 1 -type f -name 'google-chrome-*.pkg.tar.*' ! -name '*.sig' -print | wc -l)" -eq 1 ] && \
-        sed -e '/^[[:space:]]*LocalFileSigLevel[[:space:]]*=/d' \
-            -e '/^\[options\][[:space:]]*$/a LocalFileSigLevel = Optional' \
-            /etc/pacman.conf > /tmp/pacman-chrome.conf && \
-        [ "$(pacman --config /tmp/pacman-chrome.conf -Qqp "$CHROME_PACKAGE")" = "google-chrome" ] && \
-        LC_ALL=C pacman --config /tmp/pacman-chrome.conf -Qip "$CHROME_PACKAGE" | grep -Eq '^Architecture[[:space:]]*: aarch64$' && \
-        pacman --config /tmp/pacman-chrome.conf -U --noconfirm "$CHROME_PACKAGE" && \
-        userdel -r chrome-build && \
-        if [ -s /tmp/chrome-build-packages ]; then \
-            pacman -Rns --noconfirm $(cat /tmp/chrome-build-packages); \
-        fi && \
-        rm -f /tmp/chrome-build-packages /tmp/pacman-chrome.conf; \
-    else \
-        echo "--> [跳过] 命令行 RootFS 不安装 Google Chrome"; \
-    fi
+# 安装并配置原生 ARM64 Google Chrome。
+RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"
 
 # 修复容器内的 DHCP 网络服务配置
 RUN mkdir -p /etc/systemd/network && \
@@ -389,11 +353,20 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
         bash /usr/local/sbin/systemd257; \
     else \
         echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
-    fi && \
-    rm -f /usr/local/sbin/systemd257
+    fi
 
 # 彻底清理 pacman 缓存
-RUN rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
+# 打包前删除仅用于构建的一次性脚本；TUI 和运行时脚本保留。
+RUN rm -f \
+        /usr/local/sbin/configure-chrome \
+        /usr/local/sbin/configure-desktop \
+        /usr/local/sbin/install-desktop \
+        /usr/local/sbin/install-anland-desktop \
+        /usr/local/sbin/install-droidspaces-usb-manager \
+        /usr/local/sbin/systemd257 \
+        /usr/local/sbin/nosnap && \
+    rm -rf /usr/local/lib/droidspaces/desktops && \
+    rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
 # 阶段 2：将完整的根文件系统导出到 scratch（空白层），以便外部直接提取或打包成 tarfs
 FROM scratch AS export
 COPY --from=customizer / /

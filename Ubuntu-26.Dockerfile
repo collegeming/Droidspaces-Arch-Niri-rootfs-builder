@@ -52,11 +52,12 @@ COPY scripts/tui/install-winefonts.sh /usr/local/sbin/install-winefonts
 COPY scripts/tui/droidspaces-tui.sh /usr/local/bin/droidspaces-tui
 COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
+COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 
 # 赋予相关脚本可执行权限
-RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/bin/download-firmware /usr/local/sbin/nosnap /etc/profile.d/ds-aliases.sh /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui
 
@@ -70,7 +71,6 @@ RUN sed -i 's/Components: main/Components: main restricted universe multiverse/g
     else \
         echo "--> [跳过] 未开启 nosnap"; \
     fi && \
-    rm -f /usr/local/sbin/nosnap && \
     apt-get update && \
     apt-get upgrade -y
 
@@ -229,17 +229,8 @@ RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [跳过] 未开启 Mesa 驱动安装"; \
     fi
 
-# 从 Google 官方 APT 软件源安装原生 ARM64 Chrome，替换 Chromium。
-RUN if [ "$DESKTOP" != "none" ]; then \
-        install -d -m 0755 /etc/apt/keyrings /etc/apt/sources.list.d && \
-        curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-chrome.asc && \
-        grep -q 'BEGIN PGP PUBLIC KEY BLOCK' /etc/apt/keyrings/google-chrome.asc && \
-        printf 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main\n' > /etc/apt/sources.list.d/google-chrome.list && \
-        apt-get update && \
-        apt-get install -y --no-install-recommends google-chrome-stable; \
-    else \
-        echo "--> [跳过] 命令行 RootFS 不安装 Google Chrome"; \
-    fi
+# 安装并配置原生 ARM64 Google Chrome。
+RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"
 # 修复容器内的 DHCP 网络服务配置
 RUN mkdir -p /etc/systemd/network && \
     cat <<'EOF' > /etc/systemd/network/10-eth-dhcp.network
@@ -400,10 +391,19 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
         bash /usr/local/sbin/systemd257; \
     else \
         echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
-    fi && \
-    rm -f /usr/local/sbin/systemd257
+    fi
 
-RUN apt-get clean && \
+# 打包前删除仅用于构建的一次性脚本；TUI 和运行时脚本保留。
+RUN rm -f \
+        /usr/local/sbin/configure-chrome \
+        /usr/local/sbin/configure-desktop \
+        /usr/local/sbin/install-desktop \
+        /usr/local/sbin/install-anland-desktop \
+        /usr/local/sbin/install-droidspaces-usb-manager \
+        /usr/local/sbin/systemd257 \
+        /usr/local/sbin/nosnap && \
+    rm -rf /usr/local/lib/droidspaces/desktops && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 FROM scratch AS export

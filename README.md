@@ -50,6 +50,7 @@
 - Snapdragon GPU 支持：集成来自 `mesa-for-android-container` 的高通 GPU 相关配置。
 - 全部七个发行版通过 `scripts/tui/install-mesa.sh` 安装对应的 ARM64 Mesa 驱动及最新版 `droidspaces-media-decode` VA-API 驱动，并仅锁定相关 Mesa 包。KWin/Xwayland 与 Mutter/Xwayland 分别由 Anland KDE、GNOME 安装器锁定。镜像源选择、完整性校验和各发行版锁定机制见 [scripts 目录说明](scripts/README.md#mesa-安装器)。
 - 原生 ARM64 Google Chrome：全部桌面模式以 Chrome Stable 取代 Chromium；Debian/Ubuntu 和 Fedora 使用 Google 官方软件源，Arch 使用 AUR 的 ARM64 打包配方。
+- 所有支持 Chrome 的发行版在 Anland Wayland 构建中都会为 Chrome 固化 Wayland、Render Node、Vulkan 和 VA-API 启动参数；X11 构建保持 Chrome 默认启动方式。
 
 - 骁龙 8 Gen 2 Wayland 花屏修复：可选将 Turnip UBWC 修复开关写入 RootFS 环境变量。
 - 容器增强：补充 Android/Droidspaces 环境下常见的硬件、网络和用户组识别配置。

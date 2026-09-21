@@ -50,6 +50,7 @@ The goal is to reduce the amount of manual setup required to run a desktop Linux
 - Snapdragon GPU support using configuration from `mesa-for-android-container`.
 - All seven distributions use `scripts/tui/install-mesa.sh` to install the matching ARM64 Mesa driver and latest `droidspaces-media-decode` VA-API driver, then lock only the related Mesa packages. The Anland KDE and GNOME installers separately hold KWin/Xwayland and Mutter/Xwayland. Source selection, integrity verification, and hold mechanisms are documented in the [scripts directory guide](scripts/README_english.md#mesa-installer).
 - Native ARM64 Google Chrome: every desktop profile replaces Chromium with Chrome Stable. Debian/Ubuntu and Fedora use Google's official repositories; Arch uses the ARM64 AUR packaging recipe.
+- All Chrome-supported distributions persist Chrome's Wayland, render-node, Vulkan, and VA-API launch flags in Anland Wayland builds; X11 builds keep Chrome's default startup behavior.
 - Optional Snapdragon 8 Gen 2 Wayland display-corruption fix through a Turnip UBWC environment setting.
 - Container integration improvements for common Android/Droidspaces hardware, network, and group recognition.
 - Optional TMOE integration. Run `tmoe` inside the container to start it.

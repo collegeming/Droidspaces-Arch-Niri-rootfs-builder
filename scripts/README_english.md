@@ -10,6 +10,7 @@ This directory contains installers used while building the RootFS, maintenance t
 | --- | --- | --- |
 | `install-desktop.sh`, `desktops/*.sh` | RootFS build environment | Dispatches stable desktop profile slugs and owns package sets and desktop-specific environment variables. |
 | `configure-desktop.sh` | RootFS build environment | Writes desktop/backend configuration, invokes profile environment setup, and optionally installs the common auto-start service. |
+| `configure-chrome.sh` | RootFS build environment | Installs Chrome in all supported images, then configures hardware-acceleration flags and desktop launchers for Anland Wayland images. |
 | `start-desktop-session.sh` | Linux container | Starts the selected session from `/etc/droidspaces-desktop.conf`. |
 | `tui/droidspaces-tui.sh` | ARM64 Linux container | Provides a TMOE-style terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
 | `tui/install-mesa.sh` | ARM64 Linux container | Installs the latest Android-container Mesa build and MediaCodec VA-API driver, then locks Mesa packages. |
