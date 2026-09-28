@@ -12,7 +12,6 @@ ARG ENABLE_kfgj_ARG
 ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
-ARG ENABLE_tmoe_ARG
 ARG DISPLAY_BACKEND
 ARG ENABLE_8gen2_wayland_ARG
 ARG ENABLE_systemd257_ARG
@@ -106,12 +105,6 @@ RUN apt-get update && \
     if [ "$ENABLE_docker_ARG" = "true" ]; then \
         apt-get install -y --no-install-recommends \
         docker.io docker-compose docker-cli; \
-    fi && \
-    ## 集成tmoe (可选)
-    if [ "$ENABLE_tmoe_ARG" = "true" ]; then \
-        git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux/git && \
-        ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
-        chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi && \
     apt-get autoremove -y && \
     apt-get clean && \

@@ -71,11 +71,6 @@ on:
         required: true
         type: boolean
         default: false
-      enable_tmoe:
-        description: Integrate TMOE
-        required: true
-        type: boolean
-        default: true
       nosnap:
         description: Remove Ubuntu Snap
         required: true
@@ -140,7 +135,6 @@ jobs:
       enable_zh_tz: ${{ inputs.enable_zh_tz }}
       enable_mesa: ${{ inputs.enable_mesa }}
       enable_8gen2_wayland: ${{ inputs.enable_8gen2_wayland }}
-      enable_tmoe: ${{ inputs.enable_tmoe }}
       nosnap: ${{ inputs.nosnap }}
       enable_systemd257: ${{ inputs.enable_systemd257 }}
       enable_srf: ${{ inputs.enable_srf }}

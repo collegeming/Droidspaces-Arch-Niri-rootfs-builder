@@ -14,7 +14,7 @@ ENABLE_8gen2_wayland="false"
 ENABLE_systemd257="false"
 DISPLAY_BACKEND_INPUT="X11"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:B:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:" opt; do
+while getopts "i:v:K:L:B:P:a:b:c:d:e:f:g:h:n:S:t:u:A:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; 
     v) VERSION="$OPTARG" ;;    
@@ -30,7 +30,6 @@ while getopts "i:v:K:L:B:P:a:b:c:d:e:f:g:h:j:n:S:t:u:A:" opt; do
     e) ENABLE_zip="$OPTARG" ;;
     f) ENABLE_docker="$OPTARG" ;;
     h) ENABLE_srf="$OPTARG" ;; 
-    j) ENABLE_tmoe="$OPTARG" ;; 
     n) ENABLE_nosnap="$OPTARG" ;;
     S) ENABLE_systemd257="$OPTARG" ;; # systemd 257 旧内核兼容
     t) ENABLE_8gen2_wayland="$OPTARG" ;; # 修复骁龙8 Gen 2 Wayland 花屏
@@ -190,7 +189,6 @@ docker buildx build \
   --build-arg ENABLE_zip_ARG="$ENABLE_zip" \
   --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
   --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
-  --build-arg ENABLE_tmoe_ARG="$ENABLE_tmoe" \
   --build-arg ENABLE_nosnap_ARG="$ENABLE_nosnap" \
   --build-arg ENABLE_systemd257_ARG="$ENABLE_systemd257" \
   --build-arg ENABLE_8gen2_wayland_ARG="$ENABLE_8gen2_wayland" \

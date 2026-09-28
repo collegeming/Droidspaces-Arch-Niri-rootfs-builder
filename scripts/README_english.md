@@ -12,7 +12,7 @@ This directory contains installers used while building the RootFS, maintenance t
 | `configure-desktop.sh` | RootFS build environment | Writes desktop/backend configuration, invokes profile environment setup, and optionally installs the common auto-start service. |
 | `configure-chrome.sh` | RootFS build environment | Installs Chrome in all supported images, then configures hardware-acceleration flags and desktop launchers for Anland Wayland images. |
 | `start-desktop-session.sh` | Linux container | Starts the selected session from `/etc/droidspaces-desktop.conf`. |
-| `tui/droidspaces-tui.sh` | ARM64 Linux container | Provides a TMOE-style terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
+| `tui/droidspaces-tui.sh` | ARM64 Linux container | Provides a unified terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
 | `tui/install-mesa.sh` | ARM64 Linux container | Installs the latest Android-container Mesa build and MediaCodec VA-API driver, then locks Mesa packages. |
 | `tui/install-hangover-wine.sh` | ARM64 Linux container | Installs the Hangover Wine Release packages matching the current distribution. |
 | `tui/install-winefonts.sh` | Linux container | Installs the Wine font bundle and refreshes the fontconfig cache. |
@@ -119,7 +119,7 @@ sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
   ./scripts/tui/install-anland-kde.sh --1
 ```
 
-The Anland host module, app, SELinux policy, bind mount, and Droidspaces permissions must still be configured as described in the [project Wayland and Anland setup](../README_english.md#wayland-and-anland-setup).
+The Anland host module, app, SELinux policy, bind mount, and Droidspaces permissions must still be configured as described in the [Wayland and Anland setup guide](../docs/en/desktop-and-anland.md#anland-wayland-host-setup).
 
 ## Anland GNOME Installer
 

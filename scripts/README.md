@@ -12,7 +12,7 @@
 | `configure-desktop.sh` | RootFS 构建环境 | 写入桌面/显示后端配置，调用 profile 环境配置并按需安装统一自启动服务。 |
 | `configure-chrome.sh` | RootFS 构建环境 | 在所有支持 Chrome 的镜像中安装 Chrome；Anland Wayland 镜像额外配置硬件加速启动参数和桌面入口。 |
 | `start-desktop-session.sh` | Linux 容器 | 根据 `/etc/droidspaces-desktop.conf` 启动实际桌面会话。 |
-| `tui/droidspaces-tui.sh` | ARM64 Linux 容器 | 提供类似 TMOE 的统一终端菜单，调度 Mesa、Hangover Wine、Wine 字体和 Anland 安装器。 |
+| `tui/droidspaces-tui.sh` | ARM64 Linux 容器 | 提供统一终端菜单，调度 Mesa、Hangover Wine、Wine 字体和 Anland 安装器。 |
 | `tui/install-mesa.sh` | ARM64 Linux 容器 | 安装最新版 Android 容器专用 Mesa 和 MediaCodec VA-API 驱动，并锁定 Mesa 包。 |
 | `tui/install-hangover-wine.sh` | ARM64 Linux 容器 | 安装当前发行版对应的 Hangover Wine Release 包。 |
 | `tui/install-winefonts.sh` | Linux 容器 | 安装 Wine 字体包并刷新 fontconfig 字体缓存。 |
@@ -119,7 +119,7 @@ sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
   ./scripts/tui/install-anland-kde.sh --1
 ```
 
-Anland 宿主模块、App、SELinux、绑定挂载和 Droidspaces 权限仍需按[项目主页的 Wayland 和 Anland 配置](../README.md#wayland-和-anland-配置)完成。
+Anland 宿主模块、App、SELinux、绑定挂载和 Droidspaces 权限仍需按[Wayland 与 Anland 配置教程](../docs/zh/桌面与Anland.md#wayland-和-anland-宿主端配置)完成。
 
 ## Anland GNOME 安装器
 

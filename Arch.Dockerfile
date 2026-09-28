@@ -14,7 +14,6 @@ ARG ENABLE_kfgj_ARG
 ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
-ARG ENABLE_tmoe_ARG
 ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
@@ -78,12 +77,6 @@ RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/
     if [ "$ENABLE_docker_ARG" = "true" ]; then \
         pacman -S --noconfirm --needed \
         docker docker-compose; \
-    fi && \
-    ## 集成tmoe (可选)
-    if [ "$ENABLE_tmoe_ARG" = "true" ]; then \
-        git clone --depth=1 https://github.com/2moe/tmoe-linux.git /usr/local/etc/tmoe-linux/git && \
-        ln -sf /usr/local/etc/tmoe-linux/git/debian.sh /usr/local/bin/tmoe && \
-        chmod -R 755 /usr/local/etc/tmoe-linux; \
     fi
 
 # 启用 Anland 时从固定滚动 GitHub Release 安装对应桌面的 ARM64 包。
