@@ -218,6 +218,14 @@ getent group droidspaces-gpu >/dev/null || groupadd -g 786 -r droidspaces-gpu
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,droidspaces-gpu root || true
 usermod -a -G aid_inet,aid_net_raw,input,video,tty,wheel,droidspaces-gpu ${USERNAME} || true
 
+# --- PipeWire 实时调度权限：修复 Plasma/KWin 反复重启 ---
+getent group pipewire >/dev/null || groupadd -r pipewire
+usermod -a -G pipewire ${USERNAME} || true
+mkdir -p /etc/systemd/system.conf.d /etc/systemd/user.conf.d
+printf '[Manager]\nDefaultLimitRTPRIO=70\nDefaultLimitNICE=-19\nDefaultLimitRTTIME=infinity\n' \
+    > /etc/systemd/system.conf.d/50-pipewire-rt.conf
+cp /etc/systemd/system.conf.d/50-pipewire-rt.conf /etc/systemd/user.conf.d/50-pipewire-rt.conf
+
 # 确保未来通过 useradd 创建的新用户也会进入附加组 (Fedora 通过 /etc/default/useradd 处理)
 if [ -f /etc/default/useradd ]; then
     sed -i '/^GROUPS=/d' /etc/default/useradd
