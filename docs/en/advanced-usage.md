@@ -64,7 +64,7 @@ The output name resembles `Ubuntu-26-kde-Wayland-Droidspaces-rootfs-aarch64-loca
 ## Limitations
 
 - Anland Wayland is supported on Debian 13, Ubuntu 26, Fedora 43/44, and Arch; Ubuntu 24/25 use X11.
-- GNOME is available only on Debian 13 and Ubuntu 26 with Anland Wayland.
+- GNOME is available on Debian 13, Ubuntu 26, and Arch Linux ARM with Anland Wayland.
 - KDE Mobile and Anland Next are available only on supported Wayland targets.
 - Fedora may need hardware access on some devices. Debian/Ubuntu may lag when `noseccomp` is disabled or the host kernel lacks `USER_NS`.
 - This project's QEMU/binfmt cross-architecture path is not currently recommended for Arch.

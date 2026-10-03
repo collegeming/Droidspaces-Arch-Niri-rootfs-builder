@@ -69,9 +69,23 @@ install_apt() {
     apt-get install -y --no-install-recommends "${packages[@]}"
 }
 
+install_arch() {
+    pacman -S --noconfirm --needed \
+        noto-fonts noto-fonts-cjk noto-fonts-emoji \
+        gnome-shell gnome-session gnome-control-center gnome-settings-daemon mutter \
+        gnome-terminal nautilus gnome-system-monitor gnome-tweaks \
+        gnome-keyring polkit upower \
+        pipewire pipewire-alsa pipewire-pulse wireplumber \
+        mesa-utils vulkan-tools aha clinfo dmidecode glmark2 vkmark \
+        wayland-utils xorg-xwayland xdg-user-dirs xdg-desktop-portal-gnome \
+        file-roller evince eog gst-plugins-base gst-plugins-good \
+        libcanberra sound-theme-freedesktop gnome-backgrounds
+}
+
 install_profile() {
     case "$ID" in
         debian|ubuntu) install_apt ;;
+        arch|archarm|archlinux) install_arch ;;
         *) echo "GNOME 不支持当前发行版：$ID" >&2; return 1 ;;
     esac
 }

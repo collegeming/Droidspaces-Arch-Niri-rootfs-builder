@@ -26,7 +26,7 @@ startplasma-x11
 
 ### Anland Wayland host setup
 
-Anland Wayland supports Debian 13, Ubuntu 26, Fedora 43/44, and Arch. KDE uses patched KWin/Xwayland; GNOME uses patched Mutter/Xwayland. The packages are published by [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package).
+Anland Wayland supports Debian 13, Ubuntu 26, Fedora 43/44, and Arch. KDE uses patched KWin/Xwayland; GNOME uses patched Mutter. GNOME packages for Debian, Ubuntu, and Arch are published by [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) and installed from its Release during RootFS creation.
 
 Prepare the Android device:
 
@@ -51,10 +51,12 @@ The build fetches matching packages automatically. To install them separately in
 sudo ./scripts/tui/install-anland-kde.sh
 ```
 
-The GNOME installer supports Debian 13 and Ubuntu 26 only:
+The GNOME installer runs on Debian 13, Ubuntu 26, and Arch Linux ARM:
 
 ```bash
 sudo ./scripts/tui/install-anland-gnome.sh
 ```
+
+The in-container installer supports Arch pacman packages and reads the Arch target from the `anland-gnome-packages` Release manifest.
 
 See the [script guide](../../scripts/README_english.md#anland-kde-installer) for installer options, download sources, and verification.

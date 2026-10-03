@@ -14,16 +14,16 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `Ubuntu-26` | Ubuntu 26.04 | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next` | Yes |
 | `Fedora-43` | Fedora 43 | `none`, `KDE`, `KDE mobile`, `Anland Next` | Yes |
 | `Fedora-44` | Fedora 44 | `none`, `KDE`, `KDE mobile`, `Anland Next` | Yes |
-| `Arch` | Arch Linux ARM | `none`, `KDE`, `KDE mobile`, `Anland Next` | Yes |
+| `Arch` | Arch Linux ARM | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next` | Yes |
 
-`all` filters targets according to desktop/backend support. `all-wayland` builds five Wayland targets for KDE/KDE Mobile; GNOME builds only Debian 13 and Ubuntu 26. GNOME, KDE Mobile, and Anland Next force `anland-wayland`.
+`all` filters targets according to desktop/backend support. `all-wayland` builds five Wayland targets for KDE/KDE Mobile; GNOME builds Debian 13, Ubuntu 26, and Arch Linux. GNOME, KDE Mobile, and Anland Next force `anland-wayland`.
 
 | Desktop | Description |
 | --- | --- |
 | `none` | Command-line environment for SSH, development, or a custom desktop. |
 | `KDE` | KDE Plasma; X11 or Anland Wayland, depending on the target. |
 | `KDE mobile` | Touch-first Plasma Mobile; requires Anland Wayland. |
-| `GNOME` | Anland Wayland only, on Debian 13 and Ubuntu 26. |
+| `GNOME` | Anland Wayland only, on Debian 13, Ubuntu 26, and Arch Linux ARM. |
 | `Anland Next` | An Anland session with rootless Xwayland and mini-wm, without a full desktop; Wayland only. |
 
 ## Workflow inputs
@@ -47,6 +47,6 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `enable_kfgj` | `true` / `false`; default `false` | Installs development tools such as compilers, CMake, and Python. |
 | `enable_zip` | `true` / `false`; default `true` | Installs common compression tools. |
 | `enable_docker` | `true` / `false`; default `false` | Installs Docker packages in the RootFS. |
-| `wayland_package_repository` | Public `owner/repository`; default `Goldzxcbug/droidspaces-package` | Selects the source for Anland KDE/GNOME package Releases. |
+| `wayland_package_repository` | Public `owner/repository`; default `Goldzxcbug/droidspaces-package` | Selects the source for prebuilt Anland package Releases, including Arch GNOME Mutter. |
 
 For exact defaults, see `.github/workflows/build-rootfs-releases-en.yml` and `build-rootfs-releases.yml`. `enable_systemd257` is experimental and adds build time. Systems already at systemd 257 or older skip installation; details are in the [script guide](../../scripts/README_english.md).

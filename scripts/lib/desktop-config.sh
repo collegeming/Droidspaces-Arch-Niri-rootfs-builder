@@ -60,7 +60,7 @@ desktop_target_supported() {
             ;;
         gnome)
             case "$target" in
-                Debian-13|Ubuntu-26) return 0 ;;
+                Debian-13|Ubuntu-26|Arch) return 0 ;;
                 *) return 1 ;;
             esac
             ;;
@@ -90,7 +90,7 @@ desktop_backend_supported() {
             ;;
         gnome:anland-wayland)
             case "$target" in
-                Debian-13|Ubuntu-26) return 0 ;;
+                Debian-13|Ubuntu-26|Arch) return 0 ;;
                 *) return 1 ;;
             esac
             ;;
@@ -110,7 +110,7 @@ desktop_wayland_targets_json() {
             printf '%s\n' '["Debian-13","Ubuntu-26","Fedora-43","Fedora-44","Arch"]'
             ;;
         gnome)
-            printf '%s\n' '["Debian-13","Ubuntu-26"]'
+            printf '%s\n' '["Debian-13","Ubuntu-26","Arch"]'
             ;;
         *) return 1 ;;
     esac

@@ -17,7 +17,7 @@
 | `tui/install-hangover-wine.sh` | ARM64 Linux 容器 | 安装当前发行版对应的 Hangover Wine Release 包。 |
 | `tui/install-winefonts.sh` | Linux 容器 | 安装 Wine 字体包并刷新 fontconfig 字体缓存。 |
 | `tui/install-anland-kde.sh` | ARM64 Linux 容器 | 安装 Anland patched KWin/Xwayland Release 包，并锁定相关包。 |
-| `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu 容器 | 安装 Anland patched Mutter/Xwayland Release 包，并锁定相关包。 |
+| `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu/Arch 容器 | 安装 Anland patched Mutter Release 包，并锁定相关包。 |
 | `tui/install-anland-next.sh` | ARM64 Debian/Ubuntu/Fedora/Arch 容器 | 安装 Anland Next session 包（mini-wm + patched Xwayland + patched bubblewrap）。 |
 | `install-anland-desktop.sh` | RootFS 构建环境 | 根据桌面 slug 分发到 KDE 或 GNOME Anland 安装器。 |
 | `lib/anland-build.sh` | RootFS 构建宿主 | 为 native/QEMU 构建统一解析 Anland 包族、Release tag 和 revision。 |
@@ -123,7 +123,7 @@ Anland 宿主模块、App、SELinux、绑定挂载和 Droidspaces 权限仍需�
 
 ## Anland GNOME 安装器
 
-`install-anland-gnome.sh` 默认从固定滚动 Release `anland-gnome-packages` 读取 `anland-gnome-manifest`，为 Debian 13 或 Ubuntu 26.04 ARM64 安装 patched Mutter/Xwayland 运行时包，并跳过归档中的测试/开发包。下载源选择、镜像 digest 校验和命令行参数与 KDE 安装器一致；安装结果通过 APT hold 防止升级覆盖。
+`install-anland-gnome.sh` 默认从固定滚动 Release `anland-gnome-packages` 读取 `anland-gnome-manifest`，为 Debian 13、Ubuntu 26.04 或 Arch Linux ARM64 安装 patched Mutter 运行时包。Arch 只安装 `mutter` 运行包，并通过 pacman `IgnorePkg` 防止升级覆盖；Debian/Ubuntu 使用 APT hold。GNOME 的各发行版软件包均由 `droidspaces-package` 发布，RootFS 构建与后续更新都通过 Release 清单获取对应归档。下载源选择、镜像 digest 校验和命令行参数与 KDE 安装器一致。
 
 ```bash
 sudo ./scripts/tui/install-anland-gnome.sh

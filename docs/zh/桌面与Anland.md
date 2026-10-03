@@ -26,7 +26,7 @@ startplasma-x11
 
 ### Wayland 和 Anland 宿主端配置
 
-Anland Wayland 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。KDE 使用 patched KWin/Xwayland，GNOME 使用 patched Mutter/Xwayland，相关软件包由 [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) 发布。
+Anland Wayland 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。KDE 使用 patched KWin/Xwayland，GNOME 使用 patched Mutter。Debian、Ubuntu 和 Arch 的 GNOME 包均由 [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) 发布，RootFS 构建时从对应 Release 安装。
 
 在 Android 设备上完成以下准备：
 
@@ -51,10 +51,12 @@ Anland Wayland 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。KDE 使用
 sudo ./scripts/tui/install-anland-kde.sh
 ```
 
-GNOME 安装器仅支持 Debian 13 与 Ubuntu 26：
+GNOME 安装器可在 Debian 13、Ubuntu 26 与 Arch Linux ARM 上使用：
 
 ```bash
 sudo ./scripts/tui/install-anland-gnome.sh
 ```
+
+GNOME 安装器已支持 Arch pacman 包格式，并从 `anland-gnome-packages` Release 清单读取 Arch 目标。
 
 安装器选项、下载源和校验方式见[脚本说明](../../scripts/README.md#anland-kde-安装器)。

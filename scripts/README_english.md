@@ -17,7 +17,7 @@ This directory contains installers used while building the RootFS, maintenance t
 | `tui/install-hangover-wine.sh` | ARM64 Linux container | Installs the Hangover Wine Release packages matching the current distribution. |
 | `tui/install-winefonts.sh` | Linux container | Installs the Wine font bundle and refreshes the fontconfig cache. |
 | `tui/install-anland-kde.sh` | ARM64 Linux container | Installs Anland patched KWin/Xwayland Release packages and locks them. |
-| `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu container | Installs Anland patched Mutter/Xwayland Release packages and locks them. |
+| `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu/Arch container | Installs Anland patched Mutter Release packages and locks them. |
 | `tui/install-anland-next.sh` | ARM64 Debian/Ubuntu/Fedora/Arch container | Installs the Anland Next session package (mini-wm + patched Xwayland + patched bubblewrap). |
 | `install-anland-desktop.sh` | RootFS build environment | Dispatches a desktop slug to the KDE or GNOME Anland installer. |
 | `lib/anland-build.sh` | RootFS build host | Resolves the Anland package family, Release tag, and revision for native/QEMU builds. |
@@ -123,7 +123,7 @@ The Anland host module, app, SELinux policy, bind mount, and Droidspaces permiss
 
 ## Anland GNOME Installer
 
-`install-anland-gnome.sh` reads `anland-gnome-manifest` from the fixed `anland-gnome-packages` rolling Release and installs patched Mutter/Xwayland runtime packages for Debian 13 or Ubuntu 26.04 on ARM64, skipping test and development packages in the archive. Its source selection, mirror digest checks, and arguments match the KDE installer; APT holds prevent upgrades from replacing the result.
+`install-anland-gnome.sh` reads `anland-gnome-manifest` from the fixed `anland-gnome-packages` rolling Release and installs patched Mutter runtime packages for Debian 13, Ubuntu 26.04, or Arch Linux ARM64. On Arch it installs only the `mutter` runtime package and uses pacman `IgnorePkg`; Debian/Ubuntu use APT holds. Packages for all three targets are published by `droidspaces-package`; RootFS builds and later updates fetch the matching archive through the Release manifest. Its source selection, mirror digest checks, and arguments match the KDE installer.
 
 ```bash
 sudo ./scripts/tui/install-anland-gnome.sh
