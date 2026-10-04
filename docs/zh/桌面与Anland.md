@@ -13,6 +13,7 @@
 | KDE Mobile + Anland Wayland | `startplasmamobile` |
 | GNOME + Anland Wayland | `gnome-session --session=gnome` |
 | Anland Next | `/usr/bin/anland-session` |
+| Niri | `/usr/bin/niri-anland` |
 
 服务在桌面异常退出后等待 2 秒重启；60 秒内连续失败超过 5 次会暂停重试。正常退出不会触发重启。
 
@@ -26,7 +27,9 @@ startplasma-x11
 
 ### Wayland 和 Anland 宿主端配置
 
-Anland Wayland 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。KDE 使用 patched KWin/Xwayland，GNOME 使用 patched Mutter。Debian、Ubuntu 和 Arch 的 GNOME 包均由 [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) 发布，RootFS 构建时从对应 Release 安装。
+Anland Wayland 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。KDE 使用 patched KWin/Xwayland，GNOME 使用 patched Mutter。Debian、Ubuntu 和 Arch 的 GNOME 包均由 [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) 发布，RootFS 构建时从对应 Release 安装。Arch 的 Niri 会话使用 `niri-anland` 与同一 Release 中的 patched Xwayland，并安装 `xdg-desktop-portal-gtk` 和 Alacritty 终端。
+
+Niri 启动时检查 `/run/display.sock` 与 `xwayland-satellite`，并设置 Anland legacy 显示后端变量。启动脚本直接运行 `/usr/bin/niri-anland`，不使用 `--session`。
 
 在 Android 设备上完成以下准备：
 

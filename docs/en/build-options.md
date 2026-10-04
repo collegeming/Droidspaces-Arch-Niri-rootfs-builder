@@ -14,9 +14,9 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `Ubuntu-26` | Ubuntu 26.04 | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next` | Yes |
 | `Fedora-43` | Fedora 43 | `none`, `KDE`, `KDE mobile`, `Anland Next` | Yes |
 | `Fedora-44` | Fedora 44 | `none`, `KDE`, `KDE mobile`, `Anland Next` | Yes |
-| `Arch` | Arch Linux ARM | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next` | Yes |
+| `Arch` | Arch Linux ARM | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next`, `Niri` | Yes |
 
-`all` filters targets according to desktop/backend support. `all-wayland` builds five Wayland targets for KDE/KDE Mobile; GNOME builds Debian 13, Ubuntu 26, and Arch Linux. GNOME, KDE Mobile, and Anland Next force `anland-wayland`.
+`all` filters targets according to desktop/backend support. `all-wayland` builds five Wayland targets for KDE/KDE Mobile; GNOME builds Debian 13, Ubuntu 26, and Arch Linux; Niri builds Arch only. GNOME, KDE Mobile, Anland Next, and Niri force `anland-wayland`.
 
 | Desktop | Description |
 | --- | --- |
@@ -25,6 +25,7 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `KDE mobile` | Touch-first Plasma Mobile; requires Anland Wayland. |
 | `GNOME` | Anland Wayland only, on Debian 13, Ubuntu 26, and Arch Linux ARM. |
 | `Anland Next` | An Anland session with rootless Xwayland and mini-wm, without a full desktop; Wayland only. |
+| `Niri` | An Anland Niri scrollable-tiling Wayland compositor on Arch Linux ARM; Wayland only. |
 
 ## Workflow inputs
 
@@ -32,7 +33,7 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | --- | --- | --- |
 | `build_target` | Distribution, `all`, `all-wayland`; default `Debian-13` | Select build targets. |
 | `custom_username` | 1–32 letters, digits, `_`, or `-`, starting with a letter or `_`; default `Gold` | Normal RootFS user. |
-| `desktop` | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next`; default `KDE` | Select desktop or command-line mode. |
+| `desktop` | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next`, `Niri`; default `KDE` | Select desktop or command-line mode. |
 | `desktop_autostart` | `true` / `false`; default `true` | Installs the desktop startup service; must be disabled for `none`. |
 | `display_backend` | `x11` / `anland-wayland` | Defaults to Wayland in the Chinese workflow and X11 in the English workflow; some profiles force Wayland. |
 | `PulseAudio` | `socket` / `tcp` / `none`; default `socket` | X11 audio forwarding; Anland sets this to `none`. |

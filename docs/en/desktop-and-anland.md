@@ -13,6 +13,7 @@ When `desktop_autostart` is enabled, the RootFS installs `desktop-session.servic
 | KDE Mobile + Anland Wayland | `startplasmamobile` |
 | GNOME + Anland Wayland | `gnome-session --session=gnome` |
 | Anland Next | `/usr/bin/anland-session` |
+| Niri | `/usr/bin/niri-anland` |
 
 After an unexpected exit, systemd retries after 2 seconds. More than 5 failures within 60 seconds pauses retries. A normal exit does not restart the session.
 
@@ -26,7 +27,9 @@ startplasma-x11
 
 ### Anland Wayland host setup
 
-Anland Wayland supports Debian 13, Ubuntu 26, Fedora 43/44, and Arch. KDE uses patched KWin/Xwayland; GNOME uses patched Mutter. GNOME packages for Debian, Ubuntu, and Arch are published by [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) and installed from its Release during RootFS creation.
+Anland Wayland supports Debian 13, Ubuntu 26, Fedora 43/44, and Arch. KDE uses patched KWin/Xwayland; GNOME uses patched Mutter. GNOME packages for Debian, Ubuntu, and Arch are published by [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) and installed from its Release during RootFS creation. The Arch Niri session uses `niri-anland` and the patched Xwayland from the same Release, with `xdg-desktop-portal-gtk` and Alacritty for portals and a terminal.
+
+Niri startup checks `/run/display.sock` and `xwayland-satellite`, then sets the Anland legacy display backend variables. Its launcher runs `/usr/bin/niri-anland` directly without `--session`.
 
 Prepare the Android device:
 

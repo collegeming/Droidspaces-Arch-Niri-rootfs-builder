@@ -16,6 +16,7 @@ case "${DESKTOP:-}:${DISPLAY_BACKEND:-}" in
     # 的系统路径，不依赖用户家目录里的副本；XDG_RUNTIME_DIR 由脚本自己算，
     # systemd 用户管理器不可用时它只告警继续，所以不需要用户级单元先起来。
     anland-next:anland-wayland) command_line='exec /usr/bin/anland-session' ;;
+    niri:anland-wayland) command_line='exec /usr/local/bin/start-anland-niri' ;;
     *)
         echo "不支持的桌面会话：${DESKTOP:-未设置}/${DISPLAY_BACKEND:-未设置}" >&2
         exit 1

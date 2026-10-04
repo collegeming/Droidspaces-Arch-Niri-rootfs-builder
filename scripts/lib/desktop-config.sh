@@ -7,6 +7,7 @@ desktop_normalize() {
         'KDE mobile'|kde-mobile) printf '%s\n' kde-mobile ;;
         GNOME|gnome) printf '%s\n' gnome ;;
         'Anland Next'|anland-next) printf '%s\n' anland-next ;;
+        Niri|niri) printf '%s\n' niri ;;
         *) return 1 ;;
     esac
 }
@@ -18,6 +19,7 @@ desktop_label() {
         kde-mobile) printf '%s\n' 'KDE mobile' ;;
         gnome) printf '%s\n' GNOME ;;
         anland-next) printf '%s\n' 'Anland Next' ;;
+        niri) printf '%s\n' Niri ;;
         *) return 1 ;;
     esac
 }
@@ -70,6 +72,7 @@ desktop_target_supported() {
                 *) return 1 ;;
             esac
             ;;
+        niri) [[ "$target" == Arch ]] ;;
         *) return 1 ;;
     esac
 }
@@ -100,6 +103,7 @@ desktop_backend_supported() {
                 *) return 1 ;;
             esac
             ;;
+        niri:anland-wayland) [[ "$target" == Arch ]] ;;
         *) return 1 ;;
     esac
 }
@@ -111,6 +115,9 @@ desktop_wayland_targets_json() {
             ;;
         gnome)
             printf '%s\n' '["Debian-13","Ubuntu-26","Arch"]'
+            ;;
+        niri)
+            printf '%s\n' '["Arch"]'
             ;;
         *) return 1 ;;
     esac

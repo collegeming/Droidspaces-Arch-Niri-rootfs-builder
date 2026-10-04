@@ -34,13 +34,14 @@ on:
           - KDE mobile
           - GNOME
           - Anland Next
+          - Niri
       desktop_autostart:
         description: Start desktop on boot
         required: true
         type: boolean
         default: true
       display_backend:
-        description: Display backend (KDE mobile/GNOME/Anland Next always use Anland Wayland)
+        description: Display backend (KDE mobile/GNOME/Anland Next/Niri always use Anland Wayland)
         required: true
         type: choice
         default: x11

@@ -12,6 +12,7 @@ This directory contains installers used while building the RootFS, maintenance t
 | `configure-desktop.sh` | RootFS build environment | Writes desktop/backend configuration, invokes profile environment setup, and optionally installs the common auto-start service. |
 | `configure-chrome.sh` | RootFS build environment | Installs Chrome in all supported images, then configures hardware-acceleration flags and desktop launchers for Anland Wayland images. |
 | `start-desktop-session.sh` | Linux container | Starts the selected session from `/etc/droidspaces-desktop.conf`. |
+| `start-anland-niri.sh` | Arch Linux ARM container | Checks the Anland socket and Xwayland satellite, sets the legacy backend environment, and starts `niri-anland`. |
 | `tui/droidspaces-tui.sh` | ARM64 Linux container | Provides a unified terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
 | `tui/install-mesa.sh` | ARM64 Linux container | Installs the latest Android-container Mesa build and MediaCodec VA-API driver, then locks Mesa packages. |
 | `tui/install-hangover-wine.sh` | ARM64 Linux container | Installs the Hangover Wine Release packages matching the current distribution. |
@@ -19,7 +20,8 @@ This directory contains installers used while building the RootFS, maintenance t
 | `tui/install-anland-kde.sh` | ARM64 Linux container | Installs Anland patched KWin/Xwayland Release packages and locks them. |
 | `tui/install-anland-gnome.sh` | ARM64 Debian/Ubuntu/Arch container | Installs Anland patched Mutter Release packages and locks them. |
 | `tui/install-anland-next.sh` | ARM64 Debian/Ubuntu/Fedora/Arch container | Installs the Anland Next session package (mini-wm + patched Xwayland + patched bubblewrap). |
-| `install-anland-desktop.sh` | RootFS build environment | Dispatches a desktop slug to the KDE or GNOME Anland installer. |
+| `tui/install-anland-niri.sh` | ARM64 Arch Linux ARM container | Installs Anland Niri and its shared patched Xwayland package. |
+| `install-anland-desktop.sh` | RootFS build environment | Dispatches a desktop slug to the KDE, GNOME, Niri, or Anland Next installer. |
 | `lib/anland-build.sh` | RootFS build host | Resolves the Anland package family, Release tag, and revision for native/QEMU builds. |
 | `install-usb-manager.sh` | Linux container | Installs Droidspaces USB Manager, distribution dependencies, launchers, and user permissions. |
 | `systemd257.sh` | RootFS build environment | Installs a complete package-manager-owned systemd 257 family when required by an old Android kernel. |
@@ -46,7 +48,7 @@ Run it from a repository checkout with:
 ./scripts/tui/droidspaces-tui.sh
 ```
 
-The main menu includes Mesa with MediaCodec VA-API, Hangover Wine, Wine fonts, and the desktop/session update entry for the current RootFS, and shows only `update available`, `up to date`, or `not installed` with matching colors. The desktop/session entry is selected by strictly parsing `/etc/droidspaces-desktop.conf`: KDE and KDE mobile show only Anland KDE, GNOME shows only Anland GNOME, and Anland Next shows only its session. `none` or an unknown desktop opens a selector for Anland KDE, GNOME, or the Next session. Installed Anland state is used only as a fallback for old RootFS images that have no config file; if no component can be inferred, the selector is used. Selecting a component opens its version details and update, install, or uninstall actions. Version lookups run concurrently in the background, a dynamic Braille symbol indicates an active lookup, and a lookup that has no valid result after 10 seconds is shown as `timeout` without blocking menu input. Version detection runs when the TUI starts; entering or leaving menus and submitting invalid input do not restart it. After an install or uninstall actually starts, detection refreshes once upon returning to the main menu. Input is visible with backspace support, and Loading uses in-place redraws instead of repeatedly clearing the screen. Uninstalling patched Mesa, KWin, or Mutter restores distribution packages, while Hangover Wine and Wine fonts remove their own content. Chinese environments default to CNB, while other languages default to GitHub; the source can also be changed to automatic probing, GitHub, `gh-proxy.com`, or CNB. When CNB is explicitly selected, the TUI does not query the GitHub API: installers obtain asset names, SHA-256 values, and sizes from the synchronized manifest in the same CNB Release. Older releases with no digest provide a clear notice and retain archive-structure and package-metadata validation.
+The main menu includes Mesa with MediaCodec VA-API, Hangover Wine, Wine fonts, and the desktop/session update entry for the current RootFS, and shows only `update available`, `up to date`, or `not installed` with matching colors. The desktop/session entry is selected by strictly parsing `/etc/droidspaces-desktop.conf`: KDE and KDE mobile show only Anland KDE, GNOME shows only Anland GNOME, Niri shows only Anland Niri, and Anland Next shows only its session. `none` or an unknown desktop opens a selector for Anland KDE, GNOME, Niri, or the Next session. Installed Anland state is used only as a fallback for old RootFS images that have no config file; if no component can be inferred, the selector is used. Selecting a component opens its version details and update, install, or uninstall actions. Version lookups run concurrently in the background, a dynamic Braille symbol indicates an active lookup, and a lookup that has no valid result after 10 seconds is shown as `timeout` without blocking menu input. Version detection runs when the TUI starts; entering or leaving menus and submitting invalid input do not restart it. After an install or uninstall actually starts, detection refreshes once upon returning to the main menu. Input is visible with backspace support, and Loading uses in-place redraws instead of repeatedly clearing the screen. Uninstalling patched Mesa, KWin, Mutter, or Niri restores distribution packages, while Hangover Wine and Wine fonts remove their own content. Chinese environments default to CNB, while other languages default to GitHub; the source can also be changed to automatic probing, GitHub, `gh-proxy.com`, or CNB. When CNB is explicitly selected, the TUI does not query the GitHub API: installers obtain asset names, SHA-256 values, and sizes from the synchronized manifest in the same CNB Release. Older releases with no digest provide a clear notice and retain archive-structure and package-metadata validation.
 
 Press `C` in the main menu to open cache management. The Hangover Release manifest can be removed by itself to recover from a stale manifest after a rolling Release update, or all downloads under `/var/cache/hangover-wine` can be removed. Both actions require confirmation, and cleaning all downloads means the package archive must be downloaded again on the next installation.
 
@@ -155,6 +157,14 @@ To use packages from a public fork, override the repository variable:
 ```bash
 sudo ANLAND_NEXT_RELEASE_REPOSITORY=owner/repository \
   ./scripts/tui/install-anland-next.sh --1
+```
+
+## Anland Niri Installer
+
+`install-anland-niri.sh` reads `anland-niri-manifest` from the fixed `anland-niri-packages` rolling Release and installs `niri-anland` with its matching patched `xorg-xwayland` package on Arch Linux ARM64. The RootFS profile also installs `xdg-desktop-portal-gtk`, the Alacritty terminal, and common Niri tools. Niri and Anland KDE share patched Xwayland; the installer prevents conflicting installs and preserves the package used by KDE during uninstall. TUI installation changes only `DESKTOP=none` to Niri and sets `DISPLAY_BACKEND=anland-wayland`; uninstalling the active Niri profile restores `none/x11`.
+
+```bash
+sudo ./scripts/tui/install-anland-niri.sh
 ```
 
 ## USB Manager Installer
