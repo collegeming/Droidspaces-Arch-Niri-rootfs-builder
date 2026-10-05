@@ -18,6 +18,11 @@ configure_environment() {
         ANLAND_DRM_DEVICE=/dev/dri/renderD128
         ANLAND_SKIP_IMPLICIT_SYNC_WAIT=1
         XWAYLAND_GBM_DEVICE=/dev/dri/renderD128
+        MESA_LOADER_DRIVER_OVERRIDE=kgsl
+        GALLIUM_DRIVER=kgsl
+        FD_FORCE_KGSL=1
+        MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE=1
+        FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1
     )
 
     [[ "$backend" == anland-wayland ]] || {
@@ -27,11 +32,7 @@ configure_environment() {
     touch "$environment_file"
     for assignment in "${assignments[@]}"; do
         key="${assignment%%=*}"
-        if grep -q "^${key}=" "$environment_file"; then
-            sed -i "s|^${key}=.*|${assignment}|" "$environment_file"
-        else
-            printf '%s\n' "$assignment" >> "$environment_file"
-        fi
+        grep -q "^${key}=" "$environment_file" || printf '%s\n' "$assignment" >> "$environment_file"
     done
 }
 
@@ -39,6 +40,10 @@ install_arch() {
     pacman -S --noconfirm --needed \
         xdg-desktop-portal xdg-desktop-portal-gtk \
         alacritty fuzzel mako waybar swaybg swaylock wl-clipboard \
+        pipewire pipewire-alsa pipewire-pulse wireplumber upower \
+        mesa-utils vulkan-tools clinfo dmidecode wayland-utils \
+        xdg-user-dirs glmark2 vkmark \
+        gst-plugins-base gst-plugins-good libcanberra sound-theme-freedesktop \
         noto-fonts noto-fonts-cjk noto-fonts-emoji
 }
 

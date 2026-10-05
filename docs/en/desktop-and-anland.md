@@ -29,7 +29,7 @@ startplasma-x11
 
 Anland Wayland supports Debian 13, Ubuntu 26, Fedora 43/44, and Arch. KDE uses patched KWin/Xwayland; GNOME uses patched Mutter. GNOME packages for Debian, Ubuntu, and Arch are published by [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) and installed from its Release during RootFS creation. The Arch Niri session uses `niri-anland` and the patched Xwayland from the same Release, with `xdg-desktop-portal-gtk` and Alacritty for portals and a terminal.
 
-Niri startup checks `/run/display.sock` and `xwayland-satellite`, then sets the Anland legacy display backend variables. Its launcher runs `/usr/bin/niri-anland` directly without `--session`.
+The Niri profile writes the session and Anland/Mesa environment to `/etc/environment`, like the other desktop profiles. The shared desktop launcher runs `/usr/bin/niri-anland` directly without `--session`.
 
 Prepare the Android device:
 

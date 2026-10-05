@@ -12,7 +12,6 @@ This directory contains installers used while building the RootFS, maintenance t
 | `configure-desktop.sh` | RootFS build environment | Writes desktop/backend configuration, invokes profile environment setup, and optionally installs the common auto-start service. |
 | `configure-chrome.sh` | RootFS build environment | Installs Chrome in all supported images, then configures hardware-acceleration flags and desktop launchers for Anland Wayland images. |
 | `start-desktop-session.sh` | Linux container | Starts the selected session from `/etc/droidspaces-desktop.conf`. |
-| `start-anland-niri.sh` | Arch Linux ARM container | Checks the Anland socket and Xwayland satellite, sets the legacy backend environment, and starts `niri-anland`. |
 | `tui/droidspaces-tui.sh` | ARM64 Linux container | Provides a unified terminal menu for the Mesa, Hangover Wine, Wine fonts, and Anland installers. |
 | `tui/install-mesa.sh` | ARM64 Linux container | Installs the latest Android-container Mesa build and MediaCodec VA-API driver, then locks Mesa packages. |
 | `tui/install-hangover-wine.sh` | ARM64 Linux container | Installs the Hangover Wine Release packages matching the current distribution. |
@@ -161,7 +160,7 @@ sudo ANLAND_NEXT_RELEASE_REPOSITORY=owner/repository \
 
 ## Anland Niri Installer
 
-`install-anland-niri.sh` reads `anland-niri-manifest` from the fixed `anland-niri-packages` rolling Release and installs `niri-anland` with its matching patched `xorg-xwayland` package on Arch Linux ARM64. The RootFS profile also installs `xdg-desktop-portal-gtk`, the Alacritty terminal, and common Niri tools. Niri and Anland KDE share patched Xwayland; the installer prevents conflicting installs and preserves the package used by KDE during uninstall. TUI installation changes only `DESKTOP=none` to Niri and sets `DISPLAY_BACKEND=anland-wayland`; uninstalling the active Niri profile restores `none/x11`.
+`install-anland-niri.sh` reads `anland-niri-manifest` from the fixed `anland-niri-packages` rolling Release and installs `niri-anland` with its matching patched `xorg-xwayland` package on Arch Linux ARM64. The RootFS profile also installs `xdg-desktop-portal-gtk`, the Alacritty terminal, and common Niri tools. Niri and Anland KDE share patched Xwayland; the installer prevents conflicting installs and preserves the package used by KDE during uninstall. For `DESKTOP=none`, TUI installation selects Niri, sets `DISPLAY_BACKEND=anland-wayland`, and runs the Niri profile's session and Anland/Mesa environment setup; existing other desktop configurations are retained. Uninstalling the active Niri profile restores `none/x11`.
 
 ```bash
 sudo ./scripts/tui/install-anland-niri.sh

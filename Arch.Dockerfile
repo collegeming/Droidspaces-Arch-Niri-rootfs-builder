@@ -35,10 +35,9 @@ COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
-COPY scripts/start-anland-niri.sh /usr/local/bin/start-anland-niri
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/bin/start-anland-niri /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \

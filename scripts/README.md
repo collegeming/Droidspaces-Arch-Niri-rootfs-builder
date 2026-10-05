@@ -12,7 +12,6 @@
 | `configure-desktop.sh` | RootFS 构建环境 | 写入桌面/显示后端配置，调用 profile 环境配置并按需安装统一自启动服务。 |
 | `configure-chrome.sh` | RootFS 构建环境 | 在所有支持 Chrome 的镜像中安装 Chrome；Anland Wayland 镜像额外配置硬件加速启动参数和桌面入口。 |
 | `start-desktop-session.sh` | Linux 容器 | 根据 `/etc/droidspaces-desktop.conf` 启动实际桌面会话。 |
-| `start-anland-niri.sh` | Arch Linux ARM 容器 | 检查 Anland socket 和 Xwayland satellite，设置 legacy backend 环境并启动 `niri-anland`。 |
 | `tui/droidspaces-tui.sh` | ARM64 Linux 容器 | 提供统一终端菜单，调度 Mesa、Hangover Wine、Wine 字体和 Anland 安装器。 |
 | `tui/install-mesa.sh` | ARM64 Linux 容器 | 安装最新版 Android 容器专用 Mesa 和 MediaCodec VA-API 驱动，并锁定 Mesa 包。 |
 | `tui/install-hangover-wine.sh` | ARM64 Linux 容器 | 安装当前发行版对应的 Hangover Wine Release 包。 |
@@ -161,7 +160,7 @@ sudo ANLAND_NEXT_RELEASE_REPOSITORY=owner/repository \
 
 ## Anland Niri 安装器
 
-`install-anland-niri.sh` 从固定滚动 Release `anland-niri-packages` 读取 `anland-niri-manifest`，为 Arch Linux ARM64 安装 `niri-anland` 和配套的 patched `xorg-xwayland`。RootFS profile 还会安装 `xdg-desktop-portal-gtk`、Alacritty 终端和常用 Niri 工具。Niri 与 Anland KDE 共用 patched Xwayland；安装器会阻止冲突安装，并在卸载时保留 KDE 使用的包。TUI 安装时只会将 `DESKTOP=none` 更新为 Niri，并同时设为 `DISPLAY_BACKEND=anland-wayland`；卸载当前 Niri 配置会恢复 `none/x11`。
+`install-anland-niri.sh` 从固定滚动 Release `anland-niri-packages` 读取 `anland-niri-manifest`，为 Arch Linux ARM64 安装 `niri-anland` 和配套的 patched `xorg-xwayland`。RootFS profile 还会安装 `xdg-desktop-portal-gtk`、Alacritty 终端和常用 Niri 工具。Niri 与 Anland KDE 共用 patched Xwayland；安装器会阻止冲突安装，并在卸载时保留 KDE 使用的包。TUI 安装会在 `DESKTOP=none` 时切换到 Niri、设置 `DISPLAY_BACKEND=anland-wayland`，并调用 Niri profile 配置会话与 Anland/Mesa 环境；已有其他桌面配置会保留。卸载当前 Niri 配置会恢复 `none/x11`。
 
 ```bash
 sudo ./scripts/tui/install-anland-niri.sh

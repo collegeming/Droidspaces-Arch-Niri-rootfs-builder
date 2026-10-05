@@ -167,7 +167,12 @@ preflight_desktop_config() {
 update_desktop_config() {
     local config_dir temporary_file
     parse_desktop_config
-    if [[ "$CONFIGURED_DESKTOP" != none ]]; then
+    if [[ "$CONFIGURED_DESKTOP" == niri && "$CONFIGURED_DISPLAY_BACKEND" == anland-wayland ]]; then
+        log "保留现有桌面配置：DESKTOP=niri，DISPLAY_BACKEND=anland-wayland。" \
+            "Keeping the existing desktop configuration: DESKTOP=niri, DISPLAY_BACKEND=anland-wayland."
+        return 0
+    fi
+    if [[ "$CONFIGURED_DESKTOP" != none && "$CONFIGURED_DESKTOP" != niri ]]; then
         log "保留现有桌面配置：DESKTOP=${CONFIGURED_DESKTOP}，DISPLAY_BACKEND=${CONFIGURED_DISPLAY_BACKEND:-未设置}。" \
             "Keeping the existing desktop configuration: DESKTOP=${CONFIGURED_DESKTOP}, DISPLAY_BACKEND=${CONFIGURED_DISPLAY_BACKEND:-unset}."
         return 0
@@ -198,6 +203,20 @@ update_desktop_config() {
     fi
     log "已将桌面配置更新为 DESKTOP=niri、DISPLAY_BACKEND=anland-wayland。" \
         "Updated desktop configuration to DESKTOP=niri and DISPLAY_BACKEND=anland-wayland."
+}
+
+configure_niri_environment() {
+    local profile_dir="${DROIDSPACES_DESKTOP_PROFILE_DIR:-/usr/local/lib/droidspaces/desktops}"
+    local profile="$profile_dir/niri.sh"
+
+    parse_desktop_config
+    [[ "$CONFIGURED_DESKTOP:$CONFIGURED_DISPLAY_BACKEND" == niri:anland-wayland ]] || return 0
+    [[ -x "$profile" ]] || die \
+        "找不到 Niri 桌面配置脚本：${profile}。" \
+        "The Niri desktop profile was not found: ${profile}."
+    ROOTFS_DIR= "$profile" configure-environment anland-wayland || die \
+        "无法写入 Niri 环境变量。" \
+        "Could not configure the Niri environment."
 }
 
 reset_niri_desktop_config() {
@@ -764,6 +783,7 @@ main() {
     install_packages
     record_component_version "$PACKAGE_VERSION"
     update_desktop_config
+    configure_niri_environment
     log "Anland Niri 安装完成（${PACKAGE_VERSION}）。" "Anland Niri installation completed (${PACKAGE_VERSION})."
 }
 
