@@ -105,6 +105,7 @@ RootFS 默认 Linux 用户为 `colle`，构建参数可修改。镜像目前为 
 | `publish_release` | 是否发布 immutable tag/Release | `false` |
 | `build_mode` | `native-arm64` 或 `qemu-x86_64` | `native-arm64` |
 | `username` | RootFS 用户名 | `colle` |
+| `device_profile` | 设备档案：`generic` / `k40` / `k70pro` | `generic` |
 | `terminal` | `kitty|ghostty|both` | `kitty` |
 | `remote` | `none|wayvnc|lamco` | `wayvnc` |
 | `niri_autostart` | niri 自动启动 | `true` |
@@ -121,6 +122,23 @@ RootFS 默认 Linux 用户为 `colle`，构建参数可修改。镜像目前为 
 | `enable_compression_tools` | 附加压缩工具 | `true` |
 | `enable_docker` | RootFS 内 Docker 包 | `false` |
 | `enable_tmoe` | TMOE | `false` |
+
+### 设备档案（`device_profile`）
+
+设备档案把「目标设备的内核版本与 GPU 代际」固化进构建。它解决的是配错：把旧内核设备的兼容层套到新内核设备上，或者反过来。
+
+| 档案 | 设备 | 内核 | GPU | 档案行为 |
+| --- | --- | --- | --- | --- |
+| `generic` | 任意 | 任意 | 任意 | 完全跟随 `enable_systemd257`、`enable_8gen2_wayland` 显式开关 |
+| `k40` | Redmi K40（alioth） | 4.19 | Adreno 650 | 强制启用 systemd 257 兼容层 |
+| `k70pro` | Redmi K70 Pro（manet） | 6.1 | Adreno 750 | 强制跳过 systemd 257 兼容层，并跳过 a740 专属的 UBWC 提示 |
+
+两处覆盖各有明确依据：
+
+- **`k70pro` 跳过 systemd 257 兼容层。** 该层会把 systemd 二进制整体替换为 257。6.1 内核已满足 systemd 262（Arch Linux ARM 当前版本）声明的 5.10 内核基线，降级只是功能与维护面的倒退。4.19 的 k40 低于该基线，所以 `k40` 档案强制开启。
+- **`k70pro` 不套用 8 Gen 2 的 UBWC 提示。** `FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1` 对齐的是 Adreno 740 的 `TPL1_DBG_ECO_CNTL1.TP_UBWC_FLAG_HINT`（Mesa 源码注明该值必须与系统内其他驱动一致，否则影响 `BLIT_OP_SCALE`，表现为花屏）。A750 及以上由硬件自行正确处理 UBWC，该提示不适用。
+
+档案不改变包集合：GPU 渲染仍由 `enable_qualcomm_mesa` 提供（`lfdevs/mesa-for-android-container`，Mesa 26.3.0+ 的 Freedreno/Turnip 已支持 Adreno 750），`k70pro` 档案下建议保持开启。
 
 ### Candidate 与发布安全
 
@@ -151,6 +169,7 @@ ARM64 host 原生构建：
   -i Droidspaces-Arch-Niri.Dockerfile \
   -v local \
   -u colle \
+  -D k70pro \
   -T both \
   -R lamco \
   -N true -g true -h true -c true -S true \
@@ -165,6 +184,7 @@ x86_64 host 必须使用显式 QEMU 脚本：
   -i Droidspaces-Arch-Niri.Dockerfile \
   -v local \
   -u colle \
+  -D k70pro \
   -T kitty \
   -R none \
   -N true -g true -h true -c true -S true \
@@ -172,13 +192,13 @@ x86_64 host 必须使用显式 QEMU 脚本：
   -d false -e true -f false -j false
 ```
 
-脚本会拒绝错误 host 架构、非 canonical Dockerfile、不安全版本/用户名、无效 boolean、terminal 或 remote。
+脚本会拒绝错误 host 架构、非 canonical Dockerfile、不安全版本/用户名、无效 boolean、terminal、remote 或 device profile。
 
 ## 导入与本地显示
 
 1. 把 `.tar.xz` 导入 Droidspaces 特权容器；不要按 PRoot 教程配置。
 2. 为 Qualcomm Mesa/niri 启用 GPU 与必要硬件访问。
-3. 4.19 内核建议保持 `enable_systemd257=true`。`enable_binfmt` 只有目标内核启用 `CONFIG_BINFMT_MISC` 才有意义。
+3. 4.19 内核（K40）建议保持 `enable_systemd257=true`；6.1 内核（K70 Pro）用 `device_profile=k70pro`，该档案会跳过 257 兼容层。`enable_binfmt` 只有目标内核启用 `CONFIG_BINFMT_MISC` 才有意义。
 4. 使用最终 [`anland-v5.19.3`](https://github.com/collegeming/anland-bridge/releases/tag/anland-v5.19.3) 配置 Anland Android 端，并提供本地显示 socket 到 `/run/display.sock`。这些是 Android host/root 资产；不要从 RootFS 寻找 APK/daemon/Magisk ZIP。
 5. `niri.service` 默认自动启动；检查命令：
 

@@ -27,6 +27,15 @@ on:
         required: true
         type: string
         default: colle
+      device_profile:
+        description: 设备档案；k70pro 强制跳过 systemd 257 兼容层与 a740 专属 UBWC 提示
+        required: true
+        type: choice
+        default: generic
+        options:
+          - generic
+          - k40
+          - k70pro
       terminal:
         description: 终端变体；both 会分别生成 kitty 与 ghostty 两个 RootFS 归档
         required: true
@@ -329,6 +338,7 @@ jobs:
           TERMINAL_VARIANT: ${{ matrix.terminal }}
           REMOTE_VARIANT: ${{ inputs.remote }}
           ROOTFS_USERNAME: ${{ inputs.username }}
+          DEVICE_PROFILE: ${{ inputs.device_profile }}
           BUILDER_REPOSITORY: ${{ github.repository }}
           BUILDER_COMMIT: ${{ github.sha }}
         shell: bash
@@ -341,6 +351,7 @@ jobs:
             -u "$ROOTFS_USERNAME" \
             -T "$TERMINAL_VARIANT" \
             -R "$REMOTE_VARIANT" \
+            -D "$DEVICE_PROFILE" \
             -N "${{ inputs.niri_autostart }}" \
             -g "${{ inputs.enable_zh_locale }}" \
             -h "${{ inputs.enable_fcitx_rime }}" \
@@ -437,6 +448,7 @@ jobs:
           arch_base_arm64_manifest_digest=$ARCH_BASE_ARM64_MANIFEST_DIGEST
           arch_base_layer_digest=$ARCH_BASE_LAYER_DIGEST
           build_mode=$BUILD_MODE
+          device_profile=${{ inputs.device_profile }}
           version=$BUILD_VERSION
           remote=$REMOTE_VARIANT
           terminal=$TERMINAL_VARIANT
@@ -616,6 +628,7 @@ jobs:
           - Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           - Version/tag: $RELEASE_TAG
           - Build mode: ${{ inputs.build_mode }}
+          - Device profile: ${{ inputs.device_profile }}
           - Terminal request: $TERMINAL_INPUT
           - Remote variant: $REMOTE_VARIANT
           - Arch base: $ARCH_BASE_IMAGE（ARM64 manifest $ARCH_BASE_ARM64_MANIFEST_DIGEST；layer $ARCH_BASE_LAYER_DIGEST）
