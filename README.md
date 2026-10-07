@@ -224,6 +224,13 @@ wayvnc 监听 guest `0.0.0.0:5900`，当前默认没有 VNC 密码：仅可在�
 
 wayvnc 使用独立的 Wayland screencopy/virtual-input 路径，不等同于 Lamco 的私有硬件编码桥。
 
+> [!WARNING]
+> **当前 Arch 仓库的 wayvnc 变体无法通过本项目的归档门禁。** ALARM extra 的 `wayvnc 0.10.2` 依赖 `ffmpeg` / `x264`，而门禁禁止 RootFS 出现任何软件 H.264 编码链路（Anland 只允许 Android MediaCodec 硬件编码）。构建会在 `Verify and describe the variant output` 失败于 `RootFS contains a device-side Android asset, software H.264 package, or source-build residue.`。这是因为 wayvnc 上游新增了 ffmpeg 依赖，与本项目的设备档案无关。需要远程访问请选 `anland_rdp` 或 `lamco`。
+
+### `remote=anland_rdp`
+
+固定下载并校验 `collegeming/anland-rdp-bridge` 的 AArch64 Release（宽松许可）。运行时依赖 `libpipewire-0.3` / `libspa-0.2`，随音频栈一起安装。安装后需在容器内以 root 运行 `setup-anland-rdp-bridge` 写入 `ANLAND_BRIDGE_TOKEN` 等配置并启用服务；该 token 必须与 Android 端 anland consumer 一致。
+
 ### `remote=lamco`
 
 Lamco Release 已固定并在安装时验证 archive entry、AArch64 ELF、interpreter、动态依赖、metadata、SBOM 和 license。RootFS 不预置 config、bridge token、TLS private key 或 RDP 凭据，也不会自动启用未经配置的服务。
