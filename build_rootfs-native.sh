@@ -6,6 +6,7 @@ DOCKERFILE="Droidspaces-Arch-Niri.Dockerfile"
 USERNAME="colle"
 TERMINAL="kitty"
 REMOTE="wayvnc"
+DEVICE_PROFILE="generic"
 NIRI_AUTOSTART="true"
 ENABLE_ZH_LOCALE="true"
 ENABLE_FCITX_RIME="true"
@@ -29,6 +30,9 @@ Usage: build_rootfs-native.sh [options]
   -u USER   RootFS desktop user
   -T VALUE  Terminal: kitty|ghostty|both
   -R VALUE  Remote access: none|wayvnc|lamco
+  -D VALUE  Device profile: generic (default) | k40 | k70pro
+            k70pro (Redmi K70 Pro / manet, kernel 6.1) forces the systemd 257
+            compatibility layer off and skips the a740-only UBWC hint.
   -N BOOL   Auto-start niri
   -g BOOL   Chinese locale and Asia/Shanghai timezone
   -h BOOL   Fcitx5 + Rime-Ice
@@ -46,13 +50,14 @@ Usage: build_rootfs-native.sh [options]
 EOF
 }
 
-while getopts ":i:v:u:T:R:N:g:h:c:S:U:F:a:b:t:d:e:f:j:" opt; do
+while getopts ":i:v:u:T:R:D:N:g:h:c:S:U:F:a:b:t:d:e:f:j:" opt; do
     case "$opt" in
         i) DOCKERFILE="$OPTARG" ;;
         v) VERSION="$OPTARG" ;;
         u) USERNAME="$OPTARG" ;;
         T) TERMINAL="$OPTARG" ;;
         R) REMOTE="$OPTARG" ;;
+        D) DEVICE_PROFILE="$OPTARG" ;;
         N) NIRI_AUTOSTART="$OPTARG" ;;
         g) ENABLE_ZH_LOCALE="$OPTARG" ;;
         h) ENABLE_FCITX_RIME="$OPTARG" ;;
@@ -100,6 +105,10 @@ case "$REMOTE" in
     none|wayvnc|lamco|anland_rdp) ;;
     *) printf 'Error: remote must be none, wayvnc, lamco, or anland_rdp.\n' >&2; exit 1 ;;
 esac
+case "$DEVICE_PROFILE" in
+    generic|k40|k70pro) ;;
+    *) printf 'Error: device profile must be generic, k40, or k70pro.\n' >&2; exit 1 ;;
+esac
 for value in \
     "$NIRI_AUTOSTART" "$ENABLE_ZH_LOCALE" "$ENABLE_FCITX_RIME" \
     "$ENABLE_QUALCOMM_MESA" "$ENABLE_SYSTEMD257" "$ENABLE_USB_MANAGER" \
@@ -130,7 +139,8 @@ if [[ "$TERMINAL" == "both" ]]; then
     for terminal_variant in kitty ghostty; do
         "$0" \
             -i "$DOCKERFILE" -v "$VERSION" -u "$USERNAME" \
-            -T "$terminal_variant" -R "$REMOTE" -N "$NIRI_AUTOSTART" \
+            -T "$terminal_variant" -R "$REMOTE" -D "$DEVICE_PROFILE" \
+            -N "$NIRI_AUTOSTART" \
             -g "$ENABLE_ZH_LOCALE" -h "$ENABLE_FCITX_RIME" \
             -c "$ENABLE_QUALCOMM_MESA" -S "$ENABLE_SYSTEMD257" \
             -U "$ENABLE_USB_MANAGER" -F "$ENABLE_FIRMWARE" \
@@ -165,6 +175,7 @@ printf '%s\n' \
     " Version      : $VERSION" \
     " Terminal     : $TERMINAL" \
     " Remote       : $REMOTE" \
+    " Device       : $DEVICE_PROFILE" \
     "========================================================="
 
 if ! docker buildx inspect droidspaces-builder >/dev/null 2>&1; then
@@ -181,6 +192,7 @@ build_args=(
     --build-arg "USERNAME=$USERNAME"
     --build-arg "TERMINAL_ARG=$TERMINAL"
     --build-arg "REMOTE_ARG=$REMOTE"
+    --build-arg "DEVICE_PROFILE_ARG=$DEVICE_PROFILE"
     --build-arg "NIRI_AUTOSTART_ARG=$NIRI_AUTOSTART"
     --build-arg "ENABLE_ZH_LOCALE_ARG=$ENABLE_ZH_LOCALE"
     --build-arg "ENABLE_FCITX_RIME_ARG=$ENABLE_FCITX_RIME"

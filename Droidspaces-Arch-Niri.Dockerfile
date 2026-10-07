@@ -46,6 +46,14 @@ ARG ENABLE_COMPRESSION_TOOLS_ARG=true
 ARG ENABLE_DOCKER_ARG=false
 ARG ENABLE_TMOE_ARG=false
 
+# 设备档案（device profile）：决定内核对齐与 GPU 口径的设备级默认值，避免把旧内核
+# 设备的兼容层套到新内核设备上。
+#   generic — 全部跟随 enable_systemd257 / enable_8gen2_wayland 显式开关
+#   k40     — Redmi K40（alioth，Adreno 650，内核 4.19）：需要 systemd 257 兼容层
+#   k70pro  — Redmi K70 Pro（manet，Adreno 750，内核 6.1）：6.1 已满足 systemd 262 的
+#             5.10 内核基线，强制跳过 257 兼容层；a740 专属的 UBWC 提示同样跳过
+ARG DEVICE_PROFILE_ARG=generic
+
 # Immutable tuned ANiri ARM64 Release. The source commit contains the
 # 74ce2a9 Anland implementation baseline, minimal strict-Clippy fixes, and the
 # final Arch release-verification workflow fix.
@@ -109,6 +117,12 @@ RUN case "$TARGETPLATFORM" in \
     case "$USERNAME" in \
         ''|*[!A-Za-z0-9_-]*|[0-9-]*) echo "ERROR: USERNAME is invalid" >&2; exit 1 ;; \
     esac && \
+    case "$DEVICE_PROFILE_ARG" in \
+        generic|k40|k70pro) ;; \
+        *) echo "ERROR: DEVICE_PROFILE_ARG must be generic, k40, or k70pro" >&2; exit 1 ;; esac && \
+    if [ "$DEVICE_PROFILE_ARG" = "k70pro" ] && [ "$ENABLE_QUALCOMM_MESA_ARG" != "true" ]; then \
+        echo "WARNING: k70pro profile without Qualcomm KGSL Mesa; GPU rendering falls back to llvmpipe" >&2; \
+    fi && \
     for value in \
         "$NIRI_AUTOSTART_ARG" "$ENABLE_ZH_LOCALE_ARG" "$ENABLE_FCITX_RIME_ARG" \
         "$ENABLE_QUALCOMM_MESA_ARG" "$ENABLE_SYSTEMD257_ARG" "$ENABLE_USB_MANAGER_ARG" \
@@ -300,8 +314,10 @@ RUN if [ "$ENABLE_QUALCOMM_MESA_ARG" = "true" ]; then \
         echo "GALLIUM_DRIVER=kgsl" >> /etc/environment && \
         echo "FD_FORCE_KGSL=1" >> /etc/environment; \
     fi
-RUN if [ "$ENABLE_8GEN2_WAYLAND_ARG" = "true" ]; then \
+RUN if [ "$ENABLE_8GEN2_WAYLAND_ARG" = "true" ] && [ "$DEVICE_PROFILE_ARG" != "k70pro" ]; then \
         echo 'FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1' >> /etc/environment; \
+    elif [ "$DEVICE_PROFILE_ARG" = "k70pro" ]; then \
+        echo "--> [跳过] k70pro（Adreno 750）：TP_UBWC_FLAG_HINT 是 a740 专属开关，A750+ 由硬件自行处理 UBWC"; \
     fi
 
 # 输入法环境变量（不使用 heredoc：BuildKit 的重定向 heredoc 会终止指令，
@@ -441,6 +457,9 @@ RUN printf '%s\n' \
       "arch_base_layer_digest=${ARCH_BASE_LAYER_DIGEST}" \
       "terminal=${TERMINAL_ARG}" \
       "remote=${REMOTE_ARG}" \
+      "device_profile=${DEVICE_PROFILE_ARG}" \
+      "systemd257_layer=$(if [ "$DEVICE_PROFILE_ARG" = "k70pro" ]; then printf '%s' skipped; else printf '%s' "$ENABLE_SYSTEMD257_ARG"; fi)" \
+      "ubwc_hint=$(if [ "$DEVICE_PROFILE_ARG" = "k70pro" ]; then printf '%s' skipped_k70pro; else printf '%s' "$ENABLE_8GEN2_WAYLAND_ARG"; fi)" \
       "android_anland_repository=${ANDROID_ANLAND_REPOSITORY}" \
       "android_anland_tag=${ANDROID_ANLAND_TAG}" \
       "android_anland_tag_object=${ANDROID_ANLAND_TAG_OBJECT}" \
@@ -608,7 +627,13 @@ RUN if [ "$ENABLE_BINFMT_ARG" = "true" ]; then \
     fi
 
 # 可选：为 systemd 258+ 发行版构建 systemd 257 旧内核兼容运行时（4.19 内核设备建议开启）
-RUN if [ "$ENABLE_SYSTEMD257_ARG" = "true" ]; then \
+# 设备档案覆盖显式开关，避免把旧内核兼容层套到新内核设备上：
+#   k70pro（manet，6.1.138）已满足 systemd 262 声明的 5.10 内核基线 → 跳过；
+#     该层会把 systemd 二进制整体替换为 257，对新内核设备只是功能与维护面的倒退。
+#   k40（alioth，4.19）低于 5.10 基线 → 强制启用，不看显式开关。
+RUN if [ "$DEVICE_PROFILE_ARG" = "k70pro" ]; then \
+        echo "--> [跳过] k70pro（内核 6.1）原生满足 systemd 262 内核基线，不需要 257 兼容层"; \
+    elif [ "$DEVICE_PROFILE_ARG" = "k40" ] || [ "$ENABLE_SYSTEMD257_ARG" = "true" ]; then \
         bash /usr/local/sbin/systemd257; \
     else \
         echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
