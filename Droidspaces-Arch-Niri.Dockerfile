@@ -670,7 +670,37 @@ RUN --mount=type=secret,id=github_token if [ "$ENABLE_QUALCOMM_MESA_ARG" = "true
         cp /etc/pacman.conf /tmp/pacman-nosig.conf && \
         sed -i 's/.*SigLevel.*/SigLevel = Never/g' /tmp/pacman-nosig.conf && \
         pacman --config /tmp/pacman-nosig.conf -U --noconfirm /tmp/*.pkg.tar.* && \
-        rm -f /tmp/mesa.tar /tmp/*.pkg.tar.* /tmp/pacman-nosig.conf /tmp/*.sig ; \
+        rm -f /tmp/mesa.tar /tmp/*.pkg.tar.* /tmp/pacman-nosig.conf /tmp/*.sig && \
+        # pacman -U 绕过依赖求解，且该定制包是按旧 Arch 快照编译的：它可能链接到
+        # 仓库已经滚掉、但仓库仍留存的同等 LLVM 运行库。缺库时 EGL 只会在运行时
+        # 静默返回空 display（niri 报 "error creating EGL display (surfaceless)"、
+        # 桌面全黑），构建期毫无征兆。这里把 Mesa 的实际未解析依赖补齐，并在补不齐
+        # 时硬失败——宁可构建失败，也不发布一块黑屏的 RootFS。
+        echo "--> [Mesa] 校验定制包的实际动态依赖..." && \
+        missing="$(ldd /usr/lib/libEGL_mesa.so.0.0.0 /usr/lib/libgallium-*.so 2>/dev/null \
+                   | awk '/not found/{print $1}' | sort -u)" && \
+        if [ -n "$missing" ]; then \
+            echo "--> [Mesa] 检测到未解析依赖：$missing"; \
+            for soname in $missing; do \
+                case "$soname" in \
+                    libLLVM.so.*) \
+                        llvm_ver="$(printf '%s' "$soname" | sed -E 's/^libLLVM[.]so[.]([0-9]+).*/\1/')"; \
+                        echo "--> [Mesa] 安装 llvm${llvm_ver}-libs 以匹配 $soname"; \
+                        pacman -S --noconfirm --needed "llvm${llvm_ver}-libs" ;; \
+                    *) echo "ERROR: 无法自动满足 $soname" >&2; exit 1 ;; \
+                esac; \
+            done; \
+            still="$(ldd /usr/lib/libEGL_mesa.so.0.0.0 /usr/lib/libgallium-*.so 2>/dev/null \
+                     | awk '/not found/{print $1}' | sort -u)"; \
+            if [ -n "$still" ]; then \
+                echo "ERROR: 定制 Mesa 仍有未解析依赖：$still" >&2; \
+                echo "ERROR: 运行时 EGL 会静默失败并导致桌面黑屏；上游包可能已与本仓库脱节" >&2; \
+                exit 1; \
+            fi; \
+            echo "--> [Mesa] 依赖已全部解析"; \
+        else \
+            echo "--> [Mesa] 依赖已全部解析"; \
+        fi ; \
     else \
         echo "--> [跳过] 未开启 Mesa 驱动安装（niri 将回退 llvmpipe 软渲染）"; \
     fi
