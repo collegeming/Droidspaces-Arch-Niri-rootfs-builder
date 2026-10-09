@@ -2,6 +2,7 @@
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$REPO_DIR/scripts/lib/desktop-config.sh"
 source "$REPO_DIR/scripts/lib/anland-build.sh"
+source "$REPO_DIR/scripts/lib/rootfs-config.sh"
 
 : "${VERSION:=dev}"
 ARCH=$(uname -m)          # 获取当前系统架构
@@ -202,11 +203,9 @@ docker buildx build \
 
 
 
-echo "正在压缩构建产物 (使用 xz 最高压缩率 - 开启多线程加速)..."
-xz -T0 -9 -f "$TEMP_TAR"
-
-echo "正在重命名最终文件: $FINAL_NAME"
-mv "${TEMP_TAR}.xz" "$FINAL_NAME"
+echo "正在写入推荐配置并压缩构建产物..."
+package_rootfs_with_config "$TEMP_TAR" "$FINAL_NAME" "$DESKTOP" "$DISPLAY_BACKEND" \
+  "${PulseAudio:-none}" "${ENABLE_docker:-false}" "${ENABLE_mesa:-false}"
 
 echo "========================================================="
 echo " 恭喜！构建成功完成: $FINAL_NAME"

@@ -51,3 +51,27 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `wayland_package_repository` | Public `owner/repository`; default `Goldzxcbug/droidspaces-package` | Selects the source for prebuilt Anland package Releases, including Arch GNOME Mutter. |
 
 For exact defaults, see `.github/workflows/build-rootfs-releases-en.yml` and `build-rootfs-releases.yml`. `enable_systemd257` is experimental and adds build time. Systems already at systemd 257 or older skip installation; details are in the [script guide](../../scripts/README_english.md).
+
+## Generated Droidspaces recommendations
+
+Native and QEMU builds generate `container.config` from the effective build options.
+It is the first regular archive member, followed by the rootfs and then XZ compression.
+Old root-level copies are removed; no additional Dockerfile `COPY` is needed.
+Droidspaces versions with recommendation support prefill their installation wizard.
+
+| Build option | Recommended setting |
+| --- | --- |
+| `anland-wayland` | `enable_anland=1`; Termux:X11 and PulseAudio off |
+| `x11` | `enable_termux_x11=1`; Anland off |
+| X11 with `socket` audio | `enable_pulseaudio=1`; other audio choices use `0` |
+| KDE or KDE Mobile | `allow_userns=1` |
+| Docker enabled | `net_mode=nat`; otherwise keep the app default |
+| Snapdragon GPU support enabled | `enable_gpu_mode=1` |
+| Anland Next | `bind_mounts=/data/local/tmp/awl:/run/anland` |
+
+Keys follow the Droidspaces Anland branch. Mount paths live in the config and use
+the existing Droidspaces bind-mount parser and runtime. Environment variables are
+not passed through this recommendation file. On kernels without user namespaces,
+the requested KDE setting stays checked but disabled; this does not add kernel support.
+
+Run the mapping and archive checks with `python3 -m unittest discover -s tests -v`.
