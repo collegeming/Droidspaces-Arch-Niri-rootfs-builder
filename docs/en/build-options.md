@@ -68,6 +68,7 @@ Droidspaces versions with recommendation support prefill their installation wiza
 | Docker enabled | `net_mode=nat`; otherwise keep the app default |
 | Snapdragon GPU support enabled | `enable_gpu_mode=1` |
 | Anland Next | `bind_mounts=/data/local/tmp/awl:/run/anland` |
+| `enable_zh_tz=true` (Chinese locale and Shanghai timezone) | `dns_servers=114.114.114.114` |
 
 Keys follow the Droidspaces Anland branch. Mount paths live in the config and use
 the existing Droidspaces bind-mount parser and runtime. Environment variables are
