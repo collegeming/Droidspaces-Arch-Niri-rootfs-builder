@@ -8,6 +8,7 @@ configure_environment() {
     local environment_file="${ROOTFS_DIR:-}/etc/environment"
     local assignment key
     local -a assignments=(
+        XDG_SESSION_CLASS=user
         XCURSOR_SIZE=48
         WAYLAND_DISPLAY=wayland-0
         QT_QPA_PLATFORM=wayland

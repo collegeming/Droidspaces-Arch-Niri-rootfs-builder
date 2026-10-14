@@ -7,7 +7,7 @@ configure_environment() {
     local backend="${1:-}"
     local environment_file="${ROOTFS_DIR:-}/etc/environment"
     local assignment key
-    local -a assignments=(XCURSOR_SIZE=48)
+    local -a assignments=(XCURSOR_SIZE=48 XDG_SESSION_CLASS=user)
 
     case "$backend" in
         x11)

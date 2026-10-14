@@ -8,6 +8,7 @@ configure_environment() {
     local environment_file="${ROOTFS_DIR:-}/etc/environment"
     local assignment key
     local -a assignments=(
+        XDG_SESSION_CLASS=user
         XDG_SESSION_TYPE=wayland
         XDG_CURRENT_DESKTOP=niri
         XDG_SESSION_DESKTOP=niri
