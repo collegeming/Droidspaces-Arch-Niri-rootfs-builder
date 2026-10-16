@@ -14,14 +14,14 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `Ubuntu-26` | Ubuntu 26.04 | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next` | Yes |
 | `Fedora-43` | Fedora 43 | `none`, `KDE`, `KDE mobile`, `Anland Next` | Yes |
 | `Fedora-44` | Fedora 44 | `none`, `KDE`, `KDE mobile`, `Anland Next` | Yes |
-| `Arch` | Arch Linux ARM | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next`, `Niri` | Yes |
+| `Arch` | Arch Linux ARM | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next`, `Niri` | Yes (KDE uses Anland Wayland only) |
 
-`all` filters targets according to desktop/backend support. `all-wayland` builds five Wayland targets for KDE/KDE Mobile; GNOME builds Debian 13, Ubuntu 26, and Arch Linux; Niri builds Arch only. GNOME, KDE Mobile, Anland Next, and Niri force `anland-wayland`.
+`all` filters targets according to desktop/backend support. `all-wayland` builds five Wayland targets for KDE/KDE Mobile; GNOME builds Debian 13, Ubuntu 26, and Arch Linux; Niri builds Arch only. Arch KDE, GNOME, KDE Mobile, Anland Next, and Niri force `anland-wayland`.
 
 | Desktop | Description |
 | --- | --- |
 | `none` | Command-line environment for SSH, development, or a custom desktop. |
-| `KDE` | KDE Plasma; X11 or Anland Wayland, depending on the target. |
+| `KDE` | KDE Plasma; Arch supports Anland Wayland only, while other supported targets may use X11 or Anland Wayland. |
 | `KDE mobile` | Touch-first Plasma Mobile; requires Anland Wayland. |
 | `GNOME` | Anland Wayland only, on Debian 13, Ubuntu 26, and Arch Linux ARM. |
 | `Anland Next` | An Anland session with rootless Xwayland and mini-wm, without a full desktop; Wayland only. |
@@ -35,7 +35,7 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `custom_username` | 1–32 letters, digits, `_`, or `-`, starting with a letter or `_`; default `Gold` | Normal RootFS user. |
 | `desktop` | `none`, `KDE`, `KDE mobile`, `GNOME`, `Anland Next`, `Niri`; default `KDE` | Select desktop or command-line mode. |
 | `desktop_autostart` | `true` / `false`; default `true` | Installs the desktop startup service; must be disabled for `none`. |
-| `display_backend` | `x11` / `anland-wayland` | Defaults to Wayland in the Chinese workflow and X11 in the English workflow; some profiles force Wayland. |
+| `display_backend` | `x11` / `anland-wayland` | Defaults to Wayland in the Chinese workflow and X11 in the English workflow; Arch KDE and some profiles force Wayland. |
 | `PulseAudio` | `socket` / `tcp` / `none`; default `socket` | X11 audio forwarding; Anland sets this to `none`. |
 | `enable_zh_tz` | `true` / `false` | Installs Chinese locale and Shanghai timezone; defaults differ by workflow. |
 | `enable_mesa` | `true` / `false`; default `true` | Adds Snapdragon GPU/Mesa support. |

@@ -8,7 +8,7 @@
 
 | 桌面与后端 | 手动启动命令 |
 | --- | --- |
-| KDE + X11 | `DISPLAY=:5 startplasma-x11` |
+| KDE + X11（Arch 不支持） | `DISPLAY=:5 startplasma-x11` |
 | KDE + Anland Wayland | `startplasma-wayland` |
 | KDE Mobile + Anland Wayland | `startplasmamobile` |
 | GNOME + Anland Wayland | `gnome-session --session=gnome` |
@@ -27,7 +27,7 @@ startplasma-x11
 
 ### Wayland 和 Anland 宿主端配置
 
-Anland Wayland 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。KDE 使用 patched KWin/Xwayland，GNOME 使用 patched Mutter。Debian、Ubuntu 和 Arch 的 GNOME 包均由 [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) 发布，RootFS 构建时从对应 Release 安装。Arch 的 Niri 会话使用 `niri-anland` 与同一 Release 中的 patched Xwayland，并安装 `xdg-desktop-portal-gtk` 和 Alacritty 终端。
+Anland Wayland 支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch。Arch KDE 仅使用 Anland Wayland；KDE 使用 patched KWin/Xwayland，GNOME 使用 patched Mutter。Debian、Ubuntu 和 Arch 的 GNOME 包均由 [`droidspaces-package`](https://github.com/Goldzxcbug/droidspaces-package) 发布，RootFS 构建时从对应 Release 安装。Arch 的 Niri 会话使用 `niri-anland` 与同一 Release 中的 patched Xwayland，并安装 `xdg-desktop-portal-gtk` 和 Alacritty 终端。
 
 Niri profile 会像其他桌面一样将会话与 Anland/Mesa 环境写入 `/etc/environment`。统一桌面启动入口直接运行 `/usr/bin/niri-anland`，不使用 `--session`。
 

@@ -84,7 +84,13 @@ desktop_backend_supported() {
 
     desktop_target_supported "$target" "$desktop" || return 1
     case "$desktop:$backend" in
-        none:x11|kde:x11) return 0 ;;
+        none:x11) return 0 ;;
+        kde:x11)
+            case "$target" in
+                Debian-13|Ubuntu-24|Ubuntu-25|Ubuntu-26|Fedora-43|Fedora-44) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
         kde:anland-wayland|kde-mobile:anland-wayland)
             case "$target" in
                 Debian-13|Ubuntu-26|Fedora-43|Fedora-44|Arch) return 0 ;;

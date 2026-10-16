@@ -98,7 +98,7 @@ install_arch() {
     pacman -S --noconfirm --needed \
         xorg-xrandr noto-fonts-cjk noto-fonts-emoji plasma-desktop plasma-workspace \
         plasma-mobile plasma-settings plasma-camera plasma-keyboard plasma-nano \
-        kwin kwin-x11 qt6-wayland qt6-svg qt6-virtualkeyboard wayland-utils xorg-server \
+        kwin qt6-wayland qt6-svg qt6-virtualkeyboard wayland-utils xorg-server \
         pipewire pipewire-alsa pipewire-pulse wireplumber powerdevil plasma-pa upower \
         kscreen ark konsole qmlkonsole dolphin kate kinfocenter mesa-utils libpulse vulkan-tools \
         aha clinfo dmidecode kfind plasma-systemmonitor filelight glmark2 vkmark \

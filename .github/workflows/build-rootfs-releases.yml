@@ -41,7 +41,7 @@ on:
         type: boolean
         default: true
       display_backend:
-        description: 显示后端（KDE mobile/GNOME/Anland Next/Niri 固定使用 Anland Wayland）
+        description: 显示后端（Arch KDE、KDE mobile/GNOME/Anland Next/Niri 固定使用 Anland Wayland）
         required: true
         type: choice
         default: anland-wayland

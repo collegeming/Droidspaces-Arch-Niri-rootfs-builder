@@ -11,6 +11,10 @@ templates="${START_TEMPLATES_DIR:-/tmp/droidspaces-start}"
 profile_dir="${DROIDSPACES_DESKTOP_PROFILE_DIR:-/usr/local/lib/droidspaces/desktops}"
 config="$rootfs/etc/droidspaces-desktop.conf"
 
+if [[ -r "$rootfs/etc/os-release" ]]; then
+    source "$rootfs/etc/os-release"
+fi
+
 configure_anland_next_runtime() {
     local bashrc="$rootfs/home/$username/.bashrc"
     local kate_source="$rootfs/usr/share/applications/org.kde.kate.desktop"
@@ -79,6 +83,10 @@ case "$autostart" in true|false) ;; *) echo "无效的桌面自启动值：$auto
 
 if [[ "$desktop" == none && "$backend" != x11 ]]; then
     echo "不支持的桌面与显示后端组合：$desktop/$backend" >&2
+    exit 1
+fi
+if [[ "$desktop" == kde && "$backend" == x11 && "$ID" =~ ^(arch|archarm|archlinux)$ ]]; then
+    echo "Arch Linux 不支持 KDE X11；请使用 Anland Wayland。" >&2
     exit 1
 fi
 if [[ "$desktop" == kde-mobile && "$backend" != anland-wayland ]]; then
