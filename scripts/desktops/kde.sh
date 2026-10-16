@@ -135,9 +135,6 @@ license = custom
 provides = xdg-desktop-portal
 provides = xdg-desktop-portal-kde
 provides = xdg-desktop-portal-gtk
-conflict = xdg-desktop-portal
-conflict = xdg-desktop-portal-kde
-conflict = xdg-desktop-portal-gtk
 EOF
 
     # Local package signatures may be required by the host pacman.conf.
