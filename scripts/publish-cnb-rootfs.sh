@@ -215,12 +215,37 @@ if [[ "${#expected_assets[@]}" -eq 0 ]]; then
     exit 1
 fi
 
-echo "正在下载 ${#expected_assets[@]} 个 GitHub Release 附件..."
-download_args=(gh release download "$RELEASE_TAG" --repo "$GITHUB_RELEASE_REPOSITORY" --dir "$asset_dir")
-for asset_name in "${expected_assets[@]}"; do
-    download_args+=(--pattern "$asset_name")
-done
-"${download_args[@]}"
+# 优先复用调用方已经下载好的本地资产，避免再次下载数十 GiB 附件而耗尽运行器磁盘。
+# 只有当本地目录缺少任意一个预期附件时才回退到 gh release download。
+reuse_local_assets=0
+if [[ -n "${CNB_LOCAL_ASSETS_DIR:-}" ]]; then
+    [[ -d "$CNB_LOCAL_ASSETS_DIR" ]] || {
+        echo "本地资产目录不存在：$CNB_LOCAL_ASSETS_DIR" >&2
+        exit 1
+    }
+    local_assets_dir="$(cd "$CNB_LOCAL_ASSETS_DIR" && pwd)"
+    reuse_local_assets=1
+    for asset_name in "${expected_assets[@]}"; do
+        if [[ ! -f "$local_assets_dir/$asset_name" ]]; then
+            reuse_local_assets=0
+            break
+        fi
+    done
+fi
+
+if [[ "$reuse_local_assets" -eq 1 ]]; then
+    echo "正在复用本地已下载的 ${#expected_assets[@]} 个 GitHub Release 附件：$local_assets_dir"
+    for asset_name in "${expected_assets[@]}"; do
+        ln -sfn -- "$local_assets_dir/$asset_name" "$asset_dir/$asset_name"
+    done
+else
+    echo "正在下载 ${#expected_assets[@]} 个 GitHub Release 附件..."
+    download_args=(gh release download "$RELEASE_TAG" --repo "$GITHUB_RELEASE_REPOSITORY" --dir "$asset_dir")
+    for asset_name in "${expected_assets[@]}"; do
+        download_args+=(--pattern "$asset_name")
+    done
+    "${download_args[@]}"
+fi
 for asset_name in "${expected_assets[@]}"; do
     [[ -f "$asset_dir/$asset_name" ]] || {
         echo "缺少已声明的 GitHub Release 附件：$asset_name" >&2
