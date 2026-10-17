@@ -6,7 +6,7 @@ write_rootfs_config() {
     local zh_tz_enabled="${7:-false}"
     local anland=0 x11=0 pulse=0 userns=0 gpu=0
 
-    case "$desktop" in none|kde|kde-mobile|gnome|anland-next|niri) ;; *) return 1 ;; esac
+    case "$desktop" in none|kde|kde-mobile|gnome|anland-next|niri|hyprland|mango|denial) ;; *) return 1 ;; esac
     case "$backend" in
         anland-wayland) anland=1 ;;
         x11) x11=1 ;;

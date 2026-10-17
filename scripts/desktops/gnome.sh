@@ -38,12 +38,13 @@ install_apt() {
     local -a packages=(
         dbus-x11 dbus-user-session fonts-noto-cjk fonts-noto-color-emoji
         gnome-shell gnome-session gnome-control-center gnome-settings-daemon mutter
-        gnome-terminal nautilus gnome-system-monitor gnome-tweaks
+        gnome-terminal gnome-text-editor nautilus gnome-system-monitor gnome-tweaks
         gnome-keyring libpam-gnome-keyring polkitd upower
-        pipewire pipewire-pulse wireplumber pulseaudio-utils
+        pipewire pipewire-alsa pipewire-pulse wireplumber pulseaudio-utils
         mesa-utils vulkan-tools aha clinfo dmidecode glmark2 vkmark
-        wayland-utils xwayland xdg-user-dirs xdg-desktop-portal-gnome
-        file-roller evince eog gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+        wayland-utils xwayland xdg-user-dirs xdg-desktop-portal-gnome xdg-desktop-portal-gtk
+        file-roller evince eog gnome-calculator gnome-disk-utility
+        gstreamer1.0-plugins-base gstreamer1.0-plugins-good
         libcanberra-pulse sound-theme-freedesktop
     )
 
@@ -74,21 +75,41 @@ install_arch() {
     pacman -S --noconfirm --needed \
         noto-fonts noto-fonts-cjk noto-fonts-emoji \
         gnome-shell gnome-session gnome-control-center gnome-settings-daemon mutter \
-        gnome-terminal nautilus gnome-system-monitor gnome-tweaks \
+        gnome-terminal gnome-text-editor nautilus gnome-system-monitor gnome-tweaks \
         gnome-keyring polkit upower \
         pipewire pipewire-alsa pipewire-pulse wireplumber \
         mesa-utils vulkan-tools aha clinfo dmidecode glmark2 vkmark \
-        wayland-utils xorg-xwayland xdg-user-dirs xdg-desktop-portal-gnome \
-        file-roller evince eog gst-plugins-base gst-plugins-good \
+        wayland-utils xorg-xwayland xdg-user-dirs xdg-desktop-portal-gnome xdg-desktop-portal-gtk \
+        file-roller evince eog gnome-calculator gnome-disk-utility gst-plugins-base gst-plugins-good \
         libcanberra sound-theme-freedesktop gnome-backgrounds
 }
 
 install_profile() {
     case "$ID" in
         debian|ubuntu) install_apt ;;
+        fedora) install_fedora ;;
         arch|archarm|archlinux) install_arch ;;
         *) echo "GNOME 不支持当前发行版：$ID" >&2; return 1 ;;
     esac
+}
+
+install_fedora() {
+    case "$VERSION_ID" in
+        43|44) ;;
+        *) echo "GNOME 不支持 Fedora $VERSION_ID" >&2; return 1 ;;
+    esac
+
+    dnf install -y --setopt=install_weak_deps=False \
+        google-noto-sans-cjk-fonts google-noto-color-emoji-fonts \
+        gnome-shell gnome-session gnome-control-center gnome-settings-daemon mutter \
+        gnome-terminal gnome-text-editor nautilus gnome-system-monitor gnome-tweaks \
+        gnome-keyring polkit upower pipewire pipewire-alsa pipewire-pulseaudio wireplumber \
+        glx-utils vulkan-tools pulseaudio-utils aha clinfo dmidecode glmark2 vkmark \
+        wayland-utils xorg-x11-server-Xwayland xdg-user-dirs \
+        xdg-desktop-portal-gnome xdg-desktop-portal-gtk \
+        file-roller evince eog gnome-calculator gnome-disk-utility \
+        gstreamer1-plugins-base gstreamer1-plugins-good libcanberra sound-theme-freedesktop \
+        gnome-backgrounds
 }
 
 case "${1:-install}" in

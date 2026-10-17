@@ -47,6 +47,10 @@ COPY scripts/systemd257.sh /usr/local/sbin/systemd257
 COPY scripts/tui/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 COPY scripts/tui/install-anland-gnome.sh /usr/local/sbin/install-anland-gnome
 COPY scripts/tui/install-anland-next.sh /usr/local/sbin/install-anland-next
+COPY scripts/tui/install-anland-niri.sh /usr/local/sbin/install-anland-niri
+COPY scripts/tui/install-anland-hyprland.sh /usr/local/sbin/install-anland-hyprland
+COPY scripts/tui/install-anland-mango.sh /usr/local/sbin/install-anland-mango
+COPY scripts/tui/install-anland-denial.sh /usr/local/sbin/install-anland-denial
 COPY scripts/install-anland-desktop.sh /usr/local/sbin/install-anland-desktop
 COPY scripts/tui/install-mesa.sh /usr/local/sbin/install-mesa
 COPY scripts/tui/install-hangover-wine.sh /usr/local/sbin/install-hangover-wine

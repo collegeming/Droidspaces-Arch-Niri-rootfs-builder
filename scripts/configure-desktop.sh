@@ -101,7 +101,7 @@ if [[ "$desktop" == anland-next && "$backend" != anland-wayland ]]; then
     echo "不支持的桌面与显示后端组合：$desktop/$backend" >&2
     exit 1
 fi
-if [[ "$desktop" == niri && "$backend" != anland-wayland ]]; then
+if [[ "$desktop" =~ ^(niri|hyprland|mango|denial)$ && "$backend" != anland-wayland ]]; then
     echo "不支持的桌面与显示后端组合：$desktop/$backend" >&2
     exit 1
 fi
@@ -114,9 +114,13 @@ chmod 0644 "$config"
 
 # 桌面专属环境必须在 Dockerfile 完成 /etc/environment 后配置。
 if [[ "$desktop" != none ]]; then
-    profile="$profile_dir/$desktop.sh"
+    profile_desktop="$desktop"
+    case "$desktop" in
+        hyprland|mango|denial) profile_desktop="niri" ;;
+    esac
+    profile="$profile_dir/$profile_desktop.sh"
     [[ -x "$profile" ]] || { echo "桌面配置脚本不存在或不可执行：$profile" >&2; exit 1; }
-    ROOTFS_DIR="$rootfs" "$profile" configure-environment "$backend"
+    ROOTFS_DIR="$rootfs" DROIDSPACES_DESKTOP="$desktop" "$profile" configure-environment "$backend"
 fi
 
 if [[ "$desktop" == anland-next ]]; then
