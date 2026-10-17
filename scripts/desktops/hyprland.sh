@@ -42,6 +42,7 @@ configure_environment() {
 install_minimal_deb() {
     apt-get install -y --no-install-recommends \
         xdg-desktop-portal xdg-desktop-portal-gtk \
+        kitty dolphin brightnessctl playerctl \
         alacritty fuzzel wl-clipboard pipewire pipewire-alsa pipewire-pulse wireplumber upower \
         mesa-utils vulkan-tools wayland-utils xdg-user-dirs \
         fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji
@@ -50,6 +51,7 @@ install_minimal_deb() {
 install_minimal_fedora() {
     dnf install -y --setopt=install_weak_deps=False \
         xdg-desktop-portal xdg-desktop-portal-gtk \
+        kitty dolphin brightnessctl playerctl \
         alacritty fuzzel wl-clipboard pipewire pipewire-alsa pipewire-pulseaudio wireplumber upower \
         glx-utils vulkan-tools wayland-utils xdg-user-dirs \
         google-noto-sans-fonts google-noto-sans-cjk-fonts google-noto-color-emoji-fonts
@@ -58,6 +60,7 @@ install_minimal_fedora() {
 install_minimal_arch() {
     pacman -S --noconfirm --needed \
         xdg-desktop-portal xdg-desktop-portal-gtk \
+        kitty dolphin hyprlauncher brightnessctl playerctl \
         alacritty fuzzel wl-clipboard pipewire pipewire-alsa pipewire-pulse wireplumber upower \
         mesa-utils vulkan-tools wayland-utils xdg-user-dirs \
         noto-fonts noto-fonts-cjk noto-fonts-emoji
