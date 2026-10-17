@@ -36,7 +36,7 @@ configure_environment() {
 
 install_apt() {
     local -a packages=(
-        dbus-x11 dbus-user-session fonts-noto-cjk fonts-noto-color-emoji
+        dbus-x11 dbus-user-session fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji
         gnome-shell gnome-session gnome-control-center gnome-settings-daemon mutter
         gnome-terminal gnome-text-editor nautilus gnome-system-monitor gnome-tweaks
         gnome-keyring libpam-gnome-keyring polkitd upower
@@ -53,7 +53,7 @@ install_apt() {
 
     case "$ID:$VERSION_ID" in
         debian:13)
-            packages+=(desktop-base)
+            packages+=(desktop-base gnome firefox-esr gnome-music libdisplay-info-bin)
             ;;
         ubuntu:26.04)
             packages+=(
@@ -69,6 +69,11 @@ install_apt() {
     esac
 
     apt-get install -y --no-install-recommends "${packages[@]}"
+
+    if [[ "$ID:$VERSION_ID" == debian:13 ]]; then
+        systemctl --root=/ disable gdm3.service display-manager.service
+        systemctl --root=/ mask gdm3.service display-manager.service
+    fi
 }
 
 install_arch() {
