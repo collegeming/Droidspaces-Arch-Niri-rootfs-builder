@@ -105,6 +105,9 @@ install_fedora() {
         *) echo "GNOME 不支持 Fedora $VERSION_ID" >&2; return 1 ;;
     esac
 
+    # Fedora 容器基础镜像默认只安装 en_US 翻译，GNOME 各组件的 zh_CN .mo
+    # 会在 RPM 解包时被过滤，必须与 KDE profile 一样放开全部语言。
+    echo '%_install_langs all' > /etc/rpm/macros.image-language-conf
     dnf install -y --setopt=install_weak_deps=False \
         dbus-x11 libdisplay-info \
         google-noto-sans-cjk-fonts google-noto-color-emoji-fonts \
