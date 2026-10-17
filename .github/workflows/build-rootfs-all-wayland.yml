@@ -2,8 +2,6 @@ name: 发布全桌面 Wayland RootFS
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   schedule:
     - cron: '0 18 * * 0'
 
@@ -119,6 +117,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          tag_ref="repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG"
+          if gh api "$tag_ref" >/dev/null 2>&1; then
+            echo "更新已有滚动 tag：$RELEASE_TAG"
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG" \
+              -f sha="$GITHUB_SHA" -F force=true
+          else
+            echo "创建滚动 tag：$RELEASE_TAG"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA"
+          fi
+
           release_list="$RUNNER_TEMP/rootfs-releases.json"
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$release_list"
           if ! jq -e --arg tag "$RELEASE_TAG" 'any(.[]; .tag_name == $tag)' "$release_list" >/dev/null; then
@@ -129,9 +138,6 @@ jobs:
               --draft \
               --latest=false
           fi
-          gh api --method PATCH \
-            "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG" \
-            -f sha="$GITHUB_SHA" -F force=true
 
       - name: 上传 RootFS 资产
         env:
