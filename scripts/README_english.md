@@ -102,6 +102,8 @@ Desktop names, target capabilities, and backend compatibility live in `lib/deskt
 3. Map its session command in `start-desktop-session.sh`; `install-desktop.sh` automatically discovers executable profiles for valid slugs.
 4. Add its display label to the `desktop` choice in both workflow entry files.
 
+Desktop translation files are enabled globally by each Dockerfile before packages are installed: Fedora writes `%_install_langs all`, Debian/Ubuntu disable the dpkg locale `path-exclude`, and Arch removes `NoExtract`. Profiles no longer need to handle language files themselves.
+
 All seven Dockerfiles and the reusable workflow already use the generic profile interface, so an ordinary X11 desktop does not require copied Dockerfiles. Profiles that require patched Wayland packages must also map to a package family in `lib/anland-build.sh` through `anland_package_family`.
 
 ## Anland KDE Installer

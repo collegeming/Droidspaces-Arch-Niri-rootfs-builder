@@ -102,6 +102,8 @@ sudo ./scripts/tui/install-mesa.sh --3  # ghproxy.net
 3. 在 `start-desktop-session.sh` 添加会话命令；`install-desktop.sh` 会自动发现合法 slug 对应的可执行 profile。
 4. 在中英文工作流入口的 `desktop` 下拉中加入显示名称。
 
+桌面翻译文件由各 Dockerfile 在安装软件包前全局放开：Fedora 写入 `%_install_langs all`，Debian/Ubuntu 取消 dpkg 的 locale `path-exclude`，Arch 移除 `NoExtract`。profile 不再需要重复处理语言文件。
+
 七个 Dockerfile 和核心工作流已经使用通用 profile 接口，普通 X11 桌面无需复制 Dockerfile。依赖 patched Wayland 包的 profile 还需在 `lib/anland-build.sh` 的 `anland_package_family` 中登记包族。
 
 ## Anland KDE 安装器
