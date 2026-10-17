@@ -3,20 +3,13 @@ set -euo pipefail
 
 source "${ROOTFS_DIR:-}/etc/os-release"
 
-desktop="${DROIDSPACES_DESKTOP:-niri}"
-
-case "$desktop" in
-    niri|hyprland|mango|denial) ;;
-    *) echo "不支持的轻量 Wayland 桌面：$desktop" >&2; exit 1 ;;
-esac
+desktop=niri
+xdg_desktop=niri
 
 configure_environment() {
     local backend="${1:-}"
     local environment_file="${ROOTFS_DIR:-}/etc/environment"
     local assignment key
-    local current_desktop="$desktop"
-    [[ "$desktop" != hyprland ]] || current_desktop="Hyprland"
-    [[ "$desktop" != denial ]] || current_desktop="Denial"
     local -a assignments=(
         XDG_SESSION_CLASS=user
         XDG_SESSION_TYPE=wayland
@@ -38,7 +31,7 @@ configure_environment() {
         echo "$desktop 显示后端无效：$backend" >&2
         return 1
     }
-    assignments+=("XDG_CURRENT_DESKTOP=$current_desktop" "XDG_SESSION_DESKTOP=$current_desktop")
+    assignments+=("XDG_CURRENT_DESKTOP=$xdg_desktop" "XDG_SESSION_DESKTOP=$xdg_desktop")
     touch "$environment_file"
     for assignment in "${assignments[@]}"; do
         key="${assignment%%=*}"
@@ -73,21 +66,11 @@ install_minimal_fedora() {
         google-noto-sans-fonts google-noto-sans-cjk-fonts google-noto-color-emoji-fonts
 }
 
-install_minimal_arch() {
-    pacman -S --noconfirm --needed \
-        xdg-desktop-portal xdg-desktop-portal-gtk \
-        alacritty fuzzel wl-clipboard pipewire pipewire-alsa pipewire-pulse wireplumber upower \
-        mesa-utils vulkan-tools wayland-utils xdg-user-dirs \
-        noto-fonts noto-fonts-cjk noto-fonts-emoji
-}
-
 install_profile() {
     case "$ID:${VERSION_ID:-}" in
         debian:13*|ubuntu:26.04*) install_minimal_deb ;;
         fedora:43*|fedora:44*) install_minimal_fedora ;;
-        arch:*|archarm:*|archlinux:*)
-            if [[ "$desktop" == niri ]]; then install_niri_arch; else install_minimal_arch; fi
-            ;;
+        arch:*|archarm:*|archlinux:*) install_niri_arch ;;
         *) echo "$desktop 不支持当前发行版：$ID $VERSION_ID" >&2; return 1 ;;
     esac
 }

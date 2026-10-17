@@ -161,7 +161,7 @@ sudo ANLAND_NEXT_RELEASE_REPOSITORY=owner/repository \
 
 ## Anland Niri 安装器
 
-Niri、Hyprland、Mango 和 Denial 安装器从各自固定滚动 Release 安装 compositor 与 patched `xorg-xwayland`，支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch ARM64。轻量 RootFS profile 提供终端、XDG portal、音频和字体等基础服务；Niri 在 Arch 上还包含常用桌面工具。各 compositor 共用 patched Xwayland；安装器会阻止互相覆盖，并在卸载时保留其他组件使用的包。
+Niri、Hyprland、Mango 和 Denial 安装器从各自固定滚动 Release 安装 compositor 与 patched `xorg-xwayland`，支持 Debian 13、Ubuntu 26、Fedora 43/44 和 Arch ARM64。四个桌面在 `scripts/desktops/<slug>.sh` 各有独立 profile；profile 提供终端、XDG portal、音频和字体等基础服务，Niri 在 Arch 上还包含常用桌面工具。各 compositor 共用 patched Xwayland；安装器会阻止互相覆盖，并在卸载时保留其他组件使用的包。
 
 ```bash
 sudo ./scripts/tui/install-anland-niri.sh
