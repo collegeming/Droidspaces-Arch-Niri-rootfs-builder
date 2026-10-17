@@ -1,0 +1,178 @@
+name: 发布全桌面 Wayland RootFS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 18 * * 0'
+
+concurrency:
+  group: droidspaces-rootfs-all-wayland
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: droidspaces-rootfs-all-wayland
+  WAYLAND_PACKAGE_REPOSITORY: Goldzxcbug/droidspaces-package
+
+jobs:
+  prepare:
+    name: 准备统一版本
+    runs-on: ubuntu-latest
+    outputs:
+      build_id: ${{ steps.meta.outputs.build_id }}
+    steps:
+      - id: meta
+        run: echo "build_id=v$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+
+  build-zh:
+    name: 构建中文 RootFS
+    needs: prepare
+    uses: ./.github/workflows/build-rootfs-core.yml
+    with:
+      ui_language: zh
+      build_target: all-wayland
+      custom_username: Gold
+      desktop: all-wayland
+      desktop_autostart: true
+      display_backend: anland-wayland
+      PulseAudio: none
+      enable_zh_tz: true
+      enable_mesa: true
+      enable_8gen2_wayland: false
+      nosnap: true
+      enable_systemd257: false
+      enable_srf: true
+      enable_binfmt: false
+      enable_yj: true
+      enable_kfgj: false
+      enable_zip: true
+      enable_docker: false
+      wayland_package_repository: Goldzxcbug/droidspaces-package
+      build_id: ${{ needs.prepare.outputs.build_id }}
+      asset_variant: zh
+      publish_release: false
+
+  build-en:
+    name: 构建英文 RootFS
+    needs: prepare
+    uses: ./.github/workflows/build-rootfs-core.yml
+    with:
+      ui_language: en
+      build_target: all-wayland
+      custom_username: Gold
+      desktop: all-wayland
+      desktop_autostart: true
+      display_backend: anland-wayland
+      PulseAudio: none
+      enable_zh_tz: false
+      enable_mesa: true
+      enable_8gen2_wayland: false
+      nosnap: false
+      enable_systemd257: false
+      enable_srf: false
+      enable_binfmt: false
+      enable_yj: true
+      enable_kfgj: false
+      enable_zip: true
+      enable_docker: false
+      wayland_package_repository: Goldzxcbug/droidspaces-package
+      build_id: ${{ needs.prepare.outputs.build_id }}
+      asset_variant: en
+      publish_release: false
+
+  release:
+    name: 更新 GitHub 滚动 Release
+    needs: [prepare, build-zh, build-en]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v7
+        with:
+          pattern: '*-rootfs'
+          merge-multiple: true
+          path: release-assets
+
+      - name: 生成双语索引
+        env:
+          BUILD_ID: ${{ needs.prepare.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          bash scripts/generate-rootfs-manifests.sh \
+            --assets release-assets \
+            --language zh \
+            --release-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" \
+            --output release-assets/rootfs_zh.json
+          bash scripts/generate-rootfs-manifests.sh \
+            --assets release-assets \
+            --language en \
+            --release-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" \
+            --output release-assets/rootfs_en.json
+
+      - name: 创建或更新滚动 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_list="$RUNNER_TEMP/rootfs-releases.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$release_list"
+          if ! jq -e --arg tag "$RELEASE_TAG" 'any(.[]; .tag_name == $tag)' "$release_list" >/dev/null; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Droidspaces 全桌面 Wayland RootFS" \
+              --notes $'中文：固定滚动发布 Debian 13、Ubuntu 26、Fedora 43、Fedora 44 和 Arch 的全部 Anland Wayland 桌面 RootFS。\n\nEnglish: Rolling ARM64 RootFS for every Anland Wayland desktop on Debian 13, Ubuntu 26, Fedora 43, Fedora 44, and Arch.' \
+              --draft \
+              --latest=false
+          fi
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG" \
+            -f sha="$GITHUB_SHA" -F force=true
+
+      - name: 上传 RootFS 资产
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t archives < <(find release-assets -maxdepth 1 -type f -name '*.tar.xz' -print | sort)
+          [ "${#archives[@]}" -eq 80 ]
+          gh release upload "$RELEASE_TAG" "${archives[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$RELEASE_TAG" \
+            release-assets/rootfs_zh.json release-assets/rootfs_en.json \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: 删除旧资产并发布 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected="$RUNNER_TEMP/rootfs-expected-assets.txt"
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort > "$expected"
+          release_json="$RUNNER_TEMP/rootfs-release.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -ce \
+            --arg tag "$RELEASE_TAG" '
+              [.[] | select(.tag_name == $tag)]
+              | if length == 1 then .[0] else error("滚动 Release 不唯一") end
+            ' > "$release_json"
+          while IFS=$'\t' read -r asset_id asset_name; do
+            if ! grep -Fqx -- "$asset_name" "$expected"; then
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            fi
+          done < <(jq -r '.assets[] | [.id, .name] | @tsv' "$release_json")
+          gh release edit "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Droidspaces 全桌面 Wayland RootFS" \
+            --notes $'中文：5 个 ARM64 发行版 × 8 个 Anland Wayland 桌面，分别提供中文和英文 RootFS。\n\nEnglish: 5 ARM64 distributions x 8 Anland Wayland desktops, with separate Chinese and English RootFS feeds.' \
+            --draft=false --prerelease=false --latest=false
+
+      - name: 同步中文资产到 CNB
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO }}
+          CNB_ROOTFS_LANGUAGE: zh
+        run: bash scripts/publish-cnb-rootfs.sh "$RELEASE_TAG"
