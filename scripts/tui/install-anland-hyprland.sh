@@ -1024,6 +1024,8 @@ install_deb_packages() {
             printf '%s\n' 'deb https://deb.debian.org/debian trixie-backports main' > "$backports_source"
         fi
         apt-get update
+        apt-get install -y --no-install-recommends -t trixie-backports \
+            libhyprcursor0 libhyprwire3 libudis86-0 libxkbcommon0
     fi
 
     log "正在安装 ${#files[@]} 个 deb 包并自动处理依赖..." \
