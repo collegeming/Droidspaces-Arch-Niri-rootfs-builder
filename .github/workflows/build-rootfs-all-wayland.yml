@@ -181,4 +181,7 @@ jobs:
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
           CNB_REPO: ${{ vars.CNB_REPO }}
           CNB_ROOTFS_LANGUAGE: zh
+          # release-assets 中已包含本次发布下载好的全部附件，直接复用，
+          # 避免再次下载约 29 GiB 的中文附件把运行器磁盘撑爆。
+          CNB_LOCAL_ASSETS_DIR: release-assets
         run: bash scripts/publish-cnb-rootfs.sh "$RELEASE_TAG"
