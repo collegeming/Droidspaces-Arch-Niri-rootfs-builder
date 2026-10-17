@@ -82,7 +82,7 @@ install_minimal_arch() {
 }
 
 install_profile() {
-    case "$ID:$VERSION_ID" in
+    case "$ID:${VERSION_ID:-}" in
         debian:13*|ubuntu:26.04*) install_minimal_deb ;;
         fedora:43*|fedora:44*) install_minimal_fedora ;;
         arch:*|archarm:*|archlinux:*)

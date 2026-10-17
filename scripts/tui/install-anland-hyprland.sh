@@ -1011,12 +1011,20 @@ write_apt_hold_state() {
 
 install_deb_packages() {
     local -a files packages
-    local file package
+    local file package backports_source="/etc/apt/sources.list.d/anland-trixie-backports.list"
 
     command -v apt-get >/dev/null 2>&1 || die "未找到 apt-get。" "apt-get was not found."
     command -v dpkg-deb >/dev/null 2>&1 || die "未找到 dpkg-deb。" "dpkg-deb was not found."
     mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.deb' -print | sort)
     ((${#files[@]} > 0)) || die "没有可安装的 deb 包。" "No installable deb packages were found."
+
+    if [[ "$TARGET" == "Debian 13" ]]; then
+        if ! grep -Rqs 'trixie-backports' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
+            install -d -m 0755 /etc/apt/sources.list.d
+            printf '%s\n' 'deb https://deb.debian.org/debian trixie-backports main' > "$backports_source"
+        fi
+        apt-get update
+    fi
 
     log "正在安装 ${#files[@]} 个 deb 包并自动处理依赖..." \
         "Installing ${#files[@]} deb packages and resolving dependencies..."

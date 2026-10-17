@@ -832,6 +832,7 @@ validate_package_architecture() {
                 case "$package_name" in
                     mutter) [[ "$package_arch" == aarch64 ]] || return 1; ((mutter_count += 1)) ;;
                     mutter-common|mutter-common-x11) ;;
+                    mutter-tests) [[ "$package_arch" == aarch64 ]] || return 1 ;;
                     xorg-x11-server-Xwayland) [[ "$package_arch" == aarch64 ]] || return 1; ((xwayland_count += 1)) ;;
                     *) return 1 ;;
                 esac
@@ -1262,14 +1263,18 @@ configure_dnf_excludes() {
 }
 
 install_rpm_packages() {
-    local -a files packages dnf_install_options=() install_files=() reinstall_files=()
+    local -a archive_files files packages dnf_install_options=() install_files=() reinstall_files=()
     local file package_name package_version installed_version
     local dnf_conf="/etc/dnf/dnf.conf"
     local dnf_backup
 
     command -v dnf >/dev/null 2>&1 || die "未找到 dnf。" "dnf was not found."
     command -v rpm >/dev/null 2>&1 || die "未找到 rpm。" "rpm was not found."
-    mapfile -t files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.rpm' -print | sort)
+    mapfile -t archive_files < <(find "$PACKAGE_DIR" -maxdepth 1 -type f -name '*.rpm' -print | sort)
+    for file in "${archive_files[@]}"; do
+        package_name="$(rpm -qp --queryformat '%{NAME}' "$file")"
+        [[ "$package_name" == mutter-tests ]] || files+=("$file")
+    done
     ((${#files[@]} > 0)) || die "没有可安装的 rpm 包。" "No installable rpm packages were found."
 
     for file in "${files[@]}"; do
