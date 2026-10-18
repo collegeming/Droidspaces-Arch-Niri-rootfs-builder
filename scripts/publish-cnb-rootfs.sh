@@ -221,7 +221,7 @@ upload_cnb_group() {
     local description="$1"
     shift
     local index pid failed=0 batch_size=0
-    local concurrency="${CNB_UPLOAD_CONCURRENCY:-8}"
+    local concurrency="${CNB_UPLOAD_CONCURRENCY:-9999}"
     local -a pids=()
 
     [[ "$#" -gt 0 ]] || return 0
@@ -260,46 +260,67 @@ upload_cnb_group() {
     fi
 }
 
-echo "正在读取 GitHub Release：$RELEASE_TAG"
-github_release_json="$work_dir/github-release.json"
-gh api \
-    "repos/$GITHUB_RELEASE_REPOSITORY/releases/tags/$RELEASE_TAG" \
-    > "$github_release_json"
-
-release_name="$(jq -er '.name // .tag_name' "$github_release_json")"
-release_body="$(jq -r '.body // ""' "$github_release_json")"
-if [[ "${CNB_ROOTFS_LANGUAGE:-}" == zh ]]; then
-    release_name='Droidspaces 全桌面 Wayland RootFS（简体中文）'
-    release_body=$'## 简体中文 RootFS\n\n面向 Droidspaces 的 ARM64 滚动 RootFS，提供 Debian 13、Ubuntu 26.04、Fedora 43、Fedora 44 和 Arch Linux 的 Anland Wayland 桌面镜像。\n\n- 覆盖 8 种桌面环境：KDE Plasma、KDE Plasma Mobile、GNOME、Anland Next、Niri、Hyprland、Mango 和 Denial。\n- 共 40 个简体中文 `.tar.xz` 镜像，均面向 ARM64。\n- `rootfs.json` 包含全部中文 RootFS 地址；`rootfs_zh.json` 是订阅清单，包含版本、文件大小、SHA-256 校验值及 CNB 下载地址。\n- 镜像包含 Droidspaces 桌面自动启动配置和高通 Adreno/Mesa 支持。\n\n在 Droidspaces RootFS 管理中添加 `rootfs_zh.json` 即可订阅。本 CNB Release 仅发布简体中文 RootFS，并随每周滚动构建更新。'
-fi
-release_prerelease="$(jq -r '
-    if (.prerelease | type) == "boolean" then .prerelease
-    else error("prerelease is not a boolean")
-    end
-' "$github_release_json")"
-mapfile -t expected_assets < <(jq -er --arg language "${CNB_ROOTFS_LANGUAGE:-}" '
-    .assets[].name
-    | select(
-        $language != "zh" or
-        endswith("-zh.tar.xz") or
-        . == "rootfs_zh.json" or
-        . == "rootfs.json"
-      )
-' "$github_release_json")
-if [[ "${#expected_assets[@]}" -eq 0 ]]; then
-    echo "GitHub Release $RELEASE_TAG 没有附件，拒绝创建空的 CNB 镜像。" >&2
-    exit 1
-fi
-
-# 优先复用调用方已经下载好的本地资产，避免再次下载数十 GiB 附件而耗尽运行器磁盘。
-# 只有当本地目录缺少任意一个预期附件时才回退到 gh release download。
-reuse_local_assets=0
+local_assets_dir=''
 if [[ -n "${CNB_LOCAL_ASSETS_DIR:-}" ]]; then
     [[ -d "$CNB_LOCAL_ASSETS_DIR" ]] || {
         echo "本地资产目录不存在：$CNB_LOCAL_ASSETS_DIR" >&2
         exit 1
     }
     local_assets_dir="$(cd "$CNB_LOCAL_ASSETS_DIR" && pwd)"
+    release_name=''
+    release_body=''
+    release_prerelease=false
+    mapfile -t expected_assets < <(
+        find "$local_assets_dir" -maxdepth 1 -type f \
+            \( -name '*-zh.tar.xz' -o -name 'rootfs_zh.json' -o -name 'rootfs.json' \) \
+            -printf '%f\n' | sort
+    )
+    archive_count=0
+    for asset_name in "${expected_assets[@]}"; do
+        [[ "$asset_name" == *-zh.tar.xz ]] && archive_count=$((archive_count + 1))
+    done
+    if [[ "$archive_count" -ne 40 || ! -f "$local_assets_dir/rootfs_zh.json" || ! -f "$local_assets_dir/rootfs.json" ]]; then
+        echo "本地 CNB 资产不完整：需要 40 个中文压缩包及 rootfs_zh.json、rootfs.json。" >&2
+        exit 1
+    fi
+else
+    echo "正在读取 GitHub Release：$RELEASE_TAG"
+    github_release_json="$work_dir/github-release.json"
+    gh api \
+        "repos/$GITHUB_RELEASE_REPOSITORY/releases/tags/$RELEASE_TAG" \
+        > "$github_release_json"
+
+    release_name="$(jq -er '.name // .tag_name' "$github_release_json")"
+    release_body="$(jq -r '.body // ""' "$github_release_json")"
+    release_prerelease="$(jq -r '
+        if (.prerelease | type) == "boolean" then .prerelease
+        else error("prerelease is not a boolean")
+        end
+    ' "$github_release_json")"
+    mapfile -t expected_assets < <(jq -er --arg language "${CNB_ROOTFS_LANGUAGE:-}" '
+        .assets[].name
+        | select(
+            $language != "zh" or
+            endswith("-zh.tar.xz") or
+            . == "rootfs_zh.json" or
+            . == "rootfs.json"
+          )
+    ' "$github_release_json")
+    if [[ "${#expected_assets[@]}" -eq 0 ]]; then
+        echo "GitHub Release $RELEASE_TAG 没有附件，拒绝创建空的 CNB 镜像。" >&2
+        exit 1
+    fi
+fi
+
+if [[ "${CNB_ROOTFS_LANGUAGE:-}" == zh ]]; then
+    release_name='Droidspaces 全桌面 Wayland RootFS（简体中文）'
+    release_body=$'## 简体中文 RootFS\n\n面向 Droidspaces 的 ARM64 滚动 RootFS，提供 Debian 13、Ubuntu 26.04、Fedora 43、Fedora 44 和 Arch Linux 的 Anland Wayland 桌面镜像。\n\n- 覆盖 8 种桌面环境：KDE Plasma、KDE Plasma Mobile、GNOME、Anland Next、Niri、Hyprland、Mango 和 Denial。\n- 共 40 个简体中文 `.tar.xz` 镜像，均面向 ARM64。\n- `rootfs.json` 包含全部中文 RootFS 地址；`rootfs_zh.json` 是订阅清单，包含版本、文件大小、SHA-256 校验值及 CNB 下载地址。\n- 镜像包含 Droidspaces 桌面自动启动配置和高通 Adreno/Mesa 支持。\n\n在 Droidspaces RootFS 管理中添加 `rootfs_zh.json` 即可订阅。本 CNB Release 仅发布简体中文 RootFS，并随每周滚动构建更新。'
+fi
+
+# 优先复用调用方已经下载好的本地资产，避免再次下载数十 GiB 附件而耗尽运行器磁盘。
+# 只有当本地目录缺少任意一个预期附件时才回退到 gh release download。
+reuse_local_assets=0
+if [[ -n "$local_assets_dir" ]]; then
     reuse_local_assets=1
     for asset_name in "${expected_assets[@]}"; do
         if [[ ! -f "$local_assets_dir/$asset_name" ]]; then
@@ -310,7 +331,7 @@ if [[ -n "${CNB_LOCAL_ASSETS_DIR:-}" ]]; then
 fi
 
 if [[ "$reuse_local_assets" -eq 1 ]]; then
-    echo "正在复用本地已下载的 ${#expected_assets[@]} 个 GitHub Release 附件：$local_assets_dir"
+    echo "正在复用本地已准备的 ${#expected_assets[@]} 个 CNB 附件：$local_assets_dir"
     for asset_name in "${expected_assets[@]}"; do
         ln -sfn -- "$local_assets_dir/$asset_name" "$asset_dir/$asset_name"
     done

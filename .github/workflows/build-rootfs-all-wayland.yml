@@ -2,6 +2,22 @@ name: 发布全桌面 Wayland RootFS
 
 on:
   workflow_dispatch:
+    inputs:
+      sync_cnb_only:
+        description: 跳过构建，仅同步已有 GitHub Release 到 CNB
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: 仅同步模式使用的 GitHub Release 标签
+        required: true
+        default: droidspaces-rootfs-all-wayland
+        type: string
+      upload_concurrency:
+        description: CNB 并发上传数
+        required: true
+        default: 9999
+        type: number
   schedule:
     - cron: '0 18 * * 0'
 
@@ -19,6 +35,7 @@ env:
 jobs:
   prepare:
     name: 准备统一版本
+    if: ${{ inputs.sync_cnb_only != true }}
     runs-on: ubuntu-latest
     outputs:
       build_id: ${{ steps.meta.outputs.build_id }}
@@ -34,6 +51,7 @@ jobs:
 
   build-zh:
     name: 构建中文 RootFS
+    if: ${{ inputs.sync_cnb_only != true }}
     needs: prepare
     uses: ./.github/workflows/build-rootfs-core.yml
     with:
@@ -62,6 +80,7 @@ jobs:
 
   build-en:
     name: 构建英文 RootFS
+    if: ${{ inputs.sync_cnb_only != true }}
     needs: prepare
     uses: ./.github/workflows/build-rootfs-core.yml
     with:
@@ -226,15 +245,59 @@ jobs:
             --notes "$release_notes" \
             --draft=false --prerelease=false --latest=false
 
+  sync-cnb:
+    name: 同步中文资产到 CNB
+    if: ${{ inputs.sync_cnb_only != true }}
+    needs: [prepare, build-zh, build-en]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 下载中文 RootFS 构建产物
+        uses: actions/download-artifact@v7
+        with:
+          pattern: '*-zh-rootfs'
+          merge-multiple: true
+          path: cnb-assets
+
+      - name: 生成 CNB 中文索引
+        env:
+          CNB_REPO: ${{ vars.CNB_REPO }}
+        run: |
+          set -euo pipefail
+          bash scripts/generate-rootfs-manifests.sh \
+            --assets cnb-assets \
+            --language zh \
+            --release-url "https://cnb.cool/${CNB_REPO}/-/releases/download/${RELEASE_TAG}" \
+            --output cnb-assets/rootfs_zh.json
+          jq . cnb-assets/rootfs_zh.json > cnb-assets/rootfs.json
+
+      - name: 上传中文资产到 CNB
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_REPO: ${{ vars.CNB_REPO }}
+          CNB_ROOTFS_LANGUAGE: zh
+          CNB_UPLOAD_CONCURRENCY: ${{ inputs.upload_concurrency }}
+          BUILD_ID: ${{ needs.prepare.outputs.build_id }}
+          BUILD_TIME: ${{ needs.prepare.outputs.build_time }}
+          CNB_LOCAL_ASSETS_DIR: cnb-assets
+        run: bash scripts/publish-cnb-rootfs.sh "$RELEASE_TAG"
+
+  sync-cnb-only:
+    name: 仅同步已有 Release 到 CNB
+    if: ${{ inputs.sync_cnb_only == true }}
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v5
+
       - name: 同步中文资产到 CNB
         env:
           GH_TOKEN: ${{ github.token }}
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
           CNB_REPO: ${{ vars.CNB_REPO }}
           CNB_ROOTFS_LANGUAGE: zh
-          BUILD_ID: ${{ needs.prepare.outputs.build_id }}
-          BUILD_TIME: ${{ needs.prepare.outputs.build_time }}
-          # release-assets 中已包含本次发布下载好的全部附件，直接复用，
-          # 避免再次下载约 29 GiB 的中文附件把运行器磁盘撑爆。
-          CNB_LOCAL_ASSETS_DIR: release-assets
+          CNB_UPLOAD_CONCURRENCY: ${{ inputs.upload_concurrency }}
         run: bash scripts/publish-cnb-rootfs.sh "$RELEASE_TAG"
