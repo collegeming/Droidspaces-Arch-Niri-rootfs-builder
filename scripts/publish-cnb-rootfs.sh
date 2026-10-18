@@ -270,7 +270,7 @@ release_name="$(jq -er '.name // .tag_name' "$github_release_json")"
 release_body="$(jq -r '.body // ""' "$github_release_json")"
 if [[ "${CNB_ROOTFS_LANGUAGE:-}" == zh ]]; then
     release_name='Droidspaces 全桌面 Wayland RootFS（简体中文）'
-    release_body='仅包含简体中文 RootFS 和 rootfs_zh.json。'
+    release_body=$'## 简体中文 RootFS\n\n面向 Droidspaces 的 ARM64 滚动 RootFS，提供 Debian 13、Ubuntu 26.04、Fedora 43、Fedora 44 和 Arch Linux 的 Anland Wayland 桌面镜像。\n\n- 覆盖 8 种桌面环境：KDE Plasma、KDE Plasma Mobile、GNOME、Anland Next、Niri、Hyprland、Mango 和 Denial。\n- 共 40 个简体中文 `.tar.xz` 镜像，均面向 ARM64。\n- `rootfs.json` 包含全部中文 RootFS 地址；`rootfs_zh.json` 是订阅清单，包含版本、文件大小、SHA-256 校验值及 CNB 下载地址。\n- 镜像包含 Droidspaces 桌面自动启动配置和高通 Adreno/Mesa 支持。\n\n在 Droidspaces RootFS 管理中添加 `rootfs_zh.json` 即可订阅。本 CNB Release 仅发布简体中文 RootFS，并随每周滚动构建更新。'
 fi
 release_prerelease="$(jq -r '
     if (.prerelease | type) == "boolean" then .prerelease
@@ -282,7 +282,8 @@ mapfile -t expected_assets < <(jq -er --arg language "${CNB_ROOTFS_LANGUAGE:-}" 
     | select(
         $language != "zh" or
         endswith("-zh.tar.xz") or
-        . == "rootfs_zh.json"
+        . == "rootfs_zh.json" or
+        . == "rootfs.json"
       )
 ' "$github_release_json")
 if [[ "${#expected_assets[@]}" -eq 0 ]]; then
@@ -337,6 +338,19 @@ if [[ "${CNB_ROOTFS_LANGUAGE:-}" == zh ]]; then
         'map(.download_url = ($base + "/" + (.file + ".tar.xz")))' \
         "$manifest" > "$manifest.tmp"
     mv "$manifest.tmp" "$manifest"
+    jq . "$manifest" > "$asset_dir/rootfs.json.tmp"
+    mv "$asset_dir/rootfs.json.tmp" "$asset_dir/rootfs.json"
+    release_build_id="${BUILD_ID:-$(jq -er '.[0].version' "$manifest")}"
+    release_build_time="${BUILD_TIME:-$(jq -er '.[0].build_date' "$manifest")}"
+    release_body+=$'\n\n### 构建信息\n\n'
+    release_body+="- 构建标识：$release_build_id"$'\n'
+    release_body+="- 构建时间（UTC）：$release_build_time"$'\n'
+    release_body+='- 滚动标签：'"$RELEASE_TAG"$'\n'
+    release_body+='- 架构：ARM64；镜像数量：40 个简体中文 RootFS。'
+    release_body+=$'\n\n### 全部 RootFS 地址索引\n\n'
+    release_body+="[rootfs.json](https://cnb.cool/$CNB_RELEASE_REPOSITORY/-/releases/download/$RELEASE_TAG/rootfs.json) — 全部 40 个简体中文 RootFS 的下载地址。"
+    release_body+=$'\n\n'
+    release_body+="[rootfs_zh.json](https://cnb.cool/$CNB_RELEASE_REPOSITORY/-/releases/download/$RELEASE_TAG/rootfs_zh.json) — Droidspaces 中文订阅清单。"
 fi
 
 cnb_request GET "$api_repo/-/releases/tags/$RELEASE_TAG" '200,404'
@@ -380,7 +394,7 @@ for asset_name in "${expected_assets[@]}"; do
     upload_asset_paths[$upload_index]="$asset_path"
     upload_asset_sizes[$upload_index]="$asset_size"
     case "$asset_name" in
-        rootfs_zh.json|rootfs_en.json|*-manifest|SHA256SUMS|SHA256SUMS.*)
+        rootfs.json|rootfs_zh.json|rootfs_en.json|*-manifest|SHA256SUMS|SHA256SUMS.*)
             manifest_upload_indexes+=("$upload_index")
             ;;
         *)
