@@ -107,7 +107,7 @@ for path in "$ASSETS_DIR"/*.tar.xz; do
     description="${distro_detail_en[$distro]}; ${desktop_detail_en[$desktop]}. The image enables Droidspaces desktop autostart and Qualcomm Adreno/Mesa support."
   fi
   entry="$(jq -n \
-    --arg author 'Droidspaces Desktop Builder' \
+    --arg author 'Gold bug' \
     --arg name "$name" --arg distro "${distro_id[$distro]}" \
     --arg description "$description" --arg architecture "$arch" \
     --arg language "$LANGUAGE" --arg file "$stem" \
