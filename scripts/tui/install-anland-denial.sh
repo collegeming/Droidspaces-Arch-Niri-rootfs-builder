@@ -1427,6 +1427,22 @@ install_arch_packages() {
     printf '  hold: %s\n' "${packages[@]}"
 }
 
+# The Anland session does not require an explicit Flutter renderer option.
+# Remove it from the installed launcher without changing the package's other
+# session setup. Run this after every install or update.
+remove_flutter_renderer_option() {
+    local launcher=/usr/bin/denial-anland temporary
+    [[ -f "$launcher" ]] || die "未找到 Denial 启动器：$launcher" "Denial launcher not found: $launcher"
+    grep -Eq '^[[:space:]]*--flutter-renderer[[:space:]]+impeller[[:space:]]*$' "$launcher" || return 0
+    temporary="$(mktemp)" || die "无法创建临时启动器。" "Could not create a temporary launcher."
+    if ! sed -E '/^[[:space:]]*--flutter-renderer[[:space:]]+impeller[[:space:]]*$/d' "$launcher" > "$temporary" ||
+            ! bash -n "$temporary" || ! cat "$temporary" > "$launcher"; then
+        rm -f -- "$temporary"
+        die "无法更新 Denial 启动器。" "Could not update the Denial launcher."
+    fi
+    rm -f -- "$temporary"
+}
+
 main() {
     local archive_version
     detect_language
@@ -1461,6 +1477,8 @@ main() {
         rpm) install_rpm_packages ;;
         pkg.tar.*) install_arch_packages ;;
     esac
+
+    remove_flutter_renderer_option
 
     archive_version="${ARCHIVE_NAME#"$ARCHIVE_PREFIX"}"
     archive_version="${archive_version%"$ARCHIVE_SUFFIX"}"
