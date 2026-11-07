@@ -129,7 +129,7 @@ set -eu
 
 exec /opt/google/chrome/google-chrome \
     --ozone-platform=wayland \
-    --render-node-override=/dev/dri/renderD128 \
+    --render-node-override=/dev/dri/card0 \
     --ignore-gpu-blocklist \
     --use-angle=vulkan \
     --enable-features=VaapiVideoDecodeLinux,VaapiVideoDecoder,VaapiVideoDecodeLinuxGL \

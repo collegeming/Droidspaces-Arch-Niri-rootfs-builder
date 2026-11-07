@@ -6,37 +6,70 @@ source "${ROOTFS_DIR:-}/etc/os-release"
 desktop=niri
 xdg_desktop=niri
 
+# This branch is device-specific: the XRING-O3 profile owns the DRM node,
+# Mali stack paths and MaliBridge socket. There is no renderD/KGSL fallback.
+profile_dir="${DROIDSPACES_DEVICE_PROFILE_DIR:-/usr/local/lib/droidspaces/device}"
+profile_file="${XRING_O3_PROFILE_FILE:-${profile_dir}/xring-o3/profile.sh}"
+if [[ ! -r "$profile_file" ]]; then
+    echo "缺少 XRING-O3 设备档案：$profile_file" >&2
+    echo "该分支不包含 Adreno/KGSL 环境；请使用 xring-o3-mali-device 构建。" >&2
+    exit 1
+fi
+# shellcheck source=../device/xring-o3/profile.sh
+source "$profile_file"
+
 configure_environment() {
     local backend="${1:-}"
     local environment_file="${ROOTFS_DIR:-}/etc/environment"
-    local assignment key
-    local -a assignments=(
-        XDG_SESSION_CLASS=user
-        XDG_SESSION_TYPE=wayland
-        QT_QPA_PLATFORM=wayland
-        ANLAND=1
-        ANLAND_PRESENT_BACKEND=legacy
-        ANLAND_SOCKET=/run/display.sock
-        ANLAND_DRM_DEVICE=/dev/dri/renderD128
-        ANLAND_SKIP_IMPLICIT_SYNC_WAIT=1
-        XWAYLAND_GBM_DEVICE=/dev/dri/renderD128
-        MESA_LOADER_DRIVER_OVERRIDE=kgsl
-        GALLIUM_DRIVER=kgsl
-        FD_FORCE_KGSL=1
-        MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE=1
-        FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1
-    )
+    local temporary_file keys_file assignment key
+    local -a assignments=() managed_keys=()
 
     [[ "$backend" == anland-wayland ]] || {
         echo "$desktop 显示后端无效：$backend" >&2
         return 1
     }
+    xring_o3_require_active || return 1
+
+    mapfile -t assignments < <(xring_o3_environment_assignments)
     assignments+=("XDG_CURRENT_DESKTOP=$xdg_desktop" "XDG_SESSION_DESKTOP=$xdg_desktop")
-    touch "$environment_file"
+
     for assignment in "${assignments[@]}"; do
-        key="${assignment%%=*}"
-        grep -q "^${key}=" "$environment_file" || printf '%s\n' "$assignment" >> "$environment_file"
+        managed_keys+=("${assignment%%=*}")
     done
+    while IFS= read -r key; do
+        [[ -n "$key" ]] && managed_keys+=("$key")
+    done < <(xring_o3_obsolete_environment_keys)
+
+    touch "$environment_file"
+    temporary_file="$(mktemp "${environment_file}.tmp.XXXXXXXX")"
+    keys_file="$(mktemp)"
+    printf '%s\n' "${managed_keys[@]}" | sort -u > "$keys_file"
+
+    # Overwrite managed keys instead of appending. The old profiles appended
+    # only when a key was absent, which left renderD128/kgsl values in place
+    # after an upgrade.
+    awk -v keys_file="$keys_file" '
+        BEGIN {
+            while ((getline k < keys_file) > 0) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+                if (k != "") drop[k] = 1
+            }
+        }
+        {
+            line = $0
+            for (k in drop) {
+                if (line ~ "^[[:space:]]*(export[[:space:]]+)?" k "[[:space:]]*=") {
+                    next
+                }
+            }
+            print
+        }
+    ' "$environment_file" > "$temporary_file"
+
+    printf '%s\n' "${assignments[@]}" >> "$temporary_file"
+    chmod 0644 "$temporary_file"
+    cat "$temporary_file" > "$environment_file"
+    rm -f -- "$temporary_file" "$keys_file"
 }
 
 install_niri_arch() {
@@ -45,7 +78,7 @@ install_niri_arch() {
         alacritty fuzzel mako waybar swaybg swaylock wl-clipboard \
         brightnessctl playerctl \
         pipewire pipewire-alsa pipewire-pulse wireplumber upower \
-        mesa-utils vulkan-tools clinfo dmidecode wayland-utils \
+        mesa-utils vulkan-tools vulkan-icd-loader libdrm zstd clinfo dmidecode wayland-utils \
         xdg-user-dirs glmark2 vkmark \
         gst-plugins-base gst-plugins-good libcanberra sound-theme-freedesktop \
         noto-fonts noto-fonts-cjk noto-fonts-emoji
