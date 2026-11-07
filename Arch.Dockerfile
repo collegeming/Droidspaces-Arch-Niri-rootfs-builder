@@ -8,6 +8,10 @@ ARG ENABLE_zh_tz_ARG
 ARG ENABLE_binfmt_ARG
 ARG ENABLE_yj_ARG
 ARG ENABLE_mesa_ARG
+ARG MALI_STACK_VERSION=
+ARG MALI_STACK_BUNDLE_URL=
+ARG MALI_STACK_BUNDLE_SHA256=
+ARG MALI_STACK_BUNDLE_DIR=
 ARG DISPLAY_BACKEND
 ARG ENABLE_8gen2_wayland_ARG
 ARG ENABLE_kfgj_ARG
@@ -44,13 +48,14 @@ COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
+COPY scripts/device/ /usr/local/lib/droidspaces/device/
 COPY scripts/etc/wireplumber/wireplumber.conf.d/Anland-Audio.conf /tmp/Anland-Audio.conf
 RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
         install -D -m 0644 /tmp/Anland-Audio.conf /etc/wireplumber/wireplumber.conf.d/Anland-Audio.conf; \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh /usr/local/lib/droidspaces/device/xring-o3/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
@@ -69,6 +74,9 @@ RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/
     procps-ng \
     # 核心内核模块支持
     kmod tzdata tar && \
+    # XRING-O3: DRM/GPU 诊断基础包（Mesa/Mali stack 由 device profile 安装）
+    pacman -S --noconfirm --needed libdrm vulkan-tools mesa-utils zstd diffutils && \
+    /usr/local/lib/droidspaces/device/xring-o3/profile.sh --install && \
     /usr/local/sbin/install-desktop "$DESKTOP" && \
     #输入法 fcitx5 (可选)
     if [ "$ENABLE_srf_ARG" = "true" ]; then \
@@ -146,15 +154,8 @@ RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
     fi
 
-RUN if [ "$ENABLE_mesa_ARG" = "true" ] && [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
-        echo 'MESA_LOADER_DRIVER_OVERRIDE=kgsl' >> /etc/environment; \
-        echo 'GALLIUM_DRIVER=kgsl' >> /etc/environment; \
-        echo 'FD_FORCE_KGSL=1' >> /etc/environment; \
-    fi
-
-RUN if [ "$ENABLE_8gen2_wayland_ARG" = "true" ]; then \
-        echo 'FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1' >> /etc/environment; \
-    fi
+# XRING-O3 uses the Mali stack; Adreno KGSL environment is installed by the
+# device profile during configure-desktop, not here.
 
 # 输入法与桌面会话配置
 COPY scripts/start/ /tmp/droidspaces-start/
@@ -182,23 +183,21 @@ SDL_IM_MODULE=fcitx5
 GLFW_IM_MODULE=fcitx
 EOF
 fi
-    if [ "$ENABLE_mesa_ARG" = "true" ] && [ "$DISPLAY_BACKEND" != "anland-wayland" ] ; then
-        cat <<'EOF' >> /etc/environment
-MESA_LOADER_DRIVER_OVERRIDE=kgsl
-TU_DEBUG=noconform
-EOF
-    fi
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
     /usr/local/sbin/configure-desktop "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME"
     rm -rf /tmp/droidspaces-start
 EOF_RUN
 
-# 下载并安装 Mesa
+# 安装 XRING-O3 Mali stack。bundle 尚未发布时必须硬失败；不要用占位目录。
 RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
-        /usr/local/sbin/install-mesa --1; \
+        /usr/local/lib/droidspaces/device/xring-o3/install-mali-stack.sh; \
     else \
-        echo "--> [跳过] 未开启 Mesa 驱动安装"; \
+        echo "--> [跳过] 未开启 XRING-O3 Mali stack 安装"; \
     fi
+
+# 设备节点与 Anland socket 的容器侧准备；构建阶段只安装 unit，不创建设备节点。
+RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
+    /usr/local/lib/droidspaces/device/xring-o3/anland.sh --install
 
 # 安装并配置原生 ARM64 Google Chrome。
 RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"

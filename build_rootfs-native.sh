@@ -254,6 +254,10 @@ docker buildx build \
   --build-arg ENABLE_binfmt_ARG="$ENABLE_binfmt" \
   --build-arg ENABLE_yj_ARG="$ENABLE_yj" \
   --build-arg ENABLE_mesa_ARG="$ENABLE_mesa" \
+  --build-arg MALI_STACK_VERSION="${MALI_STACK_VERSION:-}" \
+  --build-arg MALI_STACK_BUNDLE_URL="${MALI_STACK_BUNDLE_URL:-}" \
+  --build-arg MALI_STACK_BUNDLE_SHA256="${MALI_STACK_BUNDLE_SHA256:-}" \
+  --build-arg MALI_STACK_BUNDLE_DIR="${MALI_STACK_BUNDLE_DIR:-}" \
   --build-arg ENABLE_kfgj_ARG="$ENABLE_kfgj" \
   --build-arg ENABLE_zip_ARG="$ENABLE_zip" \
   --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
