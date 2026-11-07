@@ -16,6 +16,13 @@ source "$REPO_DIR/scripts/lib/rootfs-config.sh"
 : "${MALI_STACK_VERSION:=}"
 : "${DROIDSPACES_DEVICE_PROFILE:=}"
 
+# Docker 构建上下文无法访问宿主机目录；本地目录模式只适用于独立安装脚本。
+# 镜像构建必须用可下载归档 + SHA256，避免把宿主机路径传进容器后静默失败。
+if [ -n "${MALI_STACK_BUNDLE_DIR:-}" ]; then
+  echo "错误：Docker 构建无法访问 MALI_STACK_BUNDLE_DIR；请改用 MALI_STACK_BUNDLE_URL + MALI_STACK_BUNDLE_SHA256。" >&2
+  exit 1
+fi
+
 : "${VERSION:=dev}"
 TARGET_ARCH="aarch64"     # 产物命名使用的目标架构
 PLATFORM="linux/arm64"    # Docker buildx 的平台参数
@@ -234,15 +241,7 @@ EXTRA_BUILD_ARGS=(
   --build-arg "PREFERENCES_PROFILE=$PREFERENCES_PROFILE"
   --build-arg "PREFERENCES_STRICT=$PREFERENCES_STRICT"
 )
-if [ -n "$MALI_STACK_BUNDLE_URL" ]; then
-  EXTRA_BUILD_ARGS+=(--build-arg "MALI_STACK_BUNDLE_URL=$MALI_STACK_BUNDLE_URL")
-fi
-if [ -n "$MALI_STACK_BUNDLE_SHA256" ]; then
-  EXTRA_BUILD_ARGS+=(--build-arg "MALI_STACK_BUNDLE_SHA256=$MALI_STACK_BUNDLE_SHA256")
-fi
-if [ -n "$MALI_STACK_VERSION" ]; then
-  EXTRA_BUILD_ARGS+=(--build-arg "MALI_STACK_VERSION=$MALI_STACK_VERSION")
-fi
+# Mali 栈参数由下面的显式 --build-arg 传入一次，避免重复。
 
 docker buildx build \
   --platform "$PLATFORM" \
@@ -260,7 +259,6 @@ docker buildx build \
   --build-arg MALI_STACK_VERSION="${MALI_STACK_VERSION:-}" \
   --build-arg MALI_STACK_BUNDLE_URL="${MALI_STACK_BUNDLE_URL:-}" \
   --build-arg MALI_STACK_BUNDLE_SHA256="${MALI_STACK_BUNDLE_SHA256:-}" \
-  --build-arg MALI_STACK_BUNDLE_DIR="${MALI_STACK_BUNDLE_DIR:-}" \
   --build-arg ENABLE_kfgj_ARG="$ENABLE_kfgj" \
   --build-arg ENABLE_zip_ARG="$ENABLE_zip" \
   --build-arg ENABLE_docker_ARG="$ENABLE_docker" \
