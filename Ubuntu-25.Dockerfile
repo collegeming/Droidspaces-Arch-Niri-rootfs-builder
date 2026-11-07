@@ -16,6 +16,10 @@ ARG ENABLE_srf_ARG
 ARG ENABLE_nosnap_ARG
 ARG ENABLE_systemd257_ARG
 ARG USERNAME
+# 最终阶段：桌面偏好设置开关（与 scripts/preferences/apply-preferences.sh 对应）
+ARG APPLY_PREFERENCES=false
+ARG PREFERENCES_PROFILE=arch-niri-noctalia
+ARG PREFERENCES_STRICT=false
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -378,6 +382,13 @@ RUN rm -f \
     rm -rf /usr/local/lib/droidspaces/desktops && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# 最终阶段：应用桌面偏好设置（默认关闭；由工作流或构建脚本通过构建参数开启）
+COPY scripts/preferences/ /usr/local/lib/droidspaces/preferences/
+RUN APPLY_PREFERENCES="${APPLY_PREFERENCES}" \
+    PREFERENCES_PROFILE="${PREFERENCES_PROFILE}" \
+    PREFERENCES_STRICT="${PREFERENCES_STRICT}" \
+    sh /usr/local/lib/droidspaces/preferences/apply-preferences.sh
 
 FROM scratch AS export
 COPY --from=customizer / /

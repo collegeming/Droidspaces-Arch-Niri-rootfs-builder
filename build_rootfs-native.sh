@@ -4,6 +4,18 @@ source "$REPO_DIR/scripts/lib/desktop-config.sh"
 source "$REPO_DIR/scripts/lib/anland-build.sh"
 source "$REPO_DIR/scripts/lib/rootfs-config.sh"
 
+# 最终阶段（可选，均可用环境变量传入）
+#   APPLY_PREFERENCES/PREFERENCES_*：rootfs 构建末尾应用桌面偏好设置
+#   MALI_STACK_*：xring-o3 设备分支的 Mali 栈离线包
+#   DROIDSPACES_DEVICE_PROFILE=xring-o3：启用设备构建校验（Arch + niri + Mali 栈）
+: "${APPLY_PREFERENCES:=false}"
+: "${PREFERENCES_PROFILE:=arch-niri-noctalia}"
+: "${PREFERENCES_STRICT:=false}"
+: "${MALI_STACK_BUNDLE_URL:=}"
+: "${MALI_STACK_BUNDLE_SHA256:=}"
+: "${MALI_STACK_VERSION:=}"
+: "${DROIDSPACES_DEVICE_PROFILE:=}"
+
 : "${VERSION:=dev}"
 ARCH=$(uname -m)          # 获取当前系统架构
 ENABLE_binfmt="false"
@@ -11,6 +23,7 @@ DESKTOP_AUTOSTART="false"
 ENABLE_nosnap="false"
 ENABLE_8gen2_wayland="false"
 ENABLE_systemd257="false"
+ENABLE_mesa=""
 DISPLAY_BACKEND_INPUT="X11"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
 while getopts "i:v:K:L:B:P:a:b:c:d:e:f:g:h:n:S:t:u:A:" opt; do
@@ -89,6 +102,18 @@ if [[ "$DISPLAY_BACKEND" == anland-wayland ]]; then
 fi
 ANLAND_PACKAGE_FAMILY="$(anland_package_family "$DESKTOP" "$DISPLAY_BACKEND" || true)"
 
+# ENABLE_mesa 未显式指定时的默认值：xring-o3 设备分支的 niri 桌面默认开启 GPU 栈，
+# 其余桌面/发行版保持原有 false 行为；-c 显式传参始终优先。
+if [ -z "$ENABLE_mesa" ]; then
+  case "$DESKTOP" in
+    niri) ENABLE_mesa="true" ;;
+    *) ENABLE_mesa="false" ;;
+  esac
+fi
+if [ -n "$MALI_STACK_BUNDLE_URL" ]; then
+  ENABLE_mesa="true"
+fi
+
 # 校验：检查是否传递了 Dockerfile 模板文件
 if [ -z "$DOCKERFILE" ]; then
     echo "错误：必须使用 -i 参数指定模板文件。"
@@ -103,6 +128,30 @@ fi
 
 # 提取发行版目标名称（例如：Debian-13.Dockerfile -> Debian-13）
 PREFIX="$(basename "${DOCKERFILE%.Dockerfile}")"
+
+# 设备构建校验：xring-o3 只支持 Arch + niri，且必须提供 Mali 栈离线包；
+# 否则构建会成功但产出缺少 GPU 栈的镜像，因此在入口直接失败。
+if [ -n "$DROIDSPACES_DEVICE_PROFILE" ]; then
+  if [ "$DROIDSPACES_DEVICE_PROFILE" != "xring-o3" ]; then
+    echo "错误：DROIDSPACES_DEVICE_PROFILE 只支持 xring-o3（当前：$DROIDSPACES_DEVICE_PROFILE）。" >&2
+    exit 1
+  fi
+  case "$PREFIX:$DESKTOP" in
+    Arch:niri) ;;
+    *)
+      echo "错误：xring-o3 设备构建仅支持 Arch + niri（当前：$PREFIX + $DESKTOP）。" >&2
+      exit 1
+      ;;
+  esac
+  if [ -z "$MALI_STACK_BUNDLE_URL" ] || [ -z "$MALI_STACK_BUNDLE_SHA256" ]; then
+    echo "错误：xring-o3 设备构建需要 MALI_STACK_BUNDLE_URL 与 MALI_STACK_BUNDLE_SHA256，否则会产出无 GPU 栈的镜像。" >&2
+    exit 1
+  fi
+fi
+if [ -n "$MALI_STACK_BUNDLE_URL" ] && [ -z "$MALI_STACK_BUNDLE_SHA256" ]; then
+  echo "错误：提供 MALI_STACK_BUNDLE_URL 时必须同时提供 MALI_STACK_BUNDLE_SHA256。" >&2
+  exit 1
+fi
 
 if ! desktop_target_supported "$PREFIX" "$DESKTOP"; then
   echo "错误：$PREFIX 不支持桌面 $DESKTOP。" >&2
@@ -129,6 +178,10 @@ echo " 修复骁龙8 Gen 2 Wayland 花屏：$ENABLE_8gen2_wayland"
 echo " 桌面：$DESKTOP"
 echo " 显示后端：$DISPLAY_BACKEND"
 echo " 桌面自启动：$DESKTOP_AUTOSTART"
+echo " 应用桌面偏好设置：$APPLY_PREFERENCES（profile=$PREFERENCES_PROFILE，strict=$PREFERENCES_STRICT）"
+if [ -n "$MALI_STACK_BUNDLE_URL" ]; then
+  echo " Mali 栈离线包：${MALI_STACK_VERSION:-未指定版本}"
+fi
 echo "========================================================="
 
 if [ -n "$ANLAND_PACKAGE_FAMILY" ]; then
@@ -173,12 +226,26 @@ FINAL_NAME="${PREFIX}-${DESKTOP}-${DISPLAY_LABEL}-Droidspaces-rootfs-${ARCH}-${V
 
 echo "正在运行 Docker Build (原生模式)..."
 
-
-
+# 可选构建参数：偏好设置与 Mali 栈；Mali 相关参数只在提供时传入，避免无效 build-arg。
+EXTRA_BUILD_ARGS=(
+  --build-arg "APPLY_PREFERENCES=$APPLY_PREFERENCES"
+  --build-arg "PREFERENCES_PROFILE=$PREFERENCES_PROFILE"
+  --build-arg "PREFERENCES_STRICT=$PREFERENCES_STRICT"
+)
+if [ -n "$MALI_STACK_BUNDLE_URL" ]; then
+  EXTRA_BUILD_ARGS+=(--build-arg "MALI_STACK_BUNDLE_URL=$MALI_STACK_BUNDLE_URL")
+fi
+if [ -n "$MALI_STACK_BUNDLE_SHA256" ]; then
+  EXTRA_BUILD_ARGS+=(--build-arg "MALI_STACK_BUNDLE_SHA256=$MALI_STACK_BUNDLE_SHA256")
+fi
+if [ -n "$MALI_STACK_VERSION" ]; then
+  EXTRA_BUILD_ARGS+=(--build-arg "MALI_STACK_VERSION=$MALI_STACK_VERSION")
+fi
 
 docker buildx build \
   --target export \
   --output type=tar,dest="$TEMP_TAR" \
+  "${EXTRA_BUILD_ARGS[@]}" \
   --build-arg DESKTOP="$DESKTOP" \
   --build-arg DESKTOP_AUTOSTART="$DESKTOP_AUTOSTART" \
   --build-arg DISPLAY_BACKEND="$DISPLAY_BACKEND" \

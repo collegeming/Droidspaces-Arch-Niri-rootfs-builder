@@ -1,0 +1,11 @@
+#!/bin/sh
+# 由 droidspaces-preferences 生成：Nemo「在终端中打开」的包装脚本。
+# Nemo 传入 %P（当前目录），在 kitty 中新开一个窗口定位到该目录。
+set -eu
+
+target=${1:-$PWD}
+command -v kitty >/dev/null 2>&1 || {
+    echo "open-terminal: kitty not found" >&2
+    exit 1
+}
+exec kitty --directory "$target"

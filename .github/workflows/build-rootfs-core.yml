@@ -67,6 +67,26 @@ on:
         required: false
         type: string
         default: Goldzxcbug/droidspaces-package
+      apply_preferences:
+        required: false
+        type: boolean
+        default: false
+      device_profile:
+        required: false
+        type: string
+        default: ''
+      mali_stack_bundle_url:
+        required: false
+        type: string
+        default: ''
+      mali_stack_bundle_sha256:
+        required: false
+        type: string
+        default: ''
+      mali_stack_version:
+        required: false
+        type: string
+        default: '2026.11.08'
       build_id:
         required: false
         type: string
@@ -95,6 +115,7 @@ jobs:
       pulseaudio_effective: ${{ steps.find-templates.outputs.pulseaudio_effective }}
       build_id: ${{ steps.prep.outputs.build_id }}
       build_date: ${{ steps.prep.outputs.build_date }}
+      enable_mesa_effective: ${{ steps.find-templates.outputs.enable_mesa_effective }}
     steps:
       - name: ${{ inputs.ui_language == 'zh' && '检出仓库' || 'Checkout repository' }}
         uses: actions/checkout@v5
@@ -115,6 +136,11 @@ jobs:
           UI_LANGUAGE: ${{ inputs.ui_language }}
           WAYLAND_PACKAGE_REPOSITORY: ${{ inputs.wayland_package_repository }}
           PUBLISH_ALL_WAYLAND: ${{ inputs.desktop == 'all-wayland' }}
+          APPLY_PREFERENCES_INPUT: ${{ inputs.apply_preferences }}
+          DEVICE_PROFILE_INPUT: ${{ inputs.device_profile }}
+          MALI_STACK_BUNDLE_URL_INPUT: ${{ inputs.mali_stack_bundle_url }}
+          MALI_STACK_BUNDLE_SHA256_INPUT: ${{ inputs.mali_stack_bundle_sha256 }}
+          ENABLE_MESA_INPUT: ${{ inputs.enable_mesa }}
         run: |
           set -euo pipefail
           source scripts/lib/desktop-config.sh
@@ -155,6 +181,37 @@ jobs:
             fail "自定义用户名必须是 1 至 32 个字符的有效 Linux 用户名。" \
               "Custom username must be a 1-32 character Linux username."
           fi
+
+          # ---------- 设备配置与 Mali 栈 ----------
+          # xring-o3 设备镜像必须是 Arch + niri，且必须提供 Mali 栈离线包；
+          # 缺少离线包时构建仍会成功，但产物没有 GPU 栈，因此在入口直接拒绝。
+          ENABLE_MESA_EFFECTIVE="$ENABLE_MESA_INPUT"
+          if [ -n "$MALI_STACK_BUNDLE_URL_INPUT" ] && [ -z "$MALI_STACK_BUNDLE_SHA256_INPUT" ]; then
+            fail "提供 mali_stack_bundle_url 时必须同时提供 mali_stack_bundle_sha256。" \
+              "mali_stack_bundle_sha256 is required when mali_stack_bundle_url is set."
+          fi
+          if [ -n "$MALI_STACK_BUNDLE_URL_INPUT" ]; then
+            ENABLE_MESA_EFFECTIVE="true"
+            message "已提供 Mali 栈离线包，强制开启 Mesa/GPU 栈。" \
+              "Mali stack bundle provided: forcing Mesa/GPU support on."
+          fi
+          if [ -n "$DEVICE_PROFILE_INPUT" ]; then
+            [ "$DEVICE_PROFILE_INPUT" = "xring-o3" ] || fail \
+              "device_profile 仅支持 xring-o3（当前：$DEVICE_PROFILE_INPUT）。" \
+              "device_profile only supports xring-o3 (got: $DEVICE_PROFILE_INPUT)."
+            [ "$TARGET" = "Arch" ] || fail \
+              "xring-o3 设备构建只支持 Arch 目标（当前：$TARGET）。" \
+              "xring-o3 device builds only support the Arch target (got: $TARGET)."
+            [ "$(desktop_normalize "$DESKTOP_INPUT")" = "niri" ] || fail \
+              "xring-o3 设备构建只支持 Niri 桌面（当前：$DESKTOP_INPUT）。" \
+              "xring-o3 device builds only support the Niri desktop (got: $DESKTOP_INPUT)."
+            if [ -z "$MALI_STACK_BUNDLE_URL_INPUT" ] || [ -z "$MALI_STACK_BUNDLE_SHA256_INPUT" ]; then
+              fail "xring-o3 设备构建必须提供 mali_stack_bundle_url 与 mali_stack_bundle_sha256，否则会产出无 GPU 栈的镜像。" \
+                "xring-o3 device builds require mali_stack_bundle_url and mali_stack_bundle_sha256; otherwise the image has no GPU stack."
+            fi
+            ENABLE_MESA_EFFECTIVE="true"
+          fi
+          echo "enable_mesa_effective=$ENABLE_MESA_EFFECTIVE" >> "$GITHUB_OUTPUT"
 
           # ---------- build the (deduplicated) desktop list ----------
           DESKTOPS=()
@@ -397,6 +454,11 @@ jobs:
         env:
           ANLAND_RELEASE_REPOSITORY: ${{ inputs.wayland_package_repository }}
           CUSTOM_USERNAME: ${{ inputs.custom_username }}
+          APPLY_PREFERENCES: ${{ inputs.apply_preferences }}
+          MALI_STACK_BUNDLE_URL: ${{ inputs.mali_stack_bundle_url }}
+          MALI_STACK_BUNDLE_SHA256: ${{ inputs.mali_stack_bundle_sha256 }}
+          MALI_STACK_VERSION: ${{ inputs.mali_stack_version }}
+          DROIDSPACES_DEVICE_PROFILE: ${{ inputs.device_profile }}
         run: |
           chmod +x build_rootfs-native.sh
           ./build_rootfs-native.sh \
@@ -409,7 +471,7 @@ jobs:
             -g "${{ inputs.enable_zh_tz }}" \
             -a "${{ inputs.enable_binfmt }}" \
             -b "${{ inputs.enable_yj }}" \
-            -c "${{ inputs.enable_mesa }}" \
+            -c "${{ needs.setup.outputs.enable_mesa_effective }}" \
             -d "${{ inputs.enable_kfgj }}" \
             -e "${{ inputs.enable_zip }}" \
             -f "${{ inputs.enable_docker }}" \
@@ -476,6 +538,9 @@ jobs:
           ENABLE_DEV_TOOLS: ${{ inputs.enable_kfgj }}
           ENABLE_COMPRESSION: ${{ inputs.enable_zip }}
           ENABLE_DOCKER: ${{ inputs.enable_docker }}
+          APPLY_PREFERENCES: ${{ inputs.apply_preferences }}
+          MALI_STACK_VERSION: ${{ inputs.mali_stack_version }}
+          DEVICE_PROFILE: ${{ inputs.device_profile }}
         run: |
           set -euo pipefail
           if [ "$UI_LANGUAGE" = zh ]; then
@@ -504,6 +569,9 @@ jobs:
           - 开发工具：$ENABLE_DEV_TOOLS
           - 压缩工具：$ENABLE_COMPRESSION
           - Docker：$ENABLE_DOCKER
+          - 应用桌面偏好设置：$APPLY_PREFERENCES
+          - Mali 栈版本：$MALI_STACK_VERSION
+          - 设备构建配置：$DEVICE_PROFILE
           EOF
           else
             cat > release-notes.md <<EOF
@@ -531,6 +599,9 @@ jobs:
           - Development Tools Integration: $ENABLE_DEV_TOOLS
           - Compression Tools Integration: $ENABLE_COMPRESSION
           - Docker Integration: $ENABLE_DOCKER
+          - Apply desktop preferences: $APPLY_PREFERENCES
+          - Mali stack version: $MALI_STACK_VERSION
+          - Device build profile: $DEVICE_PROFILE
           EOF
           fi
 

@@ -1,0 +1,3 @@
+# GLib 在启动 Terminal=true 的应用时强制经 xdg-terminal-exec，
+# 此文件声明默认终端；缺失时表现为「程序打不开」。
+kitty.desktop

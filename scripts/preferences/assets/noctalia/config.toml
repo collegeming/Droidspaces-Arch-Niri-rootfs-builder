@@ -1,0 +1,6 @@
+[shell]
+font_family = "Maple Mono NF CN"
+
+[bar.default]
+# Noctalia 默认浮空顶栏两端各内缩 100px；置 0 让顶栏铺满屏幕
+margin_ends = 0

@@ -125,6 +125,31 @@ on:
         required: true
         type: string
         default: Goldzxcbug/droidspaces-package
+      apply_preferences:
+        description: Apply desktop preferences at the end of the rootfs build
+        required: false
+        type: boolean
+        default: false
+      device_profile:
+        description: Device build profile (empty for generic builds; xring-o3 requires Arch + Niri and a Mali stack bundle)
+        required: false
+        type: string
+        default: ""
+      mali_stack_bundle_url:
+        description: Mali stack bundle URL (forces GPU support on when set)
+        required: false
+        type: string
+        default: ""
+      mali_stack_bundle_sha256:
+        description: SHA256 checksum of the Mali stack bundle (required with a URL)
+        required: false
+        type: string
+        default: ""
+      mali_stack_version:
+        description: Mali stack version label
+        required: false
+        type: string
+        default: "2026.11.08"
 
 permissions:
   contents: write
@@ -154,3 +179,8 @@ jobs:
       enable_zip: ${{ inputs.enable_zip }}
       enable_docker: ${{ inputs.enable_docker }}
       wayland_package_repository: ${{ inputs.wayland_package_repository }}
+      apply_preferences: ${{ inputs.apply_preferences }}
+      device_profile: ${{ inputs.device_profile }}
+      mali_stack_bundle_url: ${{ inputs.mali_stack_bundle_url }}
+      mali_stack_bundle_sha256: ${{ inputs.mali_stack_bundle_sha256 }}
+      mali_stack_version: ${{ inputs.mali_stack_version }}

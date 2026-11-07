@@ -18,6 +18,10 @@ ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
 ARG ANLAND_PACKAGE_REVISION=unknown
+# 最终阶段：桌面偏好设置开关（与 scripts/preferences/apply-preferences.sh 对应）
+ARG APPLY_PREFERENCES=false
+ARG PREFERENCES_PROFILE=arch-niri-noctalia
+ARG PREFERENCES_STRICT=false
 ######################################################
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -423,6 +427,13 @@ RUN rm -f \
     rm -rf /usr/local/lib/droidspaces/desktops && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# 最终阶段：应用桌面偏好设置（默认关闭；由工作流或构建脚本通过构建参数开启）
+COPY scripts/preferences/ /usr/local/lib/droidspaces/preferences/
+RUN APPLY_PREFERENCES="${APPLY_PREFERENCES}" \
+    PREFERENCES_PROFILE="${PREFERENCES_PROFILE}" \
+    PREFERENCES_STRICT="${PREFERENCES_STRICT}" \
+    sh /usr/local/lib/droidspaces/preferences/apply-preferences.sh
 
 # 阶段 2：将完整的根文件系统导出到 scratch（空白层），以便外部直接提取或打包成 tarfs
 FROM scratch AS export

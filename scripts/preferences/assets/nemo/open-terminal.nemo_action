@@ -1,0 +1,10 @@
+[Nemo Action]
+Name=Open in Terminal
+Name[zh_CN]=在终端中打开
+Comment=Open the current folder in a terminal
+Comment[zh_CN]=在终端中打开当前文件夹
+Exec=open-terminal %P
+Icon=terminal
+Selection=any
+Extensions=any;
+Dependencies=nemo;

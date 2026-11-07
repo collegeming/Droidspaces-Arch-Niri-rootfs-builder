@@ -1,0 +1,1088 @@
+#!/bin/sh
+# apply-preferences.sh — rootfs 构建的最后阶段：应用桌面偏好设置。
+#
+# 设计目标
+#   1. 幂等：内容相同的配置文件不重写；已应用的 profile+version 直接跳过。
+#   2. 可回退：覆盖任何已有文件前，先备份到 <状态目录>/backup/<UTC 时间戳>/。
+#   3. 失败分级：PREFERENCES_STRICT=false 记录警告并继续；true 则立即失败。
+#   4. 跨发行版安全：只在对应软件包/目录存在时执行该步骤，其余记录为跳过。
+#   5. 离线优先：只有 packages 步骤需要网络，且使用发行版自身的软件源配置。
+#
+# 环境变量
+#   APPLY_PREFERENCES             true|false，默认 false；false 时立即退出且不写文件
+#   PREFERENCES_PROFILE           profile 名称，默认 arch-niri-noctalia
+#   PREFERENCES_STRICT            true|false，默认 false
+#   PREFERENCES_DRY_RUN           true|false，默认 false；true 时只打印计划
+#   PREFERENCES_INSTALL_PACKAGES  true|false，默认 true；packages 步骤总开关
+#   PREFERENCES_USER              指定目标用户；默认取第一个 uid>=1000 的普通用户
+#   PREFERENCES_FONT_SIZE         kitty 字号，默认 12.0
+#   PREFERENCES_ROOT              测试用：给所有路径加前缀，配合 DRY_RUN 使用
+#
+# 由 Dockerfile 以 `sh apply-preferences.sh` 调用，运行身份为 root。
+# 注意：为兼容 dash 等严格 POSIX shell，函数内不使用 local，变量名按函数加前缀避免互扰。
+
+set -eu
+umask 022
+
+PREFERENCES_VERSION=2026.11.08
+
+PROFILE=${PREFERENCES_PROFILE:-arch-niri-noctalia}
+FONT_SIZE=${PREFERENCES_FONT_SIZE:-12.0}
+case $FONT_SIZE in
+    '' | *[!0-9.]*) FONT_SIZE=12.0 ;;
+esac
+
+ROOT=${PREFERENCES_ROOT:-}
+ROOT=${ROOT%/}
+SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+ASSETS_DIR=$SCRIPT_DIR/assets
+STATE_DIR=$ROOT/var/lib/droidspaces-preferences
+MANIFEST=$STATE_DIR/manifest.env
+TMPFILES=
+
+USER_NAME=
+USER_UID=
+USER_GID=
+USER_HOME=
+BACKUP_DIR=
+BACKUP_COUNT=0
+TIMESTAMP=
+APPLIED=
+SKIPPED=
+FAILED=
+WARNINGS=
+STEP_NAME=
+STEP_REASON=
+LOCALE_ZH_APPLIED=false
+DRY_RUN=false
+LOG_FILE=${TMPDIR:-/tmp}/droidspaces-preferences.log
+
+# ---------------------------------------------------------------- 基础工具
+
+normalize_bool() {
+    case $(printf '%s' "${1:-}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz') in
+        true | 1 | yes | on) printf 'true' ;;
+        false | 0 | no | off | '') printf 'false' ;;
+        *) return 1 ;;
+    esac
+}
+
+cleanup_tmp() {
+    [ -n "$TMPFILES" ] || return 0
+    for ct_file in $TMPFILES; do
+        rm -f "$ct_file" 2>/dev/null || true
+    done
+    TMPFILES=
+}
+
+trap cleanup_tmp EXIT
+trap 'cleanup_tmp; exit 130' INT TERM HUP
+
+# 结果写入全局 nt_path；不使用命令替换，否则 TMPFILES 的登记会丢在子 shell 里。
+new_tmp() {
+    nt_path=$(mktemp "${TMPDIR:-/tmp}/droidspaces-preferences.XXXXXX") || return 1
+    TMPFILES="$TMPFILES $nt_path"
+    return 0
+}
+
+drop_tmp() {
+    rm -f "$1" 2>/dev/null || true
+    if [ -n "$TMPFILES" ]; then
+        TMPFILES=$(printf '%s' " $TMPFILES " | sed "s| $1 | |")
+    fi
+}
+
+log() {
+    log_line="[preferences] $*"
+    printf '%s\n' "$log_line"
+    [ "$DRY_RUN" = true ] && return 0
+    printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$log_line" >>"$LOG_FILE" 2>/dev/null || true
+}
+
+warn() {
+    log "WARNING: $*"
+    WARNINGS="${WARNINGS}${WARNINGS:+; }$*"
+}
+
+skip_step() {
+    STEP_REASON=$1
+    log "skip: $STEP_NAME ($1)"
+}
+
+fail_step() {
+    STEP_REASON=$1
+    log "fail: $STEP_NAME ($1)"
+}
+
+add_applied() {
+    APPLIED="${APPLIED}${APPLIED:+, }$1"
+}
+
+add_skipped() {
+    SKIPPED="${SKIPPED}${SKIPPED:+, }$1"
+}
+
+add_failed() {
+    FAILED="${FAILED}${FAILED:+, }$1"
+}
+
+env_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | tr -d "'" | tr '\n' ' ')"
+}
+
+path_exists() {
+    [ -e "$ROOT$1" ] || [ -L "$ROOT$1" ]
+}
+
+is_dir() {
+    [ -d "$ROOT$1" ]
+}
+
+have_bin() {
+    hb_name=$1
+    if [ -n "$ROOT" ]; then
+        for hb_dir in /usr/local/sbin /usr/local/bin /usr/bin /bin /usr/sbin /sbin; do
+            if [ -e "$ROOT$hb_dir/$hb_name" ]; then
+                return 0
+            fi
+        done
+        return 1
+    fi
+    command -v "$hb_name" >/dev/null 2>&1
+}
+
+same_content() {
+    sc_first=$(cksum <"$1" 2>/dev/null) || sc_first=missing
+    sc_second=$(cksum <"$2" 2>/dev/null) || sc_second=absent
+    [ "$sc_first" = "$sc_second" ]
+}
+
+# 备份已有文件到 $BACKUP_DIR/<原绝对路径>；同一次运行内同一文件只备份一次。
+backup_file() {
+    bf_dest=$1
+    bf_full=$ROOT$bf_dest
+    if [ ! -e "$bf_full" ] && [ ! -L "$bf_full" ]; then
+        return 0
+    fi
+    bf_target=$BACKUP_DIR$bf_dest
+    if [ -e "$bf_target" ]; then
+        log "backup: $bf_dest 本次运行已备份"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would back up $bf_dest -> $bf_target"
+        return 0
+    fi
+    mkdir -p "$(dirname "$bf_target")" || return 1
+    cp -p "$bf_full" "$bf_target" || return 1
+    BACKUP_COUNT=$((BACKUP_COUNT + 1))
+    log "backup: $bf_dest -> $bf_target"
+}
+
+# 从标准输入写入 dest：内容相同不落盘，不同则先备份再写。
+install_content() {
+    ic_dest=$1
+    ic_mode=${2:-0644}
+    ic_full=$ROOT$ic_dest
+
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    ic_tmp=$nt_path
+    cat >"$ic_tmp"
+
+    if [ -f "$ic_full" ] && same_content "$ic_tmp" "$ic_full"; then
+        drop_tmp "$ic_tmp"
+        log "unchanged: $ic_dest"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would write $ic_dest (mode $ic_mode)"
+        drop_tmp "$ic_tmp"
+        return 0
+    fi
+    if ! backup_file "$ic_dest"; then
+        drop_tmp "$ic_tmp"
+        fail_step "备份失败：$ic_dest"
+        return 1
+    fi
+
+    ic_user_dest=false
+    if [ -n "$USER_HOME" ]; then
+        case $ic_dest in
+            "$USER_HOME"/*) ic_user_dest=true ;;
+        esac
+    fi
+    if [ "$ic_user_dest" = true ]; then
+        if ! prepare_user_parent "$ic_dest"; then
+            drop_tmp "$ic_tmp"
+            return 1
+        fi
+    else
+        if ! mkdir -p "$(dirname "$ic_full")"; then
+            drop_tmp "$ic_tmp"
+            fail_step "无法创建目录：$(dirname "$ic_dest")"
+            return 1
+        fi
+    fi
+
+    if ! cp "$ic_tmp" "$ic_full"; then
+        drop_tmp "$ic_tmp"
+        fail_step "写入失败：$ic_dest"
+        return 1
+    fi
+    chmod "$ic_mode" "$ic_full" 2>/dev/null || warn "chmod 失败：$ic_dest"
+    if [ "$ic_user_dest" = true ] && [ -z "$ROOT" ] && [ -n "$USER_UID" ]; then
+        chown "$USER_UID:$USER_GID" "$ic_full" 2>/dev/null || warn "chown 失败：$ic_dest"
+    fi
+    drop_tmp "$ic_tmp"
+    log "wrote: $ic_dest"
+    return 0
+}
+
+# 安装仓库内自带资产：install_asset <目标> <assets 相对路径> [权限] [sed 表达式]
+install_asset() {
+    ia_dest=$1
+    ia_rel=$2
+    ia_mode=${3:-0644}
+    ia_expr=${4:-}
+    ia_src=$ASSETS_DIR/$ia_rel
+    if [ ! -r "$ia_src" ]; then
+        fail_step "缺少资产：$ia_rel"
+        return 1
+    fi
+    if [ -z "$ia_expr" ]; then
+        install_content "$ia_dest" "$ia_mode" <"$ia_src"
+        return $?
+    fi
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    ia_tmp=$nt_path
+    if ! sed "$ia_expr" "$ia_src" >"$ia_tmp"; then
+        drop_tmp "$ia_tmp"
+        fail_step "渲染资产失败：$ia_rel"
+        return 1
+    fi
+    install_content "$ia_dest" "$ia_mode" <"$ia_tmp"
+    ia_rc=$?
+    drop_tmp "$ia_tmp"
+    return $ia_rc
+}
+
+# 仅当文件不存在时写入；已存在则保留（返回 2）。
+install_if_absent() {
+    iia_dest=$1
+    iia_mode=${2:-0644}
+    iia_rel=$3
+    if path_exists "$iia_dest"; then
+        skip_step "$iia_dest 已存在，保留现有内容"
+        return 2
+    fi
+    install_asset "$iia_dest" "$iia_rel" "$iia_mode"
+    return $?
+}
+
+# 在用户家目录下逐级创建目录，新建目录属主设为该用户。
+prepare_user_parent() {
+    pp_dest=$1
+    pp_rel=${pp_dest#"$USER_HOME"/}
+    pp_dir=$(dirname "$pp_rel")
+    if [ "$pp_dir" = "." ]; then
+        return 0
+    fi
+    pp_old_ifs=$IFS
+    IFS=/
+    # shellcheck disable=SC2086
+    set -- $pp_dir
+    IFS=$pp_old_ifs
+    pp_cur=$USER_HOME
+    for pp_part in "$@"; do
+        [ -n "$pp_part" ] || continue
+        pp_cur=$pp_cur/$pp_part
+        pp_full=$ROOT$pp_cur
+        [ -d "$pp_full" ] && continue
+        if [ "$DRY_RUN" = true ]; then
+            log "dry-run: would create directory $pp_cur"
+            continue
+        fi
+        if ! mkdir "$pp_full"; then
+            fail_step "无法创建目录：$pp_cur"
+            return 1
+        fi
+        if [ -z "$ROOT" ] && [ -n "$USER_UID" ]; then
+            chown "$USER_UID:$USER_GID" "$pp_full" 2>/dev/null || warn "chown 失败：$pp_cur"
+        fi
+    done
+    return 0
+}
+
+# 向文件追加一行（不存在该行时）。
+append_line_once() {
+    al_dest=$1
+    al_line=$2
+    al_full=$ROOT$al_dest
+    if [ -f "$al_full" ] && grep -qxF "$al_line" "$al_full" 2>/dev/null; then
+        log "unchanged: $al_dest (+$al_line)"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would append '$al_line' to $al_dest"
+        return 0
+    fi
+    if ! backup_file "$al_dest"; then
+        fail_step "备份失败：$al_dest"
+        return 1
+    fi
+    if ! mkdir -p "$(dirname "$al_full")"; then
+        fail_step "无法创建目录：$(dirname "$al_dest")"
+        return 1
+    fi
+    if ! printf '%s\n' "$al_line" >>"$al_full"; then
+        fail_step "追加失败：$al_dest"
+        return 1
+    fi
+    log "appended: $al_dest (+$al_line)"
+    return 0
+}
+
+# ---------------------------------------------------------------- 系统探测
+
+detect_user() {
+    du_passwd=$ROOT/etc/passwd
+    [ -r "$du_passwd" ] || return 1
+    if [ -n "${PREFERENCES_USER:-}" ]; then
+        du_entry=$(grep "^$PREFERENCES_USER:" "$du_passwd" 2>/dev/null | head -n1) || du_entry=
+    else
+        du_entry=$(awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "nobody" { print; exit }' "$du_passwd") || du_entry=
+    fi
+    [ -n "${du_entry:-}" ] || return 1
+    USER_NAME=$(printf '%s' "$du_entry" | cut -d: -f1)
+    USER_UID=$(printf '%s' "$du_entry" | cut -d: -f3)
+    USER_GID=$(printf '%s' "$du_entry" | cut -d: -f4)
+    USER_HOME=$(printf '%s' "$du_entry" | cut -d: -f6)
+    [ -n "$USER_NAME" ] && [ -n "$USER_HOME" ]
+}
+
+is_arch() {
+    path_exists /etc/pacman.conf || have_bin pacman
+}
+
+desktop_is_niri() {
+    or_marker=$ROOT/etc/droidspaces-desktop.conf
+    if [ -r "$or_marker" ]; then
+        or_desktop=$(sed -n 's/^DESKTOP=//p' "$or_marker" | head -n1)
+        [ "$or_desktop" = niri ] && return 0
+    fi
+    have_bin niri
+}
+
+desktop_present() {
+    dp_marker=$ROOT/etc/droidspaces-desktop.conf
+    if [ -r "$dp_marker" ]; then
+        dp_desktop=$(sed -n 's/^DESKTOP=//p' "$dp_marker" | head -n1)
+        if [ -n "$dp_desktop" ] && [ "$dp_desktop" != none ]; then
+            return 0
+        fi
+    fi
+    have_bin niri || have_bin noctalia
+}
+
+# GTK3 在 Arch/Fedora 位于 /usr/lib(64)，Debian/Ubuntu 位于 multiarch 目录。
+gtk3_present() {
+    [ -d "$ROOT/usr/lib/gtk-3.0" ] && return 0
+    [ -d "$ROOT/usr/lib64/gtk-3.0" ] && return 0
+    for gt_lib in "$ROOT"/usr/lib/libgtk-3.so.0 "$ROOT"/usr/lib64/libgtk-3.so.0 "$ROOT"/usr/lib/*/libgtk-3.so.0; do
+        [ -e "$gt_lib" ] && return 0
+    done
+    return 1
+}
+
+fonts_have_maple() {
+    if [ -z "$ROOT" ] && have_bin fc-list; then
+        fc-list 2>/dev/null | grep -qi 'maple mono' && return 0
+        return 1
+    fi
+    for fm_dir in /usr/share/fonts /usr/local/share/fonts; do
+        is_dir "$fm_dir" || continue
+        if find "$ROOT$fm_dir" -maxdepth 3 -iname '*maple*' -print -quit 2>/dev/null | grep -q .; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+locale_zh_available() {
+    if grep -qE '^LANG=zh_CN\.UTF-8' "$ROOT/etc/locale.conf" 2>/dev/null; then
+        return 0
+    fi
+    if [ -z "$ROOT" ] && command -v locale >/dev/null 2>&1 && locale -a 2>/dev/null | grep -qi '^zh_CN\.utf-\?8$'; then
+        return 0
+    fi
+    return 1
+}
+
+run_as_user() {
+    [ -n "$USER_NAME" ] || return 1
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would run as $USER_NAME: $*"
+        return 0
+    fi
+    if [ -n "$ROOT" ]; then
+        log "skip: PREFERENCES_ROOT 模式下不执行用户命令：$*"
+        return 0
+    fi
+    su -s /bin/sh "$USER_NAME" -c "$*" >/dev/null 2>&1 || return 1
+    return 0
+}
+
+# ---------------------------------------------------------------- 步骤实现
+
+# 1) 按文档安装缺失的包（仅 Arch；AUR/archlinuxcn 项不在本步骤范围）。
+step_packages() {
+    if [ "$INSTALL_PACKAGES" != true ]; then
+        skip_step "PREFERENCES_INSTALL_PACKAGES=$INSTALL_PACKAGES"
+        return 2
+    fi
+    if ! is_arch; then
+        skip_step "非 Arch 系统，跳过按文档补包"
+        return 2
+    fi
+    if ! desktop_present; then
+        skip_step "未检测到桌面环境，跳过按文档补包"
+        return 2
+    fi
+    if ! have_bin pacman; then
+        skip_step "pacman 不可用"
+        return 2
+    fi
+
+    packages="noto-fonts noto-fonts-cjk noto-fonts-emoji ttf-jetbrains-mono
+fcitx5 fcitx5-chinese-addons fcitx5-rime fcitx5-configtool fcitx5-gtk fcitx5-qt
+kitty fish fastfetch nemo nemo-fileroller gvfs gvfs-mtp cinnamon-translations
+upower qt5-wayland qt6-wayland neovim wl-clipboard xdg-utils xdg-user-dirs"
+
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        log "dry-run: would install with pacman --needed: $(printf '%s' "$packages" | tr '\n' ' ')"
+        return 0
+    fi
+
+    log "同步软件包数据库并安装文档列出的桌面/输入法/字体包"
+    pacman -Sy --noconfirm >/dev/null 2>&1 || warn "pacman -Sy 失败，继续尝试安装"
+    if pacman -S --needed --noconfirm $packages >/dev/null 2>&1; then
+        log "已安装或已存在全部目标包"
+    else
+        warn "批量安装失败，改为逐包尝试"
+        missing=
+        for pkg in $packages; do
+            pacman -S --needed --noconfirm "$pkg" >/dev/null 2>&1 || missing="$missing $pkg"
+        done
+        if [ -n "$missing" ]; then
+            warn "以下包安装失败，可在设备上手动补装：$missing"
+        fi
+    fi
+    rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/* 2>/dev/null || true
+    return 0
+}
+
+# 2) pacman 镜像与并行下载：清华 TUNA 优先、阿里云备用。
+step_pacman_mirrors() {
+    if ! is_arch; then
+        skip_step "非 Arch 系统，跳过镜像源配置"
+        return 2
+    fi
+    if ! path_exists /etc/pacman.conf; then
+        skip_step "/etc/pacman.conf 不存在"
+        return 2
+    fi
+
+    if is_dir /etc/pacman.d; then
+        install_content /etc/pacman.d/mirrorlist 0644 <<'EOF' || return 1
+## Droidspaces preferences: 清华 TUNA 优先，阿里云备用
+Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch
+Server = https://mirrors.aliyun.com/archlinux/$repo/os/$arch
+EOF
+    else
+        warn "/etc/pacman.d 不存在，跳过 mirrorlist"
+    fi
+
+    pacman_set_option ParallelDownloads 10 || return 1
+    pacman_set_option Color '' || return 1
+    return 0
+}
+
+# 在 pacman.conf 的 [options] 段设置 key = value（value 为空表示裸开关）。
+# 已有（含被注释的）同名项就地替换；完全没有才插到 [options] 之后。
+pacman_set_option() {
+    po_key=$1
+    po_value=$2
+    po_full=$ROOT/etc/pacman.conf
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    po_tmp=$nt_path
+    po_pattern="^[[:space:]]*#?[[:space:]]*${po_key}([[:space:]]|=|\$)"
+    if grep -qE "$po_pattern" "$po_full" 2>/dev/null; then
+        if ! awk -v pat="$po_pattern" -v k="$po_key" -v v="$po_value" '
+            BEGIN { done = 0 }
+            {
+                if (!done && $0 ~ pat) {
+                    if (v == "") print k; else print k " = " v
+                    done = 1
+                    next
+                }
+                print
+            }
+        ' "$po_full" >"$po_tmp"; then
+            drop_tmp "$po_tmp"
+            fail_step "解析 /etc/pacman.conf 失败"
+            return 1
+        fi
+    else
+        if ! awk -v k="$po_key" -v v="$po_value" '
+            { print }
+            !done && /^\[options\]/ {
+                if (v == "") print k; else print k " = " v
+                done = 1
+            }
+            END {
+                if (!done) {
+                    if (v == "") print k; else print k " = " v
+                }
+            }
+        ' "$po_full" >"$po_tmp"; then
+            drop_tmp "$po_tmp"
+            fail_step "解析 /etc/pacman.conf 失败"
+            return 1
+        fi
+    fi
+    install_content /etc/pacman.conf 0644 <"$po_tmp"
+    po_rc=$?
+    drop_tmp "$po_tmp"
+    return $po_rc
+}
+
+# 3) 中文 locale 与用户会话语言。
+step_locale() {
+    if locale_zh_available; then
+        log "zh_CN.UTF-8 已可用"
+    elif have_bin locale-gen; then
+        if ! grep -qxF 'zh_CN.UTF-8 UTF-8' "$ROOT/etc/locale.gen" 2>/dev/null; then
+            append_line_once /etc/locale.gen 'zh_CN.UTF-8 UTF-8' || return 1
+        fi
+        if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+            log "dry-run: would run locale-gen"
+        elif locale-gen >/dev/null 2>&1; then
+            log "已生成 zh_CN.UTF-8"
+        else
+            warn "locale-gen 失败"
+        fi
+    else
+        skip_step "zh_CN.UTF-8 未生成且无 locale-gen（可用 -g true 构建）"
+        return 2
+    fi
+
+    if ! locale_zh_available; then
+        skip_step "zh_CN.UTF-8 仍不可用，跳过用户语言设置"
+        return 2
+    fi
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    LOCALE_ZH_APPLIED=true
+    install_content "$USER_HOME/.config/environment.d/locale.conf" 0644 <<'EOF' || return 1
+# 由 droidspaces-preferences 生成：只设 LANG，单项分类仍可单独覆盖。
+LANG=zh_CN.UTF-8
+EOF
+    return 0
+}
+
+# 4) 用户会话环境变量：暗色 GTK、Wayland 输入法。
+step_environment() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    installed_any=false
+
+    if gtk3_present; then
+        install_asset "$USER_HOME/.config/environment.d/gtk.conf" environment.d/gtk.conf 0644 || return 1
+        installed_any=true
+    else
+        warn "未检测到 GTK3，跳过 GTK_THEME=Adwaita:dark"
+    fi
+
+    if have_bin fcitx5; then
+        install_asset "$USER_HOME/.config/environment.d/input.conf" environment.d/input.conf 0644 || return 1
+        installed_any=true
+    else
+        warn "未检测到 fcitx5，跳过输入法环境变量"
+    fi
+
+    if [ "$installed_any" = false ]; then
+        skip_step "未安装 GTK3/fcitx5，无可应用的环境变量"
+        return 2
+    fi
+    return 0
+}
+
+# 5) 字体渲染：等宽别名、CJK 回退、RGB 子像素。
+step_fontconfig() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! is_dir /etc/fonts; then
+        skip_step "/etc/fonts 不存在（fontconfig 未安装）"
+        return 2
+    fi
+    install_asset "$USER_HOME/.config/fontconfig/fonts.conf" fontconfig/fonts.conf 0644 || return 1
+    log "提示：字体缓存由登录会话重建，构建期不执行 fc-cache"
+    return 0
+}
+
+# 6) GTK 字体与暗色主题：仅在 Maple Mono NF CN 已安装时写入。
+step_gtk_settings() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! gtk3_present; then
+        skip_step "未安装 GTK3"
+        return 2
+    fi
+    if ! fonts_have_maple; then
+        skip_step "未安装 Maple Mono NF CN，保留系统默认字体"
+        return 2
+    fi
+    install_asset "$USER_HOME/.config/gtk-3.0/settings.ini" gtk-3.0/settings.ini 0644 || return 1
+    install_asset "$USER_HOME/.config/gtk-4.0/settings.ini" gtk-4.0/settings.ini 0644 || return 1
+    return 0
+}
+
+# 7) kitty：Catppuccin Frappé、Maple 字体、半透明与模糊。
+step_kitty() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! have_bin kitty; then
+        skip_step "未安装 kitty"
+        return 2
+    fi
+    if have_bin fish; then
+        kitty_expr="s/@FONT_SIZE@/$FONT_SIZE/g"
+    else
+        kitty_expr="s|^shell /usr/bin/fish|# shell /usr/bin/fish|;s/@FONT_SIZE@/$FONT_SIZE/g"
+    fi
+    install_asset "$USER_HOME/.config/kitty/themes/frappe.conf" kitty/themes/frappe.conf 0644 || return 1
+    install_asset "$USER_HOME/.config/kitty/kitty.conf" kitty/kitty.conf 0644 "$kitty_expr" || return 1
+    return 0
+}
+
+# 8) fish 配置；tide/reef 插件本身需联网安装，未安装时跳过对应项。
+step_fish() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! have_bin fish; then
+        skip_step "未安装 fish"
+        return 2
+    fi
+    install_asset "$USER_HOME/.config/fish/config.fish" fish/config.fish 0644 || return 1
+    install_asset "$USER_HOME/.config/fish/conf.d/theme.fish" fish/conf.d/theme.fish 0644 || return 1
+    install_asset "$USER_HOME/.config/fish/conf.d/fastfetch.fish" fish/conf.d/fastfetch.fish 0644 || return 1
+    install_asset "$USER_HOME/.config/fish/conf.d/reef.fish" fish/conf.d/reef.fish 0644 || return 1
+    install_asset "$USER_HOME/.config/fish/conf.d/mirrors.fish" fish/conf.d/mirrors.fish 0644 || return 1
+
+    tide_present=false
+    if path_exists "$USER_HOME/.config/fish/functions/tide.fish"; then
+        tide_present=true
+    fi
+    if path_exists /usr/share/fish/vendor_functions.d/tide.fish; then
+        tide_present=true
+    fi
+    if [ "$tide_present" = false ]; then
+        warn "未检测到 tide，跳过 tide-apply.fish（安装 tide 后重跑本脚本即可）"
+        return 0
+    fi
+    install_asset "$USER_HOME/.config/fish/tide-apply.fish" fish/tide-apply.fish 0755 || return 1
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        run_as_user "fish --no-config $USER_HOME/.config/fish/tide-apply.fish"
+        return 0
+    fi
+    if run_as_user "fish --no-config $USER_HOME/.config/fish/tide-apply.fish"; then
+        log "已写入 tide universal 变量"
+    else
+        warn "tide 配置脚本执行失败，可在设备上运行 fish ~/.config/fish/tide-apply.fish"
+    fi
+    return 0
+}
+
+# 9) fcitx5 + Rime：开机激活、默认 rime、候选 7 个。
+step_fcitx5() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! have_bin fcitx5; then
+        skip_step "未安装 fcitx5"
+        return 2
+    fi
+
+    install_asset "$USER_HOME/.config/fcitx5/config" fcitx5/config 0644 || return 1
+    install_asset "$USER_HOME/.config/fcitx5/profile" fcitx5/profile 0644 || return 1
+
+    if path_exists "$USER_HOME/.local/share/fcitx5/themes/catppuccin-mocha-mauve"; then
+        install_asset "$USER_HOME/.config/fcitx5/conf/classicui.conf" fcitx5/conf/classicui.conf 0644 || return 1
+    else
+        log "未安装 catppuccin-mocha-mauve 主题，classicui 仅写 DPI 设置"
+        install_content "$USER_HOME/.config/fcitx5/conf/classicui.conf" 0644 <<'EOF' || return 1
+[Theme]
+PerScreenDPI=True
+EOF
+    fi
+
+    if path_exists /usr/share/rime-data/rime_ice.schema.yaml || \
+        path_exists /usr/share/rime-data/rime_ice.base.dict.yaml; then
+        install_asset "$USER_HOME/.local/share/fcitx5/rime/default.custom.yaml" \
+            fcitx5/rime/default.custom.yaml 0644 || return 1
+    else
+        warn "未安装雾凇拼音（rime-ice），跳过 default.custom.yaml 以避免 Rime 部署失败"
+    fi
+    log "提示：Rime 首次部署在设备登录后完成，构建期不生成 root 属主的 build/"
+    return 0
+}
+
+# 10) Nemo 默认文件管理器与「在终端中打开」。
+step_nemo() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! path_exists /usr/share/applications/nemo.desktop && ! have_bin nemo; then
+        skip_step "未安装 Nemo"
+        return 2
+    fi
+
+    merge_mimeapps || return 1
+
+    if ! have_bin kitty; then
+        warn "未安装 kitty，跳过 xdg-terminal-exec 与 Nemo 终端动作"
+        return 0
+    fi
+    install_asset "$USER_HOME/.config/xdg-terminal-exec/terminal-exec" \
+        xdg-terminal-exec/terminal-exec 0644 || return 1
+    install_asset /usr/local/bin/open-terminal nemo/open-terminal 0755 || return 1
+    if is_dir /usr/share/nemo/actions; then
+        install_asset /usr/share/nemo/actions/open-terminal.nemo_action \
+            nemo/open-terminal.nemo_action 0644 || return 1
+    else
+        warn "/usr/share/nemo/actions 不存在，跳过 Nemo 动作文件"
+    fi
+    return 0
+}
+
+merge_mimeapps() {
+    mm_dest=$USER_HOME/.config/mimeapps.list
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would map inode/directory -> nemo.desktop in $mm_dest"
+        return 0
+    fi
+    mm_full=$ROOT$mm_dest
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    mm_tmp=$nt_path
+    if [ -f "$mm_full" ]; then
+        if ! awk '
+            BEGIN { in_defaults = 0; written = 0 }
+            /^\[/ {
+                if (in_defaults && !written) { print "inode/directory=nemo.desktop"; written = 1 }
+                in_defaults = ($0 == "[Default Applications]")
+            }
+            {
+                if (in_defaults && $0 ~ /^inode\/directory=/) {
+                    if (!written) { print "inode/directory=nemo.desktop"; written = 1 }
+                    next
+                }
+                print
+            }
+            END { if (in_defaults && !written) print "inode/directory=nemo.desktop" }
+        ' "$mm_full" >"$mm_tmp"; then
+            drop_tmp "$mm_tmp"
+            fail_step "解析 $mm_dest 失败"
+            return 1
+        fi
+        if ! grep -q '^\[Default Applications\]' "$mm_tmp"; then
+            if ! printf '%s\n' '[Default Applications]' 'inode/directory=nemo.desktop' >>"$mm_tmp"; then
+                drop_tmp "$mm_tmp"
+                fail_step "写入 $mm_dest 失败"
+                return 1
+            fi
+        fi
+    else
+        if ! printf '%s\n' '[Default Applications]' 'inode/directory=nemo.desktop' >"$mm_tmp"; then
+            drop_tmp "$mm_tmp"
+            fail_step "写入 $mm_dest 失败"
+            return 1
+        fi
+    fi
+    install_content "$mm_dest" 0644 <"$mm_tmp"
+    mm_rc=$?
+    drop_tmp "$mm_tmp"
+    return $mm_rc
+}
+
+# 11) Noctalia：顶栏铺满 + 外壳字体；既有配置不覆盖。
+step_noctalia() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! have_bin noctalia && ! is_dir /usr/share/noctalia; then
+        skip_step "未安装 Noctalia"
+        return 2
+    fi
+    install_if_absent "$USER_HOME/.config/noctalia/config.toml" 0644 noctalia/config.toml
+    return $?
+}
+
+# 12) niri 不读 XDG autostart：追加标记块保证 fcitx5 自启动。
+step_niri_ime_autostart() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! have_bin fcitx5; then
+        skip_step "未安装 fcitx5"
+        return 2
+    fi
+    niri_config=$USER_HOME/.config/niri/config.kdl
+    if ! path_exists "$niri_config"; then
+        skip_step "未找到 niri config.kdl（由桌面 profile 负责）"
+        return 2
+    fi
+    niri_full=$ROOT$niri_config
+    if grep -q 'spawn-at-startup.*fcitx5' "$niri_full" 2>/dev/null; then
+        log "unchanged: $niri_config（fcitx5 自启动已存在）"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would append fcitx5 spawn-at-startup block to $niri_config"
+        return 0
+    fi
+    if ! backup_file "$niri_config"; then
+        fail_step "备份失败：$niri_config"
+        return 1
+    fi
+    {
+        printf '%s\n' '' '// >>> droidspaces-preferences: 输入法自启动（niri 不读 XDG autostart）'
+        printf '%s\n' 'spawn-at-startup "fcitx5"'
+        printf '%s\n' '// <<< droidspaces-preferences'
+    } >>"$niri_full" || {
+        fail_step "追加失败：$niri_config"
+        return 1
+    }
+    log "appended: $niri_config（fcitx5 spawn-at-startup）"
+    return 0
+}
+
+# 13) 中文用户目录，仅在中文本地化生效时。
+step_user_dirs() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if [ "$LOCALE_ZH_APPLIED" != true ]; then
+        skip_step "中文 locale 未生效，保留默认用户目录"
+        return 2
+    fi
+    install_asset "$USER_HOME/.config/user-dirs.dirs" xdg-user-dirs/user-dirs.dirs 0644 || return 1
+    for dir_name in 桌面 下载 文档 图片 音乐 视频 模板 公共; do
+        ud_full=$ROOT$USER_HOME/$dir_name
+        if [ -d "$ud_full" ]; then
+            continue
+        fi
+        if [ "$DRY_RUN" = true ]; then
+            log "dry-run: would create $USER_HOME/$dir_name"
+            continue
+        fi
+        if ! mkdir "$ud_full"; then
+            warn "无法创建 $USER_HOME/$dir_name"
+            continue
+        fi
+        if [ -z "$ROOT" ] && [ -n "$USER_UID" ]; then
+            chown "$USER_UID:$USER_GID" "$ud_full" 2>/dev/null || warn "chown 失败：$USER_HOME/$dir_name"
+        fi
+    done
+    return 0
+}
+
+# 14) 电源服务：Noctalia 电池图标依赖 UPower 的 D-Bus 接口。
+step_services() {
+    if ! have_bin upower; then
+        skip_step "未安装 upower"
+        return 2
+    fi
+    sv_unit=/usr/lib/systemd/system/upower.service
+    if ! path_exists "$sv_unit"; then
+        sv_unit=/lib/systemd/system/upower.service
+    fi
+    if ! path_exists "$sv_unit"; then
+        skip_step "upower.service 单元不存在"
+        return 2
+    fi
+    sv_link=/etc/systemd/system/multi-user.target.wants/upower.service
+    if [ -L "$ROOT$sv_link" ]; then
+        log "unchanged: $sv_link"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would enable upower.service"
+        return 0
+    fi
+    if ! mkdir -p "$ROOT/etc/systemd/system/multi-user.target.wants"; then
+        fail_step "无法创建 wants 目录"
+        return 1
+    fi
+    if ! ln -sf "$sv_unit" "$ROOT$sv_link"; then
+        fail_step "无法启用 upower.service"
+        return 1
+    fi
+    log "enabled: upower.service"
+    return 0
+}
+
+# ---------------------------------------------------------------- 清单
+
+write_manifest() {
+    wm_status=$1
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would write $MANIFEST (status=$wm_status)"
+        return 0
+    fi
+    mkdir -p "$STATE_DIR" || return 1
+    wm_tmp=$MANIFEST.tmp
+    {
+        printf '%s\n' '# 由 apply-preferences.sh 生成；PROFILE 与 VERSION 均匹配时跳过重复应用。'
+        printf 'PREFERENCES_PROFILE=%s\n' "$(env_quote "$PROFILE")"
+        printf 'PREFERENCES_VERSION=%s\n' "$(env_quote "$PREFERENCES_VERSION")"
+        printf 'PREFERENCES_TIMESTAMP=%s\n' "$(env_quote "$TIMESTAMP")"
+        printf 'PREFERENCES_STATUS=%s\n' "$(env_quote "$wm_status")"
+        printf 'PREFERENCES_APPLIED_STEPS=%s\n' "$(env_quote "$APPLIED")"
+        printf 'PREFERENCES_SKIPPED_STEPS=%s\n' "$(env_quote "$SKIPPED")"
+        printf 'PREFERENCES_FAILED_STEPS=%s\n' "$(env_quote "$FAILED")"
+        printf 'PREFERENCES_WARNINGS=%s\n' "$(env_quote "$WARNINGS")"
+        printf 'PREFERENCES_BACKUP_DIR=%s\n' "$(env_quote "$BACKUP_DIR")"
+        printf 'PREFERENCES_BACKUP_FILES=%s\n' "$(env_quote "$BACKUP_COUNT")"
+        printf 'PREFERENCES_USER=%s\n' "$(env_quote "$USER_NAME")"
+        printf 'PREFERENCES_STRICT=%s\n' "$(env_quote "$STRICT")"
+    } >"$wm_tmp" || {
+        rm -f "$wm_tmp"
+        return 1
+    }
+    mv -f "$wm_tmp" "$MANIFEST" || {
+        rm -f "$wm_tmp"
+        return 1
+    }
+    log "manifest: $MANIFEST（status=$wm_status）"
+    return 0
+}
+
+manifest_value() {
+    sed -n "s/^$1=//p" "$MANIFEST" 2>/dev/null | head -n1 | tr -d "'"
+}
+
+# ---------------------------------------------------------------- 主流程
+
+if APPLY_PREFERENCES=$(normalize_bool "${APPLY_PREFERENCES:-false}"); then :; else
+    printf '%s\n' "[preferences] APPLY_PREFERENCES=${APPLY_PREFERENCES:-} 不是布尔值，按 false 处理" >&2
+    APPLY_PREFERENCES=false
+fi
+if STRICT=$(normalize_bool "${PREFERENCES_STRICT:-false}"); then :; else
+    printf '%s\n' "[preferences] PREFERENCES_STRICT=${PREFERENCES_STRICT:-} 不是布尔值，按 false 处理" >&2
+    STRICT=false
+fi
+if DRY_RUN=$(normalize_bool "${PREFERENCES_DRY_RUN:-false}"); then :; else
+    printf '%s\n' "[preferences] PREFERENCES_DRY_RUN=${PREFERENCES_DRY_RUN:-} 不是布尔值，按 false 处理" >&2
+    DRY_RUN=false
+fi
+if INSTALL_PACKAGES=$(normalize_bool "${PREFERENCES_INSTALL_PACKAGES:-true}"); then :; else
+    INSTALL_PACKAGES=true
+fi
+
+if [ "$APPLY_PREFERENCES" != true ]; then
+    printf '%s\n' '[preferences] APPLY_PREFERENCES=false：跳过偏好设置'
+    exit 0
+fi
+
+TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+BACKUP_DIR=$STATE_DIR/backup/$TIMESTAMP
+LOG_FILE=$ROOT/var/log/droidspaces-preferences.log
+if [ "$DRY_RUN" = true ] || [ ! -d "$ROOT/var/log" ]; then
+    LOG_FILE=${TMPDIR:-/tmp}/droidspaces-preferences.log
+fi
+
+log "启动：profile=$PROFILE version=$PREFERENCES_VERSION strict=$STRICT dry_run=$DRY_RUN"
+
+if [ -f "$MANIFEST" ]; then
+    marker_profile=$(manifest_value PREFERENCES_PROFILE)
+    marker_version=$(manifest_value PREFERENCES_VERSION)
+    if [ "$marker_profile" = "$PROFILE" ] && [ "$marker_version" = "$PREFERENCES_VERSION" ]; then
+        log "已应用相同 profile+version（$PROFILE@$PREFERENCES_VERSION），跳过"
+        exit 0
+    fi
+    log "检测到旧标记（${marker_profile:-unknown}@${marker_version:-unknown}），重新应用"
+fi
+
+if detect_user; then
+    log "目标用户：$USER_NAME（$USER_HOME）"
+else
+    warn "未找到 uid>=1000 的普通用户，用户级步骤将被跳过"
+fi
+
+STEPS="packages pacman_mirrors locale environment fontconfig gtk_settings kitty fish fcitx5 nemo noctalia niri_ime_autostart user_dirs services"
+
+for step in $STEPS; do
+    STEP_NAME=$step
+    STEP_REASON=
+    step_rc=0
+    "step_$step" || step_rc=$?
+    if [ "$step_rc" -eq 0 ]; then
+        add_applied "$step"
+    elif [ "$step_rc" -eq 2 ]; then
+        add_skipped "$step: ${STEP_REASON:-已跳过}"
+    else
+        add_failed "$step: ${STEP_REASON:-未知错误}"
+        if [ "$STRICT" = true ]; then
+            write_manifest failed || true
+            log "PREFERENCES_STRICT=true：步骤 $step 失败，终止"
+            exit 1
+        fi
+        warn "步骤 $step 失败：${STEP_REASON:-未知错误}；已按非严格模式继续"
+    fi
+done
+
+if [ -n "$FAILED" ]; then
+    status=partial
+else
+    status=applied
+fi
+write_manifest "$status" || warn "写入 manifest 失败"
+
+log "完成：applied=[$APPLIED]"
+log "完成：skipped=[$SKIPPED]"
+if [ -n "$FAILED" ]; then
+    log "完成：failed=[$FAILED]"
+fi
+if [ "$BACKUP_COUNT" -gt 0 ]; then
+    log "备份文件数：$BACKUP_COUNT（$BACKUP_DIR）"
+fi
+exit 0

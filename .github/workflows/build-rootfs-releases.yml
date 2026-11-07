@@ -125,6 +125,31 @@ on:
         required: true
         type: string
         default: Goldzxcbug/droidspaces-package
+      apply_preferences:
+        description: 应用桌面偏好设置（在 rootfs 构建末尾执行）
+        required: false
+        type: boolean
+        default: false
+      device_profile:
+        description: 设备构建配置（留空为通用构建；xring-o3 仅支持 Arch + niri 且必须提供 Mali 栈）
+        required: false
+        type: string
+        default: ""
+      mali_stack_bundle_url:
+        description: Mali 栈离线包地址（提供后强制开启 GPU 栈）
+        required: false
+        type: string
+        default: ""
+      mali_stack_bundle_sha256:
+        description: Mali 栈离线包 SHA256 校验值（提供 URL 时必填）
+        required: false
+        type: string
+        default: ""
+      mali_stack_version:
+        description: Mali 栈版本标识
+        required: false
+        type: string
+        default: "2026.11.08"
 
 permissions:
   contents: write
@@ -154,3 +179,8 @@ jobs:
       enable_zip: ${{ inputs.enable_zip }}
       enable_docker: ${{ inputs.enable_docker }}
       wayland_package_repository: ${{ inputs.wayland_package_repository }}
+      apply_preferences: ${{ inputs.apply_preferences }}
+      device_profile: ${{ inputs.device_profile }}
+      mali_stack_bundle_url: ${{ inputs.mali_stack_bundle_url }}
+      mali_stack_bundle_sha256: ${{ inputs.mali_stack_bundle_sha256 }}
+      mali_stack_version: ${{ inputs.mali_stack_version }}

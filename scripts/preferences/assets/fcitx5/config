@@ -1,0 +1,4 @@
+[Behavior]
+# fcitx5 默认 ActiveByDefault=false：登录后输入法未激活，Shift 临时切换无效，
+# 必须先点状态栏图标。置 True 实现开机即激活。
+ActiveByDefault=True

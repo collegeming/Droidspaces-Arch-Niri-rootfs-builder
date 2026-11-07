@@ -18,6 +18,26 @@ on:
         required: true
         default: 9999
         type: number
+      apply_preferences:
+        description: 应用桌面偏好设置（Arch + Niri 镜像生效）
+        required: false
+        default: false
+        type: boolean
+      mali_stack_bundle_url:
+        description: Mali 栈离线包地址（提供后强制开启 GPU 栈）
+        required: false
+        default: ""
+        type: string
+      mali_stack_bundle_sha256:
+        description: Mali 栈离线包 SHA256 校验值（提供 URL 时必填）
+        required: false
+        default: ""
+        type: string
+      mali_stack_version:
+        description: Mali 栈版本标识
+        required: false
+        default: "2026.11.08"
+        type: string
   schedule:
     - cron: '0 18 * * 0'
 
@@ -77,6 +97,10 @@ jobs:
       build_id: ${{ needs.prepare.outputs.build_id }}
       asset_variant: zh
       publish_release: false
+      apply_preferences: ${{ inputs.apply_preferences }}
+      mali_stack_bundle_url: ${{ inputs.mali_stack_bundle_url }}
+      mali_stack_bundle_sha256: ${{ inputs.mali_stack_bundle_sha256 }}
+      mali_stack_version: ${{ inputs.mali_stack_version }}
 
   build-en:
     name: 构建英文 RootFS
@@ -106,6 +130,10 @@ jobs:
       build_id: ${{ needs.prepare.outputs.build_id }}
       asset_variant: en
       publish_release: false
+      apply_preferences: ${{ inputs.apply_preferences }}
+      mali_stack_bundle_url: ${{ inputs.mali_stack_bundle_url }}
+      mali_stack_bundle_sha256: ${{ inputs.mali_stack_bundle_sha256 }}
+      mali_stack_version: ${{ inputs.mali_stack_version }}
 
   release:
     name: 更新 GitHub 滚动 Release
