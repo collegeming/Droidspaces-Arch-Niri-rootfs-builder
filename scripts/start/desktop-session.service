@@ -9,6 +9,10 @@ Type=simple
 User=1000
 PAMName=login
 EnvironmentFile=-/etc/environment
+# The host MaliBridge server must listen first: a session that starts early finds
+# no renderer, dies with VK_ERROR_DEVICE_LOST and leaves Noctalia unspawned. The
+# helper warns and still returns 0 on timeout, so a missing GPU never blocks boot.
+ExecStartPre=/usr/local/bin/wait-for-mali-bridge 30
 ExecStart=/usr/local/bin/start-desktop-session
 Restart=on-failure
 RestartSec=2s

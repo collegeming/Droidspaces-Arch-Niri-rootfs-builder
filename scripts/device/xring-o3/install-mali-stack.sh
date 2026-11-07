@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Install the XRING-O3 Mali stack into /opt/mali-stack/<version>.
 #
+# The device runs two coherent chains and this installer reproduces both:
+#   zc-run (Chrome, DBX)  Mesa kopper-retire + MaliBridge format-capacity
+#   Noctalia              Mesa dt-retire     + MaliBridge hook2 + wl-gone shim
+# conf/zc-env.conf and conf/noctalia-env.conf carry the two mappings, and
+# /usr/local/bin/noctalia-dt is generated from the bundle wrapper template.
+#
 # Inputs (environment or matching options):
 #   MALI_STACK_BUNDLE_URL + MALI_STACK_BUNDLE_SHA256   download and verify an archive
 #   MALI_STACK_BUNDLE_DIR                              use an already extracted bundle
@@ -30,6 +36,7 @@ UNINSTALL=false
 WORK_DIR=""
 STAGE_DIR=""
 BUNDLE_ROOT=""
+BUNDLE_LAYOUT=""
 ICON_REL=""
 
 log() { printf '[install-mali-stack] %s\n' "$*"; }
@@ -57,9 +64,9 @@ usage() {
 
 bundle 必须包含（详见 scripts/device/xring-o3/README.md）:
   SHA256SUMS
-  mesa/candidate/usr/lib/libEGL_mesa.so.0
+  mesa/candidate/usr/lib/libEGL_mesa.so.0        dt-retire（Noctalia 默认）
   mesa/candidate/usr/lib/dri/zink_dri.so
-  vkbridge/libvulkan_droidbridge.so
+  vkbridge/libvulkan_droidbridge.so              hook2（Noctalia）
   share/vulkan/icd.d/droidbridge_icd.json
   lib/libgbm.so.1
   lib/libdrmfake.so
@@ -68,6 +75,15 @@ bundle 必须包含（详见 scripts/device/xring-o3/README.md）:
   share/applications/mb-tray.desktop
   share/icons/hicolor/.../mb-budget.(svg|png)
   etc/budget.conf
+
+布局 v2 另需整组存在（缺一即拒绝安装）:
+  mesa/kopper/usr/lib/libEGL_mesa.so.0           kopper-retire（zc-run / 会话）
+  mesa/kopper/usr/lib/libgallium-<ver>.so
+  mesa/kopper/usr/lib/dri/zink_dri.so
+  vkbridge/format/libvulkan_droidbridge.so       format-capacity（zc-run）
+  vkbridge/shim/libvkb_wl_gone.so                Noctalia LD_PRELOAD 垫片
+  share/vulkan/icd.d/droidbridge-format.json
+  share/xring-o3/noctalia-dt                     Noctalia 包装器模板
 EOF
 }
 
@@ -155,6 +171,9 @@ resolve_version() {
     validate_version
 }
 
+# Core payload: every bundle must carry these, so layout v1 bundles keep
+# installing. mesa/candidate is the dt-retire build and vkbridge/ the hook2
+# client; together they are the pair Noctalia consumes.
 required_paths() {
     printf '%s\n' \
         "mesa/candidate/usr/lib/libEGL_mesa.so.0" \
@@ -170,6 +189,30 @@ required_paths() {
         "bin/mb-tray" \
         "share/applications/mb-tray.desktop" \
         "etc/budget.conf"
+}
+
+# Dual-stack payload (layout v2). The device runs two coherent chains, so a
+# bundle that carries only part of this group would install an unverified
+# combination; all-or-nothing is enforced by validate_bundle.
+dual_stack_paths() {
+    printf '%s\n' \
+        "mesa/kopper/usr/lib/libEGL_mesa.so.0" \
+        "mesa/kopper/usr/lib/dri/zink_dri.so" \
+        "vkbridge/format/libvulkan_droidbridge.so" \
+        "vkbridge/shim/libvkb_wl_gone.so" \
+        "share/vulkan/icd.d/droidbridge-format.json" \
+        "share/xring-o3/noctalia-dt"
+}
+
+# Both Mesa trees need exactly one libgallium; it is loaded next to
+# libEGL_mesa.so.0 and is not named by any ICD.
+libgallium_paths() {
+    local root="$1" dir name
+    for dir in mesa/candidate/usr/lib mesa/kopper/usr/lib; do
+        while IFS= read -r name; do
+            printf '%s/%s\n' "$dir" "$name"
+        done < <(find "$root/$dir" -maxdepth 1 -type f -name 'libgallium-*.so' -printf '%f\n' 2>/dev/null)
+    done | sort
 }
 
 find_icon() {
@@ -198,6 +241,36 @@ validate_bundle() {
         printf '  缺少: share/icons/hicolor/.../apps/mb-budget.svg 或 .png\n' >&2
         missing=1
     fi
+
+    # Dual-stack payload is all-or-nothing: a half-upgraded bundle would pair a
+    # Mesa build with an ICD it was never validated against.
+    local -a dual_present=() dual_absent=()
+    while IFS= read -r path; do
+        if [[ -f "$root/$path" ]]; then
+            dual_present+=("$path")
+        else
+            dual_absent+=("$path")
+        fi
+    done < <(dual_stack_paths)
+    if ((${#dual_present[@]} > 0)) && ((${#dual_absent[@]} > 0)); then
+        printf '  双栈布局要求整组存在，缺少: %s\n' "${dual_absent[@]}" >&2
+        missing=1
+    fi
+
+    if ((${#dual_present[@]} > 0)); then
+        BUNDLE_LAYOUT=v2
+        local expected
+        for path in mesa/candidate/usr/lib mesa/kopper/usr/lib; do
+            expected="$(libgallium_paths "$root" | grep -c "^$path/libgallium-.*\.so$" || true)"
+            [[ "$expected" == "1" ]] || {
+                printf '  缺少或重复: %s/libgallium-*.so（需要恰好一个，实际 %s）\n' "$path" "$expected" >&2
+                missing=1
+            }
+        done
+    else
+        BUNDLE_LAYOUT=v1
+    fi
+
     if ((missing != 0)); then
         die "bundle 缺少必需文件；这不是可安装的 XRING-O3 Mali stack。发布/准备完整 artifact 后再重试。"
     fi
@@ -261,17 +334,62 @@ validate_aarch64_shared_object() {
 
 validate_binaries() {
     local root="$1" file
-    for file in \
-        "mesa/candidate/usr/lib/libEGL_mesa.so.0" \
-        "mesa/candidate/usr/lib/dri/zink_dri.so" \
-        "vkbridge/libvulkan_droidbridge.so" \
-        "lib/libgbm.so.1" \
-        "lib/libdrmfake.so"; do
+    local -a binaries=(
+        "mesa/candidate/usr/lib/libEGL_mesa.so.0"
+        "mesa/candidate/usr/lib/dri/zink_dri.so"
+        "vkbridge/libvulkan_droidbridge.so"
+        "lib/libgbm.so.1"
+        "lib/libdrmfake.so"
+    )
+    if [[ "${BUNDLE_LAYOUT:-v1}" == "v2" ]]; then
+        binaries+=(
+            "mesa/kopper/usr/lib/libEGL_mesa.so.0"
+            "mesa/kopper/usr/lib/dri/zink_dri.so"
+            "vkbridge/format/libvulkan_droidbridge.so"
+            "vkbridge/shim/libvkb_wl_gone.so"
+        )
+        while IFS= read -r file; do
+            binaries+=("$file")
+        done < <(libgallium_paths "$root")
+    fi
+    for file in "${binaries[@]}"; do
+        [[ -f "$root/$file" ]] || die "缺少 ELF 文件：$file"
         validate_aarch64_shared_object "$root/$file" || \
             die "$file 不是 AArch64 ELF 共享对象；bundle 与设备架构不匹配。"
     done
-    grep -q 'libvulkan_droidbridge\.so' "$root/share/vulkan/icd.d/droidbridge_icd.json" || \
-        die "droidbridge_icd.json 未引用 libvulkan_droidbridge.so。"
+
+    validate_icd_manifest "$root" \
+        "share/vulkan/icd.d/droidbridge_icd.json" \
+        "vkbridge/libvulkan_droidbridge.so"
+    if [[ "${BUNDLE_LAYOUT:-v1}" == "v2" ]]; then
+        validate_icd_manifest "$root" \
+            "share/vulkan/icd.d/droidbridge-format.json" \
+            "vkbridge/format/libvulkan_droidbridge.so"
+        grep -q '@STACK_CURRENT@' "$root/share/xring-o3/noctalia-dt" || \
+            die "share/xring-o3/noctalia-dt 缺少 @STACK_CURRENT@ 占位符；安装器无法生成 /usr/local/bin/noctalia-dt。"
+        grep -q 'conf/noctalia-env\.conf' "$root/share/xring-o3/noctalia-dt" || \
+            die "share/xring-o3/noctalia-dt 未引用 conf/noctalia-env.conf。"
+    fi
+}
+
+# An ICD must describe its client with a bundle-relative path, otherwise the
+# installed copy would keep pointing at the machine the bundle was built on.
+validate_icd_manifest() {
+    local root="$1" icd_rel="$2" expected_rel="$3"
+    local icd="$root/$icd_rel" library resolved expected
+    [[ -f "$icd" ]] || die "缺少 ICD 清单：$icd_rel"
+    library="$(sed -n 's/.*"library_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$icd" | head -n 1)"
+    [[ -n "$library" ]] || die "$icd_rel 缺少 ICD.library_path。"
+    [[ "$library" != /* ]] || die "$icd_rel 的 library_path 必须是相对路径，实际为：$library"
+    case "$library" in
+        *libvulkan_droidbridge.so) ;;
+        *) die "$icd_rel 未引用 libvulkan_droidbridge.so，实际为：$library" ;;
+    esac
+    resolved="$(readlink -f -- "$root/$(dirname -- "$icd_rel")/$library" 2>/dev/null || true)"
+    expected="$(readlink -f -- "$root/$expected_rel" 2>/dev/null || true)"
+    [[ -n "$resolved" && -f "$resolved" ]] || die "$icd_rel 的相对路径无法解析到 bundle 内文件：$library"
+    [[ "$resolved" == "$expected" ]] || \
+        die "$icd_rel 应指向 $expected_rel，实际解析为：$resolved"
 }
 
 prepare_bundle_dir() {
@@ -332,25 +450,49 @@ prepare_bundle_url() {
     esac
 }
 
-generate_stack_config() {
-    local version_dir="$1" current="$XRING_O3_MALI_STACK_CURRENT" mesa_prefix
-    local vendor_json="$version_dir/mesa/default-egl-vendor.json"
-    mesa_prefix="${current}/mesa/candidate/usr/lib"
-
-    if [[ ! -f "$vendor_json" ]]; then
-        cat > "$vendor_json" <<EOF
+write_egl_vendor_json() {
+    local target="$1" library="$2"
+    [[ ! -f "$target" ]] || return 0
+    cat > "$target" <<EOF
 {
   "file_format_version": "1.0.0",
   "ICD": {
-    "library_path": "${mesa_prefix}/libEGL_mesa.so.0"
+    "library_path": "${library}"
   }
 }
 EOF
-    fi
+}
 
+# zc-run builds its Mesa search path as $ZC_MESA_DIR/candidate/usr/lib. The
+# bundle keeps the kopper payload at mesa/kopper/usr/lib (no symlinks allowed
+# inside a bundle), so the installed tree gets a relative compat view. This
+# link is created by the installer, never shipped in the bundle.
+link_kopper_candidate_view() {
+    local version_dir="$1"
+    local view="$version_dir/mesa/kopper/candidate"
+    install -d -m 0755 "$view"
+    if [[ -L "$view/usr" ]]; then
+        rm -f -- "$view/usr"
+    elif [[ -e "$view/usr" ]]; then
+        # Re-running over an existing tree must stay idempotent; anything other
+        # than a usable view is a real conflict.
+        [[ -f "$view/usr/lib/libEGL_mesa.so.0" ]] && return 0
+        die "$view/usr 已存在，但不是可用的 kopper 视图。"
+    fi
+    ln -s -- ../usr "$view/usr"
+    [[ -f "$view/usr/lib/libEGL_mesa.so.0" ]] || die "kopper 兼容视图无效：$view/usr/lib"
+}
+
+generate_stack_config() {
+    local version_dir="$1" current="$XRING_O3_MALI_STACK_CURRENT" layout="${BUNDLE_LAYOUT:-v1}"
     install -d -m 0755 "$version_dir/conf"
-    cat > "$version_dir/conf/zc-env.conf" <<EOF
+    write_egl_vendor_json "$version_dir/mesa/default-egl-vendor.json" \
+        "${current}/mesa/candidate/usr/lib/libEGL_mesa.so.0"
+
+    if [[ "$layout" != "v2" ]]; then
+        cat > "$version_dir/conf/zc-env.conf" <<EOF
 # Generated by install-mali-stack.sh; paths track /opt/mali-stack/current.
+# bundle 布局 v1：只有 dt-retire Mesa + hook2 ICD，没有 zc-run 的 kopper 链。
 ZC_MESA_DIR=${current}/mesa
 ZC_EGL_VENDOR_JSON=${current}/mesa/default-egl-vendor.json
 ZC_ICD=${current}/share/vulkan/icd.d/droidbridge_icd.json
@@ -358,6 +500,70 @@ ZC_BRIDGE_SOCKET=${XRING_O3_BRIDGE_SOCKET}
 ZC_BRIDGE_LOG_LEVEL=1
 ZC_DRM_DEVICE=${XRING_O3_DRM_DEVICE}
 EOF
+        log "bundle 布局 v1：未生成 conf/noctalia-env.conf（缺 kopper/format/shim/noctalia 模板）。"
+        return 0
+    fi
+
+    write_egl_vendor_json "$version_dir/mesa/kopper/default-egl-vendor.json" \
+        "${current}/mesa/kopper/usr/lib/libEGL_mesa.so.0"
+    link_kopper_candidate_view "$version_dir"
+
+    # zc-run / Chrome / DBX chain: kopper-retire Mesa + format-capacity client.
+    cat > "$version_dir/conf/zc-env.conf" <<EOF
+# Generated by install-mali-stack.sh; paths track /opt/mali-stack/current.
+# 消费方：/usr/local/bin/zc-run（Chrome、DBX）。设备对应运行：
+#   Mesa kopper-retire-42194036783 + MaliBridge mb-format-42268762436。
+ZC_MESA_DIR=${current}/mesa/kopper
+ZC_EGL_VENDOR_JSON=${current}/mesa/kopper/default-egl-vendor.json
+ZC_ICD=${current}/share/vulkan/icd.d/droidbridge-format.json
+ZC_BRIDGE_SOCKET=${XRING_O3_BRIDGE_SOCKET}
+ZC_BRIDGE_LOG_LEVEL=1
+ZC_DRM_DEVICE=${XRING_O3_DRM_DEVICE}
+EOF
+
+    # Noctalia chain: dt-retire Mesa + hook2 client + wl-gone preload shim.
+    cat > "$version_dir/conf/noctalia-env.conf" <<EOF
+# Generated by install-mali-stack.sh; sourced by /usr/local/bin/noctalia-dt.
+# 消费方：Noctalia 面板。设备对应运行：
+#   Mesa dt-retire-42369276110 + MaliBridge mb-hook2-42378271764 + wl-gone shim。
+NOCTALIA_MESA_DIR=${current}/mesa
+NOCTALIA_EGL_VENDOR_JSON=${current}/mesa/default-egl-vendor.json
+NOCTALIA_ICD=${current}/share/vulkan/icd.d/droidbridge_icd.json
+NOCTALIA_LD_PRELOAD=${current}/vkbridge/shim/libvkb_wl_gone.so
+NOCTALIA_BRIDGE_SOCKET=${XRING_O3_BRIDGE_SOCKET}
+NOCTALIA_BRIDGE_LOG_LEVEL=2
+NOCTALIA_VKBRIDGE_WLHOOK_TRACE=1
+NOCTALIA_DBUS_ADDRESS=unix:path=/run/user/1000/bus
+NOCTALIA_XDG_RUNTIME_DIR=/run/colle
+NOCTALIA_WAYLAND_DISPLAY=wayland-1
+NOCTALIA_BIN=/usr/bin/noctalia
+NOCTALIA_STDERR_LOG=
+EOF
+}
+
+# /usr/local/bin/noctalia-dt is the entry point niri spawns. It stays a
+# generated regular file (not a link into the version dir): the paths inside
+# come from conf/noctalia-env.conf, so a stack upgrade only rewrites the conf.
+install_noctalia_wrapper() {
+    local version_dir="$1"
+    local template="$version_dir/share/xring-o3/noctalia-dt"
+    local target="${XRING_O3_NOCTALIA_WRAPPER:-/usr/local/bin/noctalia-dt}"
+    local directory temporary
+    [[ "${BUNDLE_LAYOUT:-v1}" == "v2" ]] || return 0
+    [[ -f "$template" ]] || return 0
+    directory="$(dirname -- "$target")"
+    install -d -m 0755 "$directory"
+    temporary="$(mktemp "${directory}/.noctalia-dt.tmp.XXXXXXXX")"
+    sed -e "s|@STACK_CURRENT@|${XRING_O3_MALI_STACK_CURRENT}|g" \
+        -e "s|@NOCTALIA_BIN@|${XRING_O3_NOCTALIA_BIN}|g" \
+        -- "$template" > "$temporary"
+    if grep -q '@STACK_CURRENT@\|@NOCTALIA_BIN@' "$temporary"; then
+        rm -f -- "$temporary"
+        die "share/xring-o3/noctalia-dt 仍有未替换的占位符。"
+    fi
+    chmod 0755 "$temporary"
+    mv -f -- "$temporary" "$target"
+    log "已生成 Noctalia 包装器：$target（dt-retire + hook2 + wl-gone 垫片）"
 }
 
 atomic_symlink() {
@@ -444,9 +650,10 @@ install_stack() {
     rm -rf -- "$existing_backup"
     install_budget_template "$version_dir"
     install_compat_links
+    install_noctalia_wrapper "$version_dir"
     record_version "$VERSION"
 
-    log "安装完成：$version_dir"
+    log "安装完成：$version_dir（布局 ${BUNDLE_LAYOUT:-v1}）"
     log "current -> $(readlink -f -- "$STACK_ROOT/current")"
     log "下一步：确保 Android host 侧 MaliBridge server 正在监听 ${XRING_O3_BRIDGE_SOCKET}，并重启桌面会话。"
 }
@@ -472,17 +679,27 @@ uninstall_stack() {
     fi
     rm -f -- "${XRING_O3_STATE_DIR}/mali-stack.version"
     log "卸载完成。兼容链接仍指向 /opt/mali-stack/current，重新安装前会失效。"
+    if [[ -x "$XRING_O3_NOCTALIA_WRAPPER" ]]; then
+        log "注意：$XRING_O3_NOCTALIA_WRAPPER 保留在原位；重新安装后由安装器覆盖。"
+    fi
 }
 
 show_status() {
     local current="$STACK_ROOT/current"
+    local layout="v1"
+    [[ -f "$current/conf/noctalia-env.conf" ]] && layout="v2"
     printf 'profile=%s\nstack_root=%s\ncurrent=%s\n' \
         "$XRING_O3_PROFILE_ID" "$STACK_ROOT" \
         "$([[ -L "$current" ]] && readlink -f -- "$current" || echo "(未安装)")"
     printf 'version_file=%s\n' \
         "$([[ -r "${XRING_O3_STATE_DIR}/mali-stack.version" ]] && cat "${XRING_O3_STATE_DIR}/mali-stack.version" || echo "(无)")"
-    printf 'icd=%s (%s)\n' "$XRING_O3_MALI_ICD" \
-        "$([[ -f "$XRING_O3_MALI_ICD" ]] && echo present || echo missing)"
+    printf 'layout=%s\n' "$layout"
+    printf 'zc_icd=%s (%s)\n' "$XRING_O3_MALI_ICD_FORMAT" \
+        "$([[ -f "$XRING_O3_MALI_ICD_FORMAT" ]] && echo present || echo missing)"
+    printf 'noctalia_icd=%s (%s)\n' "$XRING_O3_MALI_ICD_HOOK2" \
+        "$([[ -f "$XRING_O3_MALI_ICD_HOOK2" ]] && echo present || echo missing)"
+    printf 'noctalia_wrapper=%s (%s)\n' "$XRING_O3_NOCTALIA_WRAPPER" \
+        "$([[ -x "$XRING_O3_NOCTALIA_WRAPPER" ]] && echo present || echo missing)"
     printf 'bridge_socket=%s (%s)\n' "$XRING_O3_BRIDGE_SOCKET" \
         "$([[ -S "$XRING_O3_BRIDGE_SOCKET" ]] && echo listening || echo absent)"
 }
@@ -534,6 +751,10 @@ bundle 必须包含 SHA256SUMS 与以下 artifact：
   share/applications/mb-tray.desktop
   share/icons/hicolor/.../mb-budget.svg 或 .png
   etc/budget.conf
+
+布局 v2 还要整组提供 kopper Mesa、format ICD、wl-gone 垫片与 noctalia 模板；
+缺任一项时安装器拒绝安装，避免装出未经设备验证的混合组合。
+详见 scripts/device/xring-o3/README.md。
 
 目前没有已发布的 bundle；请先构建并发布上述 artifact，再带 URL 或本地目录运行。
 EOF
