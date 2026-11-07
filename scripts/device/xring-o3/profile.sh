@@ -54,6 +54,9 @@ XRING_O3_PROFILE_LIB_DIR="${XRING_O3_PROFILE_LIB_DIR:-/usr/local/lib/droidspaces
 XRING_O3_WAIT_BRIDGE="${XRING_O3_WAIT_BRIDGE:-${XRING_O3_PROFILE_LIB_DIR}/wait-for-bridge.sh}"
 XRING_O3_WAIT_BRIDGE_LINK="${XRING_O3_WAIT_BRIDGE_LINK:-/usr/local/bin/wait-for-mali-bridge}"
 XRING_O3_DESKTOP_SESSION_UNIT="${XRING_O3_DESKTOP_SESSION_UNIT:-/etc/systemd/system/desktop-session.service}"
+# Session-level GPU environment for the niri backend. start-desktop-session.sh
+# sources this exact path, so it must exist in the profile directory.
+XRING_O3_SESSION_GPU_ENV="${XRING_O3_SESSION_GPU_ENV:-${XRING_O3_PROFILE_LIB_DIR}/session-gpu-env.sh}"
 
 export XRING_O3_PROFILE_ID XRING_O3_DEVICE_NAME XRING_O3_GPU_NAME
 export XRING_O3_ANDROID_VERSION XRING_O3_DISPLAY_BACKEND
@@ -70,6 +73,7 @@ export XRING_O3_BRIDGE_SOCKET XRING_O3_BRIDGE_CONTROL_SOCKET
 export XRING_O3_BUDGET_CONF XRING_O3_BUDGET_TEMPLATE
 export XRING_O3_DEVICE_MARKER XRING_O3_STATE_DIR XRING_O3_PROFILE_LIB_DIR
 export XRING_O3_WAIT_BRIDGE XRING_O3_WAIT_BRIDGE_LINK XRING_O3_DESKTOP_SESSION_UNIT
+export XRING_O3_SESSION_GPU_ENV
 
 xring_o3_profile_is_active() {
     if [[ "${DROIDSPACES_DEVICE_PROFILE:-}" == "$XRING_O3_PROFILE_ID" ]]; then
@@ -161,6 +165,8 @@ xring_o3_show() {
         "$XRING_O3_WL_GONE_SHIM" "$XRING_O3_NOCTALIA_WRAPPER"
     printf 'WAIT_BRIDGE=%s (%s)\n' "$XRING_O3_WAIT_BRIDGE_LINK" \
         "$([[ -x "$XRING_O3_WAIT_BRIDGE_LINK" ]] && echo present || echo missing)"
+    printf 'SESSION_GPU_ENV=%s (%s)\n' "$XRING_O3_SESSION_GPU_ENV" \
+        "$([[ -r "$XRING_O3_SESSION_GPU_ENV" ]] && echo present || echo missing)"
     printf 'DESKTOP_UNIT=%s (%s)\n' "$XRING_O3_DESKTOP_SESSION_UNIT" \
         "$([[ -f "$XRING_O3_DESKTOP_SESSION_UNIT" ]] && echo present || echo missing)"
     printf 'MALI_ICD=%s\nVKBRIDGE_SOCKET=%s\nBUDGET_CONF=%s\n' \
@@ -204,6 +210,19 @@ xring_o3_link_wait_bridge() {
     printf 'bridge gate installed: %s -> %s\n' "$link" "$target"
 }
 
+# Session-level GPU environment for niri. start-desktop-session.sh sources this
+# exact path, so --install fails when it is absent: a missing file silently
+# drops the whole session back to the distribution Mesa, which is the failure
+# this file exists to prevent.
+xring_o3_install_session_gpu_env() {
+    local helper="$XRING_O3_SESSION_GPU_ENV"
+    if [[ ! -r "$helper" ]]; then
+        printf '缺少会话级 GPU 环境脚本：%s（niri 会话会回退到发行版 Mesa）\n' "$helper" >&2
+        return 1
+    fi
+    printf 'session GPU env installed: %s\n' "$helper"
+}
+
 # The unit is written by configure-desktop.sh after this profile runs, so a
 # missing unit is reported, not treated as a fatal error. Once the unit exists,
 # its ExecStartPre must call the gate, or the desktop can race the host server.
@@ -225,6 +244,7 @@ case "${1:-}" in
     --install)
         xring_o3_install_marker || exit 1
         xring_o3_link_wait_bridge || exit 1
+        xring_o3_install_session_gpu_env || exit 1
         xring_o3_validate_desktop_unit
         ;;
     --show)
@@ -243,6 +263,7 @@ case "${1:-}" in
 
   --install  写入 ${XRING_O3_DEVICE_MARKER}、创建 Mali stack 目录，并安装
              ${XRING_O3_WAIT_BRIDGE_LINK}（等待 mali.sock 与 control.sock）
+             与会话级 GPU 环境 ${XRING_O3_SESSION_GPU_ENV}
   --show     打印设备档案
   --env      打印应写入 /etc/environment 的赋值
   --check    校验当前 RootFS 是否为 ${XRING_O3_PROFILE_ID}

@@ -16,7 +16,17 @@ case "${DESKTOP:-}:${DISPLAY_BACKEND:-}" in
     # 的系统路径，不依赖用户家目录里的副本；XDG_RUNTIME_DIR 由脚本自己算，
     # systemd 用户管理器不可用时它只告警继续，所以不需要用户级单元先起来。
     anland-next:anland-wayland) command_line='exec /usr/bin/anland-session' ;;
-    niri:anland-wayland) command_line='exec /usr/bin/niri-anland' ;;
+    # niri 会话使用设备上已验证的 kopper + format 组合：会话级环境与 Android host 侧
+    # gpu-app-bridge 一致，niri、Xwayland 和 niri 派生的应用都从这套 Mesa/ICD 启动。
+    # 未安装 Mali stack 时该脚本不导出任何变量，回退到 /etc/environment。
+    niri:anland-wayland)
+        session_gpu_env="${XRING_O3_SESSION_GPU_ENV:-/usr/local/lib/droidspaces/device/xring-o3/session-gpu-env.sh}"
+        if [[ -r "$session_gpu_env" ]]; then
+            # shellcheck source=device/xring-o3/session-gpu-env.sh
+            source "$session_gpu_env"
+        fi
+        command_line='exec /usr/bin/niri-anland'
+        ;;
     hyprland:anland-wayland) command_line='exec /usr/bin/hyprland-anland' ;;
     mango:anland-wayland) command_line='exec /usr/bin/mango-anland' ;;
     denial:anland-wayland) command_line='exec /usr/bin/denial-anland' ;;

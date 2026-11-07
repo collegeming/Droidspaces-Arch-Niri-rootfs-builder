@@ -22,20 +22,25 @@ this branch's Mali-only installer; do not build them from this branch.
 
 The bundle carries two validated pairs, and each consumer gets exactly one of
 them. A consumer never picks up one half of a pair from another consumer's
-environment. The third row is the session-wide fallback for consumers that have
-no wrapper of their own.
+environment.
 
 | Consumer | Entry point | Mesa tree | MaliBridge client | Environment source |
 |---|---|---|---|---|
+| niri session: niri, Xwayland, terminals, spawned apps | `start-desktop-session.sh` (niri branch) | `mesa/kopper` (kopper-retire) | `vkbridge/format` via `droidbridge-format.json` | `session-gpu-env.sh` reads `conf/zc-env.conf` |
 | Chrome, DBX | `/usr/local/bin/zc-run` | `mesa/kopper` (kopper-retire) | `vkbridge/format` via `droidbridge-format.json` | `${ZC_PREFIX}/conf/zc-env.conf` |
-| Noctalia panel | `/usr/local/bin/noctalia-dt` | `mesa` (dt-retire) | `vkbridge` via `droidbridge_icd.json` (hook2) | `conf/noctalia-env.conf` |
-| niri itself and other children (terminals, panels, Xwayland helpers) | inherited session env | distribution Mesa | `droidbridge_icd.json` through `VK_DRIVER_FILES` | `/etc/environment`, written by `profile.sh --env` |
+| Noctalia panel | `/usr/local/bin/noctalia-dt` | `mesa` (dt-retire) | `vkbridge` via `droidbridge_icd.json` (hook2) | `conf/noctalia-env.conf`, overriding the session pair |
+| No stack installed yet | any of the above | distribution Mesa | `droidbridge_icd.json` through `VK_DRIVER_FILES` | `/etc/environment`, written by `profile.sh --env` |
 
-On the device, `/usr/local/bin/gpu-app-bridge` is the `desktop-session` ExecStart
-and loads the kopper pair for the whole niri session, which Chrome and DBX then
-inherit. This branch's installer does not install that wrapper: in an image built
-here the session-level values come from `/etc/environment` (third row), and
-zc-run applies the kopper pair per launch from `conf/zc-env.conf`.
+The device loads the session pair through `/usr/local/bin/gpu-app-bridge` as the
+`desktop-session` ExecStart. This branch reproduces that in
+`start-desktop-session.sh` for the niri backend only: it sources
+`session-gpu-env.sh` before building the session command, so niri and everything
+it spawns start on kopper + format. Other desktops keep the previous behaviour.
+
+`session-gpu-env.sh` exports nothing when `conf/zc-env.conf` is missing or names
+files that are not installed, so an image without a Mali stack boots on
+`/etc/environment` as before. Noctalia is unaffected either way: `noctalia-dt`
+replaces `LD_LIBRARY_PATH`, `VK_DRIVER_FILES` and `LD_PRELOAD` with its own pair.
 
 The device runs the same pairs:
 
@@ -48,10 +53,12 @@ The two MaliBridge builds differ on purpose: hook2 carries `format-capacity`,
 `wsi-lifecycle`, `wl-surface-gone` and the hook2 teardown patch, while the
 zc-run chain runs the `format-capacity` build alone.
 
-`profile.sh --env` writes the session-wide fallback only: no `LD_PRELOAD`, no
-`LD_LIBRARY_PATH` pinning a Mesa tree. It keeps `VK_DRIVER_FILES` on
-`droidbridge_icd.json` because that manifest exists in both bundle layouts, and
-it is the last-resort value for a consumer with no wrapper of its own.
+`profile.sh --env` writes `/etc/environment` as the fallback for a rootfs that
+has no Mali stack installed, or whose session script found nothing to load: no
+`LD_PRELOAD`, no `LD_LIBRARY_PATH` pinning a Mesa tree. It keeps
+`VK_DRIVER_FILES` on `droidbridge_icd.json` because that manifest exists in both
+bundle layouts. Once a stack is installed, the session pair comes from
+`conf/zc-env.conf` and this file only covers consumers outside the niri session.
 
 ## What lives in the rootfs
 
@@ -62,6 +69,7 @@ it is the last-resort value for a consumer with no wrapper of its own.
 | `/opt/mali-stack/current/conf/zc-env.conf` | Generated; zc-run reads `ZC_MESA_DIR`, `ZC_ICD`, `ZC_EGL_VENDOR_JSON`, bridge socket |
 | `/opt/mali-stack/current/conf/noctalia-env.conf` | Generated; paths that `/usr/local/bin/noctalia-dt` exports |
 | `/usr/local/bin/noctalia-dt` | Generated wrapper (dt-retire + hook2 + wl-gone shim); niri spawns it at startup |
+| `/usr/local/lib/droidspaces/device/xring-o3/session-gpu-env.sh` | Sourced by `start-desktop-session.sh` for niri; exports the session kopper + format pair |
 | `/usr/local/lib/droidspaces/device/xring-o3/` | profile, installer, bundle check, card0 and Anland helpers |
 | `/etc/xring-o3/device-profile` | Marks the rootfs as `xring-o3`; `install-mesa` refuses otherwise |
 | `/etc/environment` | Zink / MaliBridge / WebKit / card0 environment written by `niri.sh` |
@@ -206,10 +214,16 @@ ZC_PREFIX=/opt/mali-stack/current
 ZC_CLASSIFY=/opt/mali-stack/current/lib/zc-run/zc-classify
 ```
 
-These values are the session-wide fallback described under
-[Consumer to stack mapping](#consumer-to-stack-mapping): no `LD_PRELOAD`, no
-`LD_LIBRARY_PATH`, and `VK_DRIVER_FILES` on the manifest that exists in both
-bundle layouts. zc-run and `noctalia-dt` override the pair they need.
+These values are the fallback described under
+[Consumer to stack mapping](#consumer-to-stack-mapping): they carry no
+`LD_PRELOAD` and no `LD_LIBRARY_PATH`, and `VK_DRIVER_FILES` points at the
+manifest that exists in both bundle layouts.
+
+When a bundle is installed, `start-desktop-session.sh` sources
+`session-gpu-env.sh`, which replaces the GL/Vulkan half of this environment for
+the niri session with the kopper + format pair from `conf/zc-env.conf`, and
+drops `LD_PRELOAD`, `VK_ICD_FILENAMES` and `LIBGL_ALWAYS_SOFTWARE` for that
+session. `zc-run` and `noctalia-dt` then override the pair they need per app.
 
 `FD_FORCE_KGSL`, `FD_DEV_FEATURES`, `TU_DEBUG`,
 `MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE`, `LIBGL_ALWAYS_SOFTWARE`, and
@@ -309,6 +323,7 @@ profile=/usr/local/lib/droidspaces/device/xring-o3/profile.sh
 /usr/local/lib/droidspaces/device/xring-o3/card0.sh --check
 /usr/local/lib/droidspaces/device/xring-o3/anland.sh --check
 /usr/local/bin/wait-for-mali-bridge 0      # one-shot readiness probe, always exits 0
+sh -c '. /usr/local/lib/droidspaces/device/xring-o3/session-gpu-env.sh; env | grep -E "^(LD_LIBRARY_PATH|VK_DRIVER_FILES)="'
 zc-run --print-env -- google-chrome       # INJECT must include global-env
 vulkaninfo --summary
 eglinfo -B 2>/dev/null | head
