@@ -1,8 +1,10 @@
 # XRING-O3 Mali stack (rootfs side)
 
-This branch (`xring-o3-mali-device`) replaces the Adreno/KGSL path with the
-XRING-O3 + MaliBridge path used by Xiaomi Pad 9 Pro Max. The build plumbing in
-this branch targets Arch Linux ARM (`Arch.Dockerfile`). Other distribution
+This branch (`xring-o3-dual-stack`) replaces the Adreno/KGSL path with the
+XRING-O3 + MaliBridge path used by Xiaomi Pad 9 Pro Max. The device runs two
+coherent GL/Vulkan stacks side by side; the bundle and installer carry both, so
+a fresh image reproduces the same per-app mapping. The build plumbing in this
+branch targets Arch Linux ARM (`Arch.Dockerfile`). Other distribution
 Dockerfiles are untouched, but their `install-mesa --1` calls are rejected by
 this branch's Mali-only installer; do not build them from this branch.
 
@@ -16,18 +18,57 @@ this branch's Mali-only installer; do not build them from this branch.
 | Graphics transport | GL → Zink → MaliBridge → host server → Mali |
 | Bridge socket | `/opt/mb-sock/mali.sock` (container view) |
 
+## Consumer to stack mapping
+
+The bundle carries two validated pairs, and each consumer gets exactly one of
+them. A consumer never picks up one half of a pair from another consumer's
+environment. The third row is the session-wide fallback for consumers that have
+no wrapper of their own.
+
+| Consumer | Entry point | Mesa tree | MaliBridge client | Environment source |
+|---|---|---|---|---|
+| Chrome, DBX | `/usr/local/bin/zc-run` | `mesa/kopper` (kopper-retire) | `vkbridge/format` via `droidbridge-format.json` | `${ZC_PREFIX}/conf/zc-env.conf` |
+| Noctalia panel | `/usr/local/bin/noctalia-dt` | `mesa` (dt-retire) | `vkbridge` via `droidbridge_icd.json` (hook2) | `conf/noctalia-env.conf` |
+| niri itself and other children (terminals, panels, Xwayland helpers) | inherited session env | distribution Mesa | `droidbridge_icd.json` through `VK_DRIVER_FILES` | `/etc/environment`, written by `profile.sh --env` |
+
+On the device, `/usr/local/bin/gpu-app-bridge` is the `desktop-session` ExecStart
+and loads the kopper pair for the whole niri session, which Chrome and DBX then
+inherit. This branch's installer does not install that wrapper: in an image built
+here the session-level values come from `/etc/environment` (third row), and
+zc-run applies the kopper pair per launch from `conf/zc-env.conf`.
+
+The device runs the same pairs:
+
+| Chain | Device Mesa directory | Device MaliBridge run | Extra device environment |
+|---|---|---|---|
+| zc-run | `/opt/mesa-kopper-retire-42194036783/candidate/usr/lib` | `mb-format-42268762436` | `__EGL_VENDOR_LIBRARY_FILENAMES=/opt/mesa-kopper-retire-42194036783/default-egl-vendor.json`, `VKBRIDGE_LOG_LEVEL=1` |
+| Noctalia | `/opt/mesa-dt-retire-42369276110/candidate/usr/lib` | `mb-hook2-42378271764` | `LD_PRELOAD=/opt/mb-hook2-42378271764/shim/libvkb_wl_gone.so`, `VKBRIDGE_LOG_LEVEL=2`, `VKBRIDGE_WLHOOK_TRACE=1`, `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus` |
+
+The two MaliBridge builds differ on purpose: hook2 carries `format-capacity`,
+`wsi-lifecycle`, `wl-surface-gone` and the hook2 teardown patch, while the
+zc-run chain runs the `format-capacity` build alone.
+
+`profile.sh --env` writes the session-wide fallback only: no `LD_PRELOAD`, no
+`LD_LIBRARY_PATH` pinning a Mesa tree. It keeps `VK_DRIVER_FILES` on
+`droidbridge_icd.json` because that manifest exists in both bundle layouts, and
+it is the last-resort value for a consumer with no wrapper of its own.
+
 ## What lives in the rootfs
 
 | Path | Purpose |
 |---|---|
 | `/opt/mali-stack/<version>` | Immutable Mali stack bundle payload |
 | `/opt/mali-stack/current` | Atomic symlink to the active version |
-| `/usr/local/lib/droidspaces/device/xring-o3/` | profile, installer, card0 and Anland helpers |
+| `/opt/mali-stack/current/conf/zc-env.conf` | Generated; zc-run reads `ZC_MESA_DIR`, `ZC_ICD`, `ZC_EGL_VENDOR_JSON`, bridge socket |
+| `/opt/mali-stack/current/conf/noctalia-env.conf` | Generated; paths that `/usr/local/bin/noctalia-dt` exports |
+| `/usr/local/bin/noctalia-dt` | Generated wrapper (dt-retire + hook2 + wl-gone shim); niri spawns it at startup |
+| `/usr/local/lib/droidspaces/device/xring-o3/` | profile, installer, bundle check, card0 and Anland helpers |
 | `/etc/xring-o3/device-profile` | Marks the rootfs as `xring-o3`; `install-mesa` refuses otherwise |
 | `/etc/environment` | Zink / MaliBridge / WebKit / card0 environment written by `niri.sh` |
 | `/etc/systemd/system/xring-o3-card0.service` | Oneshot that creates `/dev/dri/card0` when the container has `CAP_MKNOD` |
 | `/etc/systemd/system/xring-o3-anland-check.service` | Non-blocking boot check for `/run/display.sock` |
 | `/opt/mb-sock/budget.conf` | Created from the bundle template only when absent; host server reads it |
+| `/usr/local/bin/wait-for-mali-bridge` | Symlink to `wait-for-bridge.sh`; `desktop-session.service` runs it as `ExecStartPre` |
 | `/usr/local/bin/{zc-run,zc-sync,mbctl,mb-tray}` | Compatibility symlinks into `current/bin` |
 
 The bundle does **not** contain the MaliBridge server, the Anland daemon, the
@@ -40,10 +81,19 @@ bundle containing all of these exists:
 
 ```text
 SHA256SUMS                                      # covers every regular file below
-mesa/candidate/usr/lib/libEGL_mesa.so.0         # Mesa dt-retire, Arch ARM build
+manifest.env                                    # optional: MALI_STACK_VERSION=<version>
+mesa/candidate/usr/lib/libEGL_mesa.so.0         # dt-retire build
+mesa/candidate/usr/lib/libgallium-<version>.so
 mesa/candidate/usr/lib/dri/zink_dri.so
-vkbridge/libvulkan_droidbridge.so               # glibc MaliBridge client ICD, aarch64
-share/vulkan/icd.d/droidbridge_icd.json         # references libvulkan_droidbridge.so
+mesa/kopper/usr/lib/libEGL_mesa.so.0            # kopper-retire build
+mesa/kopper/usr/lib/libgallium-<version>.so
+mesa/kopper/usr/lib/dri/zink_dri.so
+vkbridge/libvulkan_droidbridge.so               # hook2 client (Noctalia)
+vkbridge/format/libvulkan_droidbridge.so        # format-capacity client (zc-run)
+vkbridge/shim/libvkb_wl_gone.so                 # Noctalia LD_PRELOAD shim
+share/vulkan/icd.d/droidbridge_icd.json         # -> ../../../vkbridge/libvulkan_droidbridge.so
+share/vulkan/icd.d/droidbridge-format.json      # -> ../../../vkbridge/format/libvulkan_droidbridge.so
+share/xring-o3/noctalia-dt                      # wrapper template
 lib/libgbm.so.1                                 # complete 38-symbol libgbm shim
 lib/libdrmfake.so                               # libdrm shim for card0/WebKit probes
 lib/zc-run/zc-classify
@@ -54,16 +104,47 @@ bin/mb-tray
 share/applications/mb-tray.desktop
 share/icons/hicolor/scalable/apps/mb-budget.svg # or 48/64/128/256 px PNG
 etc/budget.conf                                 # template; server path is /opt/mb-sock/budget.conf
-manifest.env                                    # optional: MALI_STACK_VERSION=<version>
 ```
 
 `SHA256SUMS` must use the plain `sha256sum` format: 64 hex characters, two
 spaces, a relative path without whitespace. Absolute paths, `..`, symlinks, and
-files not listed in `SHA256SUMS` are rejected. The installer also requires the
-ICD, libgbm shim, libdrmfake, and Mesa libraries to be AArch64 ELF shared objects.
+files not listed in `SHA256SUMS` are rejected. The installer also requires every
+ELF in the bundle to be an AArch64 shared object.
 
-`mesa/candidate/usr/lib` is the layout expected by `zc-run`. A flat `mesa/usr/lib`
-tree is not accepted; repack it as `mesa/candidate/usr/lib`.
+`mesa/candidate/usr/lib`, `mesa/kopper/usr/lib`, `vkbridge/libvulkan_droidbridge.so`
+and `share/vulkan/icd.d/droidbridge_icd.json` form layout v1 and stay required, so
+an older bundle keeps installing. The kopper tree, the format client, the shim,
+`droidbridge-format.json` and the wrapper template form layout v2 and are
+all-or-nothing: a bundle carrying only part of that group is rejected, because
+it would install a Mesa and MaliBridge pair that the device never ran.
+
+Bundle notes:
+
+- `dri/zink_dri.so` is the dereferenced `libdril_dri.so`; bundles contain no
+  symlinks. `libEGL_mesa.so.0` is the dereferenced `libEGL_mesa.so.0.0.0`.
+- `libEGL_mesa.so.0` and `dri/zink_dri.so` are byte-identical between the two
+  Mesa builds; only `libgallium` differs. Each tree still keeps its own copy, so
+  a consumer cannot reach into the other build.
+- Both ICD manifests use a bundle-relative `library_path`, so the installed
+  manifest keeps working after the bundle is moved to `/opt/mali-stack/<version>`.
+- `mesa/kopper` has no `candidate/` level in the bundle. zc-run builds its Mesa
+  search path as `$ZC_MESA_DIR/candidate/usr/lib`, so the installer creates
+  `mesa/kopper/candidate/usr -> ../usr` inside the installed version directory.
+  That link is install-time output, never bundle content.
+
+## Installed tree (generated)
+
+| Path | Content |
+|---|---|
+| `conf/zc-env.conf` | `ZC_MESA_DIR=…/mesa/kopper`, `ZC_ICD=…/droidbridge-format.json`, EGL vendor manifest, bridge socket, log level, DRM device |
+| `conf/noctalia-env.conf` | dt-retire Mesa directory, hook2 ICD, shim path, `VKBRIDGE_LOG_LEVEL=2`, `VKBRIDGE_WLHOOK_TRACE=1`, DBus address, `XDG_RUNTIME_DIR`, noctalia binary |
+| `mesa/default-egl-vendor.json` | EGL vendor manifest for `mesa/candidate/usr/lib/libEGL_mesa.so.0` |
+| `mesa/kopper/default-egl-vendor.json` | EGL vendor manifest for `mesa/kopper/usr/lib/libEGL_mesa.so.0` |
+| `mesa/kopper/candidate/usr` | Relative symlink to `../usr`, the compat view zc-run expects |
+| `/usr/local/bin/noctalia-dt` | `share/xring-o3/noctalia-dt` with the stack-current and noctalia binary paths filled in |
+
+A v1 bundle installs with `conf/zc-env.conf` on dt-retire + hook2 and no
+`conf/noctalia-env.conf`; the installer logs `布局 v1` in that case.
 
 ## Install / switch
 
@@ -83,9 +164,29 @@ sudo MALI_STACK_VERSION=local-test \
 The installer stages into `/opt/mali-stack/.staging.<version>.*`, verifies the
 whole payload, renames it to `/opt/mali-stack/<version>`, then replaces
 `/opt/mali-stack/current` via an atomic symlink rename. It never falls back to
-Adreno Mesa, KGSL, or an empty directory. `--status` shows the active version;
+Adreno Mesa, KGSL, or an empty directory. `--status` shows the active version,
+the bundle layout (`v1` or `v2`) and whether the generated configs are present;
 `--uninstall --version <version>` removes a version after dropping `current`.
 Use `--force` only to replace an existing same-version directory.
+
+## Check a bundle
+
+`verify-mali-stack.sh` runs the installer's checks without installing anything.
+It accepts an extracted directory or an archive, and exits non-zero on the first
+failing group:
+
+```sh
+scripts/device/xring-o3/verify-mali-stack.sh /path/to/bundle
+scripts/device/xring-o3/verify-mali-stack.sh mali-stack-2026.11.08-v2.tar.zst
+# PASS layout=v2 files=23 checks=10
+```
+
+It verifies the archive sidecar (`<archive>.sha256`) when present, `SHA256SUMS`
+format and per-file hashes, full file coverage, the absence of symlinks, the
+layout paths, AArch64 ELF identity for every ELF in the bundle, both ICD
+manifests resolving to their own client, and the wrapper template placeholders.
+`.tar.zst` extraction uses the `zstd` CLI, or Python with the `zstandard` module
+when the CLI is absent.
 
 ## Environment written by niri
 
@@ -104,6 +205,11 @@ GDK_BACKEND=wayland
 ZC_PREFIX=/opt/mali-stack/current
 ZC_CLASSIFY=/opt/mali-stack/current/lib/zc-run/zc-classify
 ```
+
+These values are the session-wide fallback described under
+[Consumer to stack mapping](#consumer-to-stack-mapping): no `LD_PRELOAD`, no
+`LD_LIBRARY_PATH`, and `VK_DRIVER_FILES` on the manifest that exists in both
+bundle layouts. zc-run and `noctalia-dt` override the pair they need.
 
 `FD_FORCE_KGSL`, `FD_DEV_FEATURES`, `TU_DEBUG`,
 `MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE`, `LIBGL_ALWAYS_SOFTWARE`, and
@@ -168,17 +274,55 @@ VKBRIDGE_MEM_GUARD=1 \
 Environment wins over `budget.conf`; `mbctl set --persist` writes the file.
 The server also creates `/opt/mb-sock/control.sock`; `mbctl`/`mb-tray` use it.
 
+### Start order
+
+Start the host server first, then the desktop. `desktop-session.service` runs
+`/usr/local/bin/wait-for-mali-bridge 30` as `ExecStartPre`, which waits for
+`mali.sock` **and** `control.sock` to be Unix sockets before niri starts. The
+gate warns and returns 0 after the timeout, so a desktop without the GPU still
+boots; it simply has no hardware renderer.
+
+Readiness covers both sockets: `mali.sock` carries Vulkan/GL traffic and
+`control.sock` is the control channel `mbctl` and `mb-tray` use. A server that
+has created only `mali.sock` is not ready.
+
+A running desktop does not survive the host server going away. Stopping it while
+the desktop runs, for example with the host-side `stop-bridge.sh`, makes niri
+fail with `VK_ERROR_DEVICE_LOST` and the session dies with it. After the server
+is back and both sockets exist, restart the desktop:
+
+```sh
+systemctl restart desktop-session
+```
+
+An automatic unit restart that lands before the server listens starts niri
+without a renderer, and Noctalia never spawns; only a restart after both sockets
+exist restores the GPU session.
+
 ## Quick verification
 
 ```sh
 profile=/usr/local/lib/droidspaces/device/xring-o3/profile.sh
 "$profile" --check
+"$profile" --show
 /usr/local/lib/droidspaces/device/xring-o3/install-mali-stack.sh --status
 /usr/local/lib/droidspaces/device/xring-o3/card0.sh --check
 /usr/local/lib/droidspaces/device/xring-o3/anland.sh --check
+/usr/local/bin/wait-for-mali-bridge 0      # one-shot readiness probe, always exits 0
+zc-run --print-env -- google-chrome       # INJECT must include global-env
 vulkaninfo --summary
 eglinfo -B 2>/dev/null | head
 ```
+
+`--status` reports `layout=v2` when the bundle carries both stacks, plus whether
+the zc-run manifest, the Noctalia manifest and `/usr/local/bin/noctalia-dt`
+exist. `verify-mali-stack.sh` takes the bundle directory or archive, not the
+installed tree: the installed tree carries generated configs and the kopper
+compat link, which the strict bundle rules reject.
+
+`zc-run --print-env` reports `INJECT=global-env` when zc-run applied
+`conf/zc-env.conf` itself instead of inheriting a prepared session environment;
+`INJECT=env-preset` means the session already carried the same kopper pair.
 
 `vulkaninfo` must list the MaliBridge ICD; `eglinfo` must report Zink when the
 Mali stack is active, not llvmpipe. Use `droidspaces-gpu.sh` to switch GL to
