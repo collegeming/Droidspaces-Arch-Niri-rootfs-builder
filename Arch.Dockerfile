@@ -202,8 +202,8 @@ StartupNotify=false
 NoDisplay=true
 EOF
     cat <<'EOF' >> /etc/environment
-XMODIFIERS=@im=fcitx5
-INPUT_METHOD=fcitx5
+XMODIFIERS=@im=fcitx
+INPUT_METHOD=fcitx
 EOF
 fi
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc

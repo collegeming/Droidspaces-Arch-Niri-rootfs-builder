@@ -24,7 +24,7 @@
 set -eu
 umask 022
 
-PREFERENCES_VERSION=2026.11.13
+PREFERENCES_VERSION=2026.11.14
 
 PROFILE=${PREFERENCES_PROFILE:-arch-niri-noctalia}
 FONT_SIZE=${PREFERENCES_FONT_SIZE:-12.0}
@@ -521,7 +521,8 @@ upower qt5-wayland qt6-wayland neovim wl-clipboard xdg-utils xdg-user-dirs"
             warn "以下包安装失败，可在设备上手动补装：$missing"
         fi
     fi
-    rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/* 2>/dev/null || true
+    # 只清下载缓存；保留 sync 数据库，镜像离线时也能直接 pacman -S。
+    rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
     return 0
 }
 
@@ -694,6 +695,7 @@ step_rime_ice() {
     if path_exists /usr/share/rime-data/rime_ice.schema.yaml || \
         path_exists "$USER_HOME/.local/share/fcitx5/rime/rime_ice.schema.yaml"; then
         log "雾凇拼音已存在"
+        rime_deploy_build
         return 0
     fi
     if [ "$OFFLINE" = true ]; then
@@ -707,6 +709,7 @@ step_rime_ice() {
 
     if pacman -S --needed --noconfirm rime-ice-git >/dev/null 2>&1; then
         log "已从 archlinuxcn 安装 rime-ice-git"
+        rime_deploy_build
         return 0
     fi
     if [ -z "$USER_HOME" ] || ! have_bin git; then
@@ -724,10 +727,36 @@ step_rime_ice() {
     if git clone --depth=1 "$ri_src" "$ri_dir" >/dev/null 2>&1; then
         chown -R "$USER_UID:$USER_GID" "$ri_dir" 2>/dev/null || true
         log "已从 GitHub 镜像克隆雾凇拼音到 $ri_dir"
+        rime_deploy_build
         return 0
     fi
     warn "rime-ice 克隆失败（$ri_src）"
     return 1
+}
+
+# 构建期显式部署 Rime：rime_deployer 需要“用户目录 / 共享数据 / 构建目录”
+# 三个路径。留给首次登录部署会让用户在前几十秒看到“rime 没有候选词”。
+rime_deploy_build() {
+    rdb_user=$USER_HOME/.local/share/fcitx5/rime
+    rdb_build=$rdb_user/build
+    if [ -z "$USER_HOME" ] || ! path_exists "$rdb_user"; then
+        return 0
+    fi
+    if ! have_bin rime_deployer; then
+        warn "未找到 rime_deployer，跳过构建期部署"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        log "dry-run: would run rime_deployer for $rdb_user"
+        return 0
+    fi
+    if run_as_user "rime_deployer --build '$rdb_user' /usr/share/rime-data '$rdb_build'" >/dev/null 2>&1; then
+        chown -R "$USER_UID:$USER_GID" "$ROOT$rdb_build" 2>/dev/null || true
+        log "已部署 Rime 构建目录：$rdb_build（$(find "$ROOT$rdb_build" -type f 2>/dev/null | wc -l) 个文件）"
+        return 0
+    fi
+    warn "rime_deployer 执行失败；首次登录时由 fcitx5 再部署"
+    return 0
 }
 
 # 在 pacman.conf 的 [options] 段设置 key = value（value 为空表示裸开关）。
