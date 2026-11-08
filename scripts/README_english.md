@@ -73,25 +73,19 @@ Run interactively from the repository root:
 sudo ./scripts/tui/install-mesa.sh
 ```
 
-With no option, the script probes all three sources and prompts for a choice. Select a source directly for unattended builds:
+On this branch `install-mesa` is a forwarding entry point for the XRING-O3 Mali stack installer and accepts only an offline bundle:
 
 ```bash
-sudo ./scripts/tui/install-mesa.sh --1  # GitHub
-sudo ./scripts/tui/install-mesa.sh --2  # gh-proxy.com
-sudo ./scripts/tui/install-mesa.sh --3  # ghproxy.net
+sudo MALI_STACK_VERSION=<version> \
+  MALI_STACK_BUNDLE_URL=<archive URL> \
+  MALI_STACK_BUNDLE_SHA256=<64 hex characters> \
+  ./scripts/tui/install-mesa.sh
+
+sudo MALI_STACK_VERSION=<version> MALI_STACK_BUNDLE_DIR=<extracted directory> \
+  ./scripts/tui/install-mesa.sh
 ```
 
-The source options are mutually exclusive and apply to both the Mesa and media decode driver downloads. `-1`, `-2`, and `-3` are equivalent short options; use `--help` for built-in help. Third-party sources still require access to `api.github.com` for trusted metadata, plus `jq` and `sha256sum`. Downloads use either `curl` or `wget`.
-
-After installation, persistent package locks are written for each distribution:
-
-| Distribution | Lock location and mechanism |
-| --- | --- |
-| Debian/Ubuntu | `/etc/apt/preferences.d/hold-anland-package` with `Pin-Priority: -1` |
-| Fedora | Installer-managed `exclude` block in `/etc/dnf/dnf.conf` |
-| Arch | Installer-managed `IgnorePkg` block in `/etc/pacman.conf` |
-
-The lock list is generated only from Mesa packages present in the archive. KWin/Xwayland and Mutter/Xwayland are held separately by `install-anland-kde.sh` and `install-anland-gnome.sh`. Managed configuration is idempotent, and unrelated existing configuration is preserved.
+The `-1`/`-2`/`-3` download-source options and the old Mesa/media-decode options are removed and are rejected with an error. `install-mesa --status` and `--uninstall` forward to the Mali stack installer; installation targets, checksums, and rollback are owned by the `xring-o3` device profile.
 
 ## Adding a Desktop Profile
 
@@ -148,7 +142,7 @@ sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
 sudo ./scripts/tui/install-anland-next.sh
 ```
 
-The package carries three prebuilt components: `anland-miniwm`, a Xwayland patched for kgsl/turnip glamor, and a bubblewrap patched for the mountinfo index. The latter two live in `/usr/lib/anland/`, which the session puts first on `PATH`; the distribution binaries are never replaced, so unlike KDE/GNOME **no package locking is needed** — this package overwrites nothing.
+The package carries three prebuilt components: `anland-miniwm`, a Xwayland patched for legacy GPU glamor, and a bubblewrap patched for the mountinfo index. The latter two live in `/usr/lib/anland/`, which the session puts first on `PATH`; the distribution binaries are never replaced, so unlike KDE/GNOME **no package locking is needed** — this package overwrites nothing.
 
 The session itself is the packaged `/usr/bin/anland-session` (session D-Bus + wayland link + rootless Xwayland + mini-wm) together with `/usr/lib/systemd/user/anland-session.service`, and nothing is written into a user's home directory.
 

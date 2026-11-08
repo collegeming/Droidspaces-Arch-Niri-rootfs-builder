@@ -314,7 +314,7 @@ fi
 
 if [[ "${CNB_ROOTFS_LANGUAGE:-}" == zh ]]; then
     release_name='Droidspaces 全桌面 Wayland RootFS（简体中文）'
-    release_body=$'## 简体中文 RootFS\n\n面向 Droidspaces 的 ARM64 滚动 RootFS，提供 Debian 13、Ubuntu 26.04、Fedora 43、Fedora 44 和 Arch Linux 的 Anland Wayland 桌面镜像。\n\n- 覆盖 8 种桌面环境：KDE Plasma、KDE Plasma Mobile、GNOME、Anland Next、Niri、Hyprland、Mango 和 Denial。\n- 共 40 个简体中文 `.tar.xz` 镜像，均面向 ARM64。\n- `rootfs.json` 包含全部中文 RootFS 地址；`rootfs_zh.json` 是订阅清单，包含版本、文件大小、SHA-256 校验值及 CNB 下载地址。\n- 镜像包含 Droidspaces 桌面自动启动配置和高通 Adreno/Mesa 支持。\n\n在 Droidspaces RootFS 管理中添加 `rootfs_zh.json` 即可订阅。本 CNB Release 仅发布简体中文 RootFS，并随每周滚动构建更新。'
+    release_body=$'## 简体中文 RootFS\n\n面向 Droidspaces 的 ARM64 滚动 RootFS，提供 Debian 13、Ubuntu 26.04、Fedora 43、Fedora 44 和 Arch Linux 的 Anland Wayland 桌面镜像。\n\n- 覆盖 8 种桌面环境：KDE Plasma、KDE Plasma Mobile、GNOME、Anland Next、Niri、Hyprland、Mango 和 Denial。\n- 共 40 个简体中文 `.tar.xz` 镜像，均面向 ARM64。\n- `rootfs.json` 包含全部中文 RootFS 地址；`rootfs_zh.json` 是订阅清单，包含版本、文件大小、SHA-256 校验值及 CNB 下载地址。\n- 镜像包含 Droidspaces 桌面自动启动配置和 XRING-O3 Mali/Mesa 支持。\n\n在 Droidspaces RootFS 管理中添加 `rootfs_zh.json` 即可订阅。本 CNB Release 仅发布简体中文 RootFS，并随每周滚动构建更新。'
 fi
 
 # 优先复用调用方已经下载好的本地资产，避免再次下载数十 GiB 附件而耗尽运行器磁盘。

@@ -13,7 +13,6 @@ ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
 ARG ENABLE_srf_ARG
 ARG DISPLAY_BACKEND
-ARG ENABLE_8gen2_wayland_ARG
 ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
@@ -23,6 +22,12 @@ ARG APPLY_PREFERENCES=false
 ARG PREFERENCES_PROFILE=arch-niri-noctalia
 ARG PREFERENCES_STRICT=false
 ######################################################
+
+# 本分支只交付 Arch + niri + XRING-O3 Mali。其它发行版模板保留作历史参考，
+# 但构建时在安装任何软件包之前直接失败，避免产出没有 GPU 栈的镜像。
+RUN echo "错误：本分支只支持 Arch + niri（anland-wayland）配 XRING-O3 Mali；当前模板 Debian-13，DESKTOP=${DESKTOP:-<未设置>}。" >&2; \
+    echo "Error: this branch only supports Arch + niri with XRING-O3 Mali; use Arch.Dockerfile." >&2; \
+    exit 1
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -160,17 +165,6 @@ RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
 # 初始化环境变量文件；桌面专属变量由对应 profile 管理。
 RUN : > /etc/environment
 
-RUN if [ "$ENABLE_mesa_ARG" = "true" ] && [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
-        echo "MESA_LOADER_DRIVER_OVERRIDE=kgsl" >> /etc/environment; \
-        echo "GALLIUM_DRIVER=kgsl" >> /etc/environment; \
-        echo "FD_FORCE_KGSL=1" >> /etc/environment; \
-    fi
-
-# 修复骁龙8 Gen 2 设备在 Wayland 下的花屏问题
-RUN if [ "$ENABLE_8gen2_wayland_ARG" = "true" ]; then \
-        echo "FD_DEV_FEATURES=enable_tp_ubwc_flag_hint=1" >> /etc/environment; \
-    fi
-
 # 音频选择
 RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=unix:/tmp/.pulse-socket" >> /etc/environment; \
@@ -211,25 +205,10 @@ GLFW_IM_MODULE=fcitx
 EOF
     fi
 
-    if [ "$ENABLE_mesa_ARG" = "true" ] && [ "$DISPLAY_BACKEND" != "anland-wayland" ] ; then
-        cat <<'EOF' >> /etc/environment
-MESA_LOADER_DRIVER_OVERRIDE=kgsl
-TU_DEBUG=noconform
-EOF
-    fi
-
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
     /usr/local/sbin/configure-desktop "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME"
     rm -rf /tmp/droidspaces-start
 EOF_RUN
-
-
-# Mesa 驱动适配
-RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
-        /usr/local/sbin/install-mesa --1; \
-    else \
-        echo "--> [跳过] 未开启 Mesa 驱动安装"; \
-    fi
 
 # 安装并配置原生 ARM64 Google Chrome。
 RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"

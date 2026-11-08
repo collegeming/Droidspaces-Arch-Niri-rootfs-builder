@@ -84,7 +84,6 @@ jobs:
       PulseAudio: none
       enable_zh_tz: true
       enable_mesa: true
-      enable_8gen2_wayland: false
       nosnap: true
       enable_systemd257: false
       enable_srf: true
@@ -117,7 +116,6 @@ jobs:
       PulseAudio: none
       enable_zh_tz: false
       enable_mesa: true
-      enable_8gen2_wayland: false
       nosnap: false
       enable_systemd257: false
       enable_srf: false
@@ -179,7 +177,7 @@ jobs:
 
           Each combination is available in Chinese and English, for 80 `.tar.xz` archives in total. Use `rootfs_en.json` or `rootfs_zh.json` as the subscription manifest in Droidspaces RootFS management. The manifests include version, file size, SHA-256 checksum, and download URL for each image.
 
-          The images are built for ARM64 and include Droidspaces desktop auto-start and Qualcomm Adreno/Mesa support. This rolling release is refreshed by the scheduled weekly build.
+          The images are built for ARM64 and include Droidspaces desktop auto-start and XRING-O3 Mali/Mesa support. This rolling release is refreshed by the scheduled weekly build.
 
           ## 中文
 
@@ -189,7 +187,7 @@ jobs:
 
           每种组合均提供中文和英文版本，共 80 个 `.tar.xz` 压缩包。在 Droidspaces RootFS 管理中添加 `rootfs_zh.json` 或 `rootfs_en.json` 订阅清单即可。清单包含每个镜像的版本、文件大小、SHA-256 校验值和下载地址。
 
-          镜像面向 ARM64 构建，包含 Droidspaces 桌面自动启动配置和高通 Adreno/Mesa 支持。本滚动 Release 由每周定时构建更新。
+          镜像面向 ARM64 构建，包含 Droidspaces 桌面自动启动配置和 XRING-O3 Mali/Mesa 支持。本滚动 Release 由每周定时构建更新。
           EOF
           {
             printf '\n## Build information / 构建信息\n\n'

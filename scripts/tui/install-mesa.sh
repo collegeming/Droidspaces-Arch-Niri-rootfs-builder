@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Compatibility entry point for the TUI/build that used to call install-mesa.
 #
-# On this branch there is no Adreno Mesa, no msm_drm_drv_video.so and no KGSL
-# source selection. The installer is a thin dispatcher to the XRING-O3 Mali
-# stack installer; every Adreno-only option is rejected explicitly instead of
-# silently doing nothing.
+# On this branch there is no distribution Mesa path, no msm media decoder and
+# no legacy GPU source selection. The installer is a thin dispatcher to the
+# XRING-O3 Mali stack installer; every retired option is rejected explicitly
+# instead of silently doing nothing.
 
 set -euo pipefail
 
@@ -30,24 +30,24 @@ install-mesa 在 xring-o3 分支上是 Mali stack 安装器的转发入口。
   install-mesa --status
   install-mesa --uninstall [--version <版本>]
 
-Adreno KGSL、Turnip、msm_drm_drv_video.so 和 -1/-2/-3 下载源参数均不可用。
+旧的高通 GPU 安装选项、msm 媒体解码和 -1/-2/-3 下载源参数均不可用。
 EOF
         exit 0
         ;;
 esac
 
 [[ -r "$PROFILE_FILE" ]] || die \
-    "缺少 XRING-O3 设备档案：$PROFILE_FILE。该分支不提供 Adreno/KGSL 路径。"
+    "缺少 XRING-O3 设备档案：$PROFILE_FILE。该分支只提供 XRING-O3/Mali 路径。"
 # shellcheck source=device/xring-o3/profile.sh
 source "$PROFILE_FILE"
 [[ -x "$MALI_INSTALLER" ]] || die "缺少 Mali stack 安装器：$MALI_INSTALLER"
 
 case "${1:-}" in
     -1|--1|-2|--2|-3|--3)
-        die "Adreno Mesa 下载源参数（$1）已移除。XRING-O3 分支请使用 MALI_STACK_BUNDLE_URL + MALI_STACK_BUNDLE_SHA256，或 MALI_STACK_BUNDLE_DIR。"
+        die "旧的 Mesa 下载源参数（$1）已移除。XRING-O3 分支请使用 MALI_STACK_BUNDLE_URL + MALI_STACK_BUNDLE_SHA256，或 MALI_STACK_BUNDLE_DIR。"
         ;;
     --mesa-only|--media-only|--choose-version)
-        die "Adreno Mesa/媒体解码选项（$1）已移除。XRING-O3 只安装 Mesa dt-retire + MaliBridge bundle。"
+        die "旧的 Mesa/媒体解码选项（$1）已移除。XRING-O3 只安装 Mesa dt-retire + MaliBridge bundle。"
         ;;
 esac
 

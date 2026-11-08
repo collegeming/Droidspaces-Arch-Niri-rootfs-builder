@@ -76,6 +76,49 @@ EOF
     chmod 0755 "$kate_wrapper"
 }
 
+configure_niri_tray_autostart() {
+    local username="$1"
+    local default_config="" candidate target
+    local -a targets=(
+        "$rootfs/home/$username/.config/niri/config.kdl"
+        "$rootfs/etc/skel/.config/niri/config.kdl"
+    )
+
+    for candidate in \
+        "$rootfs/usr/share/doc/niri/default-config.kdl" \
+        "$rootfs/usr/share/doc/niri-anland/default-config.kdl"; do
+        if [[ -f "$candidate" ]]; then
+            default_config="$candidate"
+            break
+        fi
+    done
+
+    for target in "${targets[@]}"; do
+        if [[ ! -e "$target" ]]; then
+            if [[ -z "$default_config" ]]; then
+                echo "--> [跳过] 未找到 niri 默认配置，无法写入 mb-tray 自启动：$target" >&2
+                continue
+            fi
+            install -D -m 0644 "$default_config" "$target"
+        fi
+        if [[ ! -f "$target" ]]; then
+            echo "--> [跳过] niri 配置不是普通文件，未写入 mb-tray 自启动：$target" >&2
+            continue
+        fi
+        if grep -q 'droidspaces: mb-tray autostart' "$target"; then
+            continue
+        fi
+        # spawn-sh 在二进制缺失时只让这条启动命令返回非零，niri 会话继续运行。
+        {
+            printf '\n'
+            printf '%s\n' '// >>> droidspaces: mb-tray autostart (no-op without the Mali stack)'
+            printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/mb-tray ] && exec /usr/local/bin/mb-tray"'
+            printf '%s\n' '// <<< droidspaces: mb-tray autostart'
+        } >> "$target"
+        echo "--> 已写入 mb-tray 自启动：$target"
+    done
+}
+
 [[ "$desktop" =~ ^(none|[a-z][a-z0-9-]*)$ ]] || { echo "无效的桌面：$desktop" >&2; exit 1; }
 case "$backend" in x11|anland-wayland) ;; *) echo "无效的显示后端：$backend" >&2; exit 1 ;; esac
 case "$autostart" in true|false) ;; *) echo "无效的桌面自启动值：$autostart" >&2; exit 1 ;; esac
@@ -121,6 +164,10 @@ fi
 
 if [[ "$desktop" == anland-next ]]; then
     configure_anland_next_runtime
+fi
+
+if [[ "$desktop" == niri ]]; then
+    configure_niri_tray_autostart "$username"
 fi
 
 if [[ "$desktop" == kde ]]; then

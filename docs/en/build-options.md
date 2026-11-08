@@ -39,8 +39,7 @@ Choose the target, desktop, display backend, and optional features on the GitHub
 | `display_backend` | `x11` / `anland-wayland` | Defaults to Wayland in the Chinese workflow and X11 in the English workflow; Arch KDE and some profiles force Wayland. |
 | `PulseAudio` | `socket` / `tcp` / `none`; default `socket` | X11 audio forwarding; Anland sets this to `none`. |
 | `enable_zh_tz` | `true` / `false` | Installs Chinese locale and Shanghai timezone; defaults differ by workflow. |
-| `enable_mesa` | `true` / `false`; default `true` | Adds Snapdragon GPU/Mesa support. |
-| `enable_8gen2_wayland` | `true` / `false`; default `false` | Sets the Turnip UBWC Wayland workaround for relevant devices. |
+| `enable_mesa` | `true` / `false`; default `true` | Adds the XRING-O3 Mali/Mesa stack. Only Arch + niri is supported on this branch. |
 | `nosnap` | `true` / `false` | Ubuntu only: removes Snap and prevents APT from reinstalling it; defaults differ by workflow. |
 | `enable_systemd257` | `true` / `false`; default `false` | Tries the systemd 257 package family for old Android kernels; only `none` and standard `KDE` are supported. |
 | `enable_srf` | `true` / `false` | Installs Fcitx5; enabled by default in the Chinese workflow, disabled in English. |

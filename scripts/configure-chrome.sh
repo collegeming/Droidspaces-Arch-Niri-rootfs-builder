@@ -123,20 +123,30 @@ install_chrome
 [[ "$display_backend" == anland-wayland ]] || exit 0
 
 install -d -m 0755 "$wrapper_dir"
+# 与设备上验证过的包装器一致：GPU/零拷贝环境与 Chromium 参数由 zc-run 统一
+# 注入，这里只补需要强制开启的 VA-API 特性，避免两处各写一份 GPU 变量。
 cat > "$wrapper" <<'EOF'
 #!/bin/sh
-set -eu
-
-exec /opt/google/chrome/google-chrome \
-    --ozone-platform=wayland \
-    --render-node-override=/dev/dri/card0 \
-    --ignore-gpu-blocklist \
-    --use-angle=vulkan \
+# Thin alias: GPU/zero-copy env and Chromium flags are owned by zc-run.
+exec /usr/local/bin/zc-run --class chromium /opt/google/chrome/google-chrome \
     --enable-features=VaapiVideoDecodeLinux,VaapiVideoDecoder,VaapiVideoDecodeLinuxGL \
     "$@"
 EOF
 chmod 0755 "$wrapper"
 ln -sfn -- google-chrome "${wrapper_dir}/google-chrome-stable"
+
+# DBX/WebKit 只在镜像里已经装了 DBX 时创建别名；没有 DBX 的构建继续成功。
+if [[ -x "${rootfs}/usr/bin/dbx" ]]; then
+    dbx_wrapper="${wrapper_dir}/dbx-dmabuf"
+    cat > "$dbx_wrapper" <<'EOF'
+#!/bin/sh
+# Thin alias: zc-run webkit owns WEBKIT_*/libdrmfake/bridge env.
+exec /usr/local/bin/zc-run --class webkit /usr/bin/dbx "$@"
+EOF
+    chmod 0755 "$dbx_wrapper"
+else
+    echo "--> [跳过] 未安装 DBX，不创建 dbx-dmabuf 别名"
+fi
 
 for desktop_file in \
     "${rootfs}/usr/share/applications/google-chrome.desktop" \

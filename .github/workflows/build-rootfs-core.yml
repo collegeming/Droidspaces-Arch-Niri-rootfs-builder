@@ -36,9 +36,6 @@ on:
       enable_mesa:
         required: true
         type: boolean
-      enable_8gen2_wayland:
-        required: true
-        type: boolean
       nosnap:
         required: true
         type: boolean
@@ -478,7 +475,6 @@ jobs:
             -h "${{ inputs.enable_srf }}" \
             -n "${{ inputs.nosnap }}" \
             -S "${{ inputs.enable_systemd257 }}" \
-            -t "${{ inputs.enable_8gen2_wayland }}" \
             -u "$CUSTOM_USERNAME"
 
       - name: ${{ inputs.ui_language == 'zh' && '上传构建产物' || 'Upload build artifacts' }}
@@ -531,7 +527,6 @@ jobs:
           ENABLE_SYSTEMD257: ${{ inputs.enable_systemd257 }}
           ENABLE_ZH_TZ: ${{ inputs.enable_zh_tz }}
           ENABLE_MESA: ${{ inputs.enable_mesa }}
-          ENABLE_8GEN2_WAYLAND: ${{ inputs.enable_8gen2_wayland }}
           ENABLE_FCITX5: ${{ inputs.enable_srf }}
           ENABLE_BINFMT: ${{ inputs.enable_binfmt }}
           ENABLE_HARDWARE: ${{ inputs.enable_yj }}
@@ -562,7 +557,6 @@ jobs:
           - systemd 257 旧内核兼容：$ENABLE_SYSTEMD257
           - 使用中文并设置上海时区：$ENABLE_ZH_TZ
           - 高通骁龙 GPU 支持：$ENABLE_MESA
-          - 修复骁龙 8 Gen 2 Wayland 显示异常：$ENABLE_8GEN2_WAYLAND
           - Fcitx 5 输入法支持：$ENABLE_FCITX5
           - 跨架构支持：$ENABLE_BINFMT
           - 容器硬件和网络识别：$ENABLE_HARDWARE
@@ -592,7 +586,6 @@ jobs:
           - systemd 257 old-kernel compatibility: $ENABLE_SYSTEMD257
           - Use Chinese as Primary Language: $ENABLE_ZH_TZ
           - Qualcomm Snapdragon GPU Support: $ENABLE_MESA
-          - Fix Snapdragon 8 Gen 2 Wayland display corruption: $ENABLE_8GEN2_WAYLAND
           - Input Method Fcitx 5 Support: $ENABLE_FCITX5
           - Cross-architecture Support: $ENABLE_BINFMT
           - Container Hardware and Network Recognition Support: $ENABLE_HARDWARE

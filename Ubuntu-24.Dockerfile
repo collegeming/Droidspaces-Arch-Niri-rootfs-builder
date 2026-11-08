@@ -22,6 +22,12 @@ ARG PREFERENCES_PROFILE=arch-niri-noctalia
 ARG PREFERENCES_STRICT=false
 ######################################################
 
+# 本分支只交付 Arch + niri + XRING-O3 Mali。其它发行版模板保留作历史参考，
+# 但构建时在安装任何软件包之前直接失败，避免产出没有 GPU 栈的镜像。
+RUN echo "错误：本分支只支持 Arch + niri（anland-wayland）配 XRING-O3 Mali；当前模板 Ubuntu-24，DESKTOP=${DESKTOP:-<未设置>}。" >&2; \
+    echo "Error: this branch only supports Arch + niri with XRING-O3 Mali; use Arch.Dockerfile." >&2; \
+    exit 1
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 启用 APT 并行连接、HTTP(S) pipeline 和下载重试
@@ -183,23 +189,11 @@ SDL_IM_MODULE=fcitx5
 GLFW_IM_MODULE=fcitx
 EOF
 fi
-    if [ "$ENABLE_mesa_ARG" = "true" ] ; then
-        cat <<'EOF' >> /etc/environment
-MESA_LOADER_DRIVER_OVERRIDE=kgsl
-TU_DEBUG=noconform
-EOF
-    fi
 
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
     /usr/local/sbin/configure-desktop "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME"
     rm -rf /tmp/droidspaces-start
 EOF_RUN
-
-RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
-        /usr/local/sbin/install-mesa --1; \
-    else \
-        echo "--> [跳过] 未开启 Mesa 驱动安装"; \
-    fi
 
 # 安装并配置原生 ARM64 Google Chrome。
 RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"

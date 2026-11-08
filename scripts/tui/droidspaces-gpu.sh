@@ -3,7 +3,7 @@
 #
 # The only supported hardware path is Zink -> MaliBridge -> Android host server
 # -> Mali. llvmpipe is retained as a diagnostic fallback for OpenGL only; the
-# Adreno kgsl/turnip/lavapipe options are intentionally gone.
+# retired Qualcomm-specific source-selection options are intentionally gone.
 
 set -uo pipefail
 
@@ -125,7 +125,7 @@ PY
 
 gpu_save() {
     local api="$1" mode="$2" temporary
-    local pattern='MESA_LOADER_DRIVER_OVERRIDE|GALLIUM_DRIVER|LIBGL_ALWAYS_SOFTWARE|LIBGL_KOPPER_DISABLE|VK_DRIVER_FILES|VK_ICD_FILENAMES|VKBRIDGE_SOCKET|VKBRIDGE_WSI_SHM|ANLAND_DRM_DEVICE|XWAYLAND_GBM_DEVICE|WEBKIT_WEB_RENDER_DEVICE_FILE|WEBKIT_DMABUF_RENDERER_DISABLE_GBM|WEBKIT_DISABLE_DMABUF_RENDERER|GDK_BACKEND|FD_FORCE_KGSL|FD_DEV_FEATURES|TU_DEBUG|MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE'
+    local pattern='MESA_LOADER_DRIVER_OVERRIDE|GALLIUM_DRIVER|LIBGL_ALWAYS_SOFTWARE|LIBGL_KOPPER_DISABLE|VK_DRIVER_FILES|VK_ICD_FILENAMES|VKBRIDGE_SOCKET|VKBRIDGE_WSI_SHM|ANLAND_DRM_DEVICE|XWAYLAND_GBM_DEVICE|WEBKIT_WEB_RENDER_DEVICE_FILE|WEBKIT_DMABUF_RENDERER_DISABLE_GBM|WEBKIT_DISABLE_DMABUF_RENDERER|GDK_BACKEND'
 
     case "$api:$mode" in
         opengl:zink) gpu_driver_file zink_dri.so || return 1 ;;
@@ -189,7 +189,7 @@ gpu_menu() {
     while :; do
         [[ ! -t 1 ]] || printf '\033[2J\033[H'
         printf '\n%s\n' "$(gpu_msg 'XRING-O3 / Mali-G2-Ultra-NX GPU 路径' 'XRING-O3 / Mali-G2-Ultra-NX GPU paths')"
-        printf '  %s\n' "$(gpu_msg 'DRM: /dev/dri/card0（无 renderD）' 'DRM: /dev/dri/card0 (no renderD)')"
+        printf '  %s\n' "$(gpu_msg 'DRM: /dev/dri/card0（唯一 DRM 节点）' 'DRM: /dev/dri/card0 (single DRM node)')"
         printf '  %s\n\n' "$(gpu_msg "MaliBridge: $GPU_SOCKET" "MaliBridge: $GPU_SOCKET")"
 
         printf '  OpenGL — %s: %s\n' "$(gpu_msg '下次启动' 'Next start')" "$(gpu_status saved opengl)"

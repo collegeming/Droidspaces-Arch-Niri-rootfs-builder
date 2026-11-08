@@ -101,10 +101,10 @@ for path in "$ASSETS_DIR"/*.tar.xz; do
   size_bytes="$(wc -c < "$path")"
   if [[ "$LANGUAGE" == zh ]]; then
     name="${distro_name[$distro]} - ${desktop_label[$desktop]}（Anland Wayland）"
-    description="${distro_detail_zh[$distro]}；${desktop_detail_zh[$desktop]}。镜像已配置 Droidspaces 桌面自启动，并启用高通 Adreno/Mesa 支持。"
+    description="${distro_detail_zh[$distro]}；${desktop_detail_zh[$desktop]}。镜像已配置 Droidspaces 桌面自启动，并启用 XRING-O3 Mali/Mesa 支持。"
   else
     name="${distro_name[$distro]} - ${desktop_name[$desktop]} (Anland Wayland)"
-    description="${distro_detail_en[$distro]}; ${desktop_detail_en[$desktop]}. The image enables Droidspaces desktop autostart and Qualcomm Adreno/Mesa support."
+    description="${distro_detail_en[$distro]}; ${desktop_detail_en[$desktop]}. The image enables Droidspaces desktop autostart and XRING-O3 Mali/Mesa support."
   fi
   entry="$(jq -n \
     --arg author 'Gold bug' \

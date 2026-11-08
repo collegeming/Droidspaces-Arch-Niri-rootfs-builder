@@ -30,12 +30,11 @@ PLATFORM="linux/arm64"    # Docker buildx 的平台参数
 ENABLE_binfmt="false"
 DESKTOP_AUTOSTART="false"
 ENABLE_nosnap="false"
-ENABLE_8gen2_wayland="false"
 ENABLE_systemd257="false"
 ENABLE_mesa=""
 DISPLAY_BACKEND_INPUT="X11"
 # 解析输入参数 (-i 指定 Dockerfile，-v 指定版本号)
-while getopts "i:v:K:L:B:P:a:b:c:d:e:f:g:h:n:S:t:u:A:" opt; do
+while getopts "i:v:K:L:B:P:a:b:c:d:e:f:g:h:n:S:u:A:" opt; do
   case $opt in
     i) DOCKERFILE="$OPTARG" ;; 
     v) VERSION="$OPTARG" ;;    
@@ -53,7 +52,6 @@ while getopts "i:v:K:L:B:P:a:b:c:d:e:f:g:h:n:S:t:u:A:" opt; do
     h) ENABLE_srf="$OPTARG" ;; 
     n) ENABLE_nosnap="$OPTARG" ;;
     S) ENABLE_systemd257="$OPTARG" ;; # systemd 257 旧内核兼容
-    t) ENABLE_8gen2_wayland="$OPTARG" ;; # 修复骁龙8 Gen 2 Wayland 花屏
     u) USERNAME="$OPTARG" ;; 
     A) LEGACY_ANLAND_INPUT="$OPTARG" ;; # 兼容旧参数
     *) echo "用法: $0 -i <template.Dockerfile> -K <none|KDE|'KDE mobile'|GNOME> [-B <x11|anland-wayland>]" ; exit 1 ;;
@@ -184,7 +182,6 @@ echo " 跨架构 : $ENABLE_binfmt"
 echo " 容器识别部分硬件和网络：$ENABLE_yj"
 echo " Ubuntu nosnap：$ENABLE_nosnap"
 echo " systemd 257 旧内核兼容：$ENABLE_systemd257"
-echo " 修复骁龙8 Gen 2 Wayland 花屏：$ENABLE_8gen2_wayland"
 echo " 桌面：$DESKTOP"
 echo " 显示后端：$DISPLAY_BACKEND"
 echo " 桌面自启动：$DESKTOP_AUTOSTART"
@@ -265,7 +262,6 @@ docker buildx build \
   --build-arg ENABLE_srf_ARG="$ENABLE_srf" \
   --build-arg ENABLE_nosnap_ARG="$ENABLE_nosnap" \
   --build-arg ENABLE_systemd257_ARG="$ENABLE_systemd257" \
-  --build-arg ENABLE_8gen2_wayland_ARG="$ENABLE_8gen2_wayland" \
   --build-arg ANLAND_RELEASE_REPOSITORY="$ANLAND_RELEASE_REPOSITORY" \
   --build-arg ANLAND_PACKAGE_REVISION="$ANLAND_PACKAGE_REVISION" \
   --build-arg USERNAME="$USERNAME" \

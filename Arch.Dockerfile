@@ -13,7 +13,6 @@ ARG MALI_STACK_BUNDLE_URL=
 ARG MALI_STACK_BUNDLE_SHA256=
 ARG MALI_STACK_BUNDLE_DIR=
 ARG DISPLAY_BACKEND
-ARG ENABLE_8gen2_wayland_ARG
 ARG ENABLE_kfgj_ARG
 ARG ENABLE_zip_ARG
 ARG ENABLE_docker_ARG
@@ -30,6 +29,18 @@ ARG APPLY_PREFERENCES=false
 ARG PREFERENCES_PROFILE=arch-niri-noctalia
 ARG PREFERENCES_STRICT=false
 ######################################################
+
+# 本分支只交付 Arch + niri + XRING-O3 Mali。其它组合在拉取依赖前直接失败，
+# 避免产出缺少 GPU 栈、看起来可用但不能渲染的镜像。
+RUN if [ "$DESKTOP" != "niri" ] || [ "$DISPLAY_BACKEND" != "anland-wayland" ]; then \
+        echo "错误：xring-o3-mali-clean 只支持 Arch + niri + anland-wayland。" >&2; \
+        echo "当前 DESKTOP=${DESKTOP:-<未设置>}，DISPLAY_BACKEND=${DISPLAY_BACKEND:-<未设置>}。" >&2; \
+        exit 1; \
+    fi && \
+    if [ "$ENABLE_mesa_ARG" != "true" ]; then \
+        echo "错误：本分支只交付带 XRING-O3 Mali stack 的镜像，ENABLE_mesa_ARG 必须为 true。" >&2; \
+        exit 1; \
+    fi
 
 COPY scripts/install-usb-manager.sh /usr/local/sbin/install-droidspaces-usb-manager
 COPY scripts/systemd257.sh /usr/local/sbin/systemd257
@@ -165,8 +176,8 @@ RUN if [ "$PulseAudio" = "socket" ]; then \
         echo "PULSE_SERVER=tcp:127.0.0.1:4713" >> /etc/environment; \
     fi
 
-# XRING-O3 uses the Mali stack; Adreno KGSL environment is installed by the
-# device profile during configure-desktop, not here.
+# XRING-O3: GPU 环境全部由设备档案 xring-o3/profile.sh 在 configure-desktop 阶段
+# 写入，这里不保存任何厂商专属变量。
 
 # 输入法与桌面会话配置
 COPY scripts/start/ /tmp/droidspaces-start/

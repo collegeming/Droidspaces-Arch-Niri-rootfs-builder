@@ -73,25 +73,19 @@ droidspaces-tui --source github
 sudo ./scripts/tui/install-mesa.sh
 ```
 
-未指定参数时，脚本会测试三个下载源并提示选择。也可以直接指定来源，适合无人值守构建：
+本分支的 `install-mesa` 是 XRING-O3 Mali stack 安装器的转发入口，只接受离线包参数：
 
 ```bash
-sudo ./scripts/tui/install-mesa.sh --1  # GitHub
-sudo ./scripts/tui/install-mesa.sh --2  # gh-proxy.com
-sudo ./scripts/tui/install-mesa.sh --3  # ghproxy.net
+sudo MALI_STACK_VERSION=<版本> \
+  MALI_STACK_BUNDLE_URL=<归档 URL> \
+  MALI_STACK_BUNDLE_SHA256=<64位十六进制> \
+  ./scripts/tui/install-mesa.sh
+
+sudo MALI_STACK_VERSION=<版本> MALI_STACK_BUNDLE_DIR=<已解压目录> \
+  ./scripts/tui/install-mesa.sh
 ```
 
-三个来源选项互斥，并同时作用于 Mesa 与媒体解码驱动下载。`-1`、`-2`、`-3` 是对应的短参数，`--help` 可查看内置帮助。第三方源仍需访问 `api.github.com` 取得可信元数据，并需要 `jq` 和 `sha256sum`；下载由 `curl` 或 `wget` 完成。
-
-安装完成后，脚本按发行版写入持久锁定：
-
-| 发行版 | 锁定位置与机制 |
-| --- | --- |
-| Debian/Ubuntu | `/etc/apt/preferences.d/hold-anland-package`，`Pin-Priority: -1` |
-| Fedora | `/etc/dnf/dnf.conf` 中脚本管理的 `exclude` 块 |
-| Arch | `/etc/pacman.conf` 中脚本管理的 `IgnorePkg` 块 |
-
-锁定范围仅根据归档中实际安装的 Mesa 包生成。KWin/Xwayland 与 Mutter/Xwayland 分别由 `install-anland-kde.sh` 和 `install-anland-gnome.sh` 锁定。托管配置可重复运行，不会不断追加相同块；已有的非托管配置会保留。
+`-1`/`-2`/`-3` 下载源参数以及旧的 Mesa/媒体解码选项已移除，传入会直接报错。`install-mesa --status` 与 `--uninstall` 转发给 Mali stack 安装器；安装目标、校验和与回滚由 `xring-o3` 设备档案负责。
 
 ## 新增桌面 profile
 
@@ -148,7 +142,7 @@ sudo ANLAND_RELEASE_REPOSITORY=owner/repository \
 sudo ./scripts/tui/install-anland-next.sh
 ```
 
-包内是三个预编译产物：`anland-miniwm`，以及打过 kgsl/turnip glamor 补丁的 Xwayland 与打过 mountinfo 索引补丁的 bubblewrap。后两者装在 `/usr/lib/anland/`，由会话把它前置到 PATH，发行版的同名二进制不会被覆盖，因此**不需要**像 KDE/GNOME 那样做软件包锁定 —— 这个包不替换任何发行版文件。
+包内是三个预编译产物：`anland-miniwm`，以及打过旧 GPU glamor 补丁的 Xwayland 与打过 mountinfo 索引补丁的 bubblewrap。后两者装在 `/usr/lib/anland/`，由会话把它前置到 PATH，发行版的同名二进制不会被覆盖，因此**不需要**像 KDE/GNOME 那样做软件包锁定 —— 这个包不替换任何发行版文件。
 
 会话本体是包内的 `/usr/bin/anland-session`（会话 D-Bus + wayland 链接 + rootless Xwayland + mini-wm），配合 `/usr/lib/systemd/user/anland-session.service` 使用，不往用户家目录写任何东西。
 

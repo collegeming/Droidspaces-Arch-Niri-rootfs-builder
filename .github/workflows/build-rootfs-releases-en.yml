@@ -75,11 +75,6 @@ on:
         required: true
         type: boolean
         default: true
-      enable_8gen2_wayland:
-        description: Fix Snapdragon 8 Gen 2 Wayland corruption
-        required: true
-        type: boolean
-        default: false
       nosnap:
         description: Remove Ubuntu Snap
         required: true
@@ -169,7 +164,6 @@ jobs:
       PulseAudio: ${{ inputs.PulseAudio }}
       enable_zh_tz: ${{ inputs.enable_zh_tz }}
       enable_mesa: ${{ inputs.enable_mesa }}
-      enable_8gen2_wayland: ${{ inputs.enable_8gen2_wayland }}
       nosnap: ${{ inputs.nosnap }}
       enable_systemd257: ${{ inputs.enable_systemd257 }}
       enable_srf: ${{ inputs.enable_srf }}

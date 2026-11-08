@@ -7,12 +7,12 @@ desktop=niri
 xdg_desktop=niri
 
 # This branch is device-specific: the XRING-O3 profile owns the DRM node,
-# Mali stack paths and MaliBridge socket. There is no renderD/KGSL fallback.
+# Mali stack paths and MaliBridge socket. There is no legacy GPU fallback.
 profile_dir="${DROIDSPACES_DEVICE_PROFILE_DIR:-/usr/local/lib/droidspaces/device}"
 profile_file="${XRING_O3_PROFILE_FILE:-${profile_dir}/xring-o3/profile.sh}"
 if [[ ! -r "$profile_file" ]]; then
     echo "缺少 XRING-O3 设备档案：$profile_file" >&2
-    echo "该分支不包含 Adreno/KGSL 环境；请使用 xring-o3-mali-device 构建。" >&2
+    echo "该分支只提供 XRING-O3/Mali 路径，不含旧的高通 GPU 环境。" >&2
     exit 1
 fi
 # shellcheck source=../device/xring-o3/profile.sh
@@ -46,8 +46,8 @@ configure_environment() {
     printf '%s\n' "${managed_keys[@]}" | sort -u > "$keys_file"
 
     # Overwrite managed keys instead of appending. The old profiles appended
-    # only when a key was absent, which left renderD128/kgsl values in place
-    # after an upgrade.
+    # only when a key was absent, which left stale GPU values in place after
+    # an upgrade.
     awk -v keys_file="$keys_file" '
         BEGIN {
             while ((getline k < keys_file) > 0) {
