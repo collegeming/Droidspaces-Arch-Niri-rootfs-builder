@@ -47,4 +47,9 @@ fi
 # compositor，已经无法为新会话服务，清理不会丢失当前会话的剪贴板。
 pkill -u "$(id -u)" -x wl-copy 2>/dev/null || true
 
+# 上一次会话的 fcitx5 可能由 D-Bus/systemd 用户实例拉起（没有 WAYLAND_DISPLAY，
+# 报 "Failed to open wayland connection"），并占着 org.fcitx.Fcitx5 总线名。
+# 新会话由 niri spawn 启动带正确环境的实例，所以先清掉旧进程。
+pkill -u "$(id -u)" -x fcitx5 2>/dev/null || true
+
 exec /bin/bash -lc "$command_line"
