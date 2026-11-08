@@ -137,17 +137,16 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     fi
 
 # 配置 Locale 与 SSH
+# 只写 LANG，不写 LC_ALL：LC_ALL 会压掉单项分类（如 LC_TIME），与文档 02 的约定冲突。
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     if [ "$ENABLE_zh_tz_ARG" = "true" ]; then \
         ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
         echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen && \
         locale-gen && \
-        echo "LANG=zh_CN.UTF-8" > /etc/locale.conf && \
-        echo "LC_ALL=zh_CN.UTF-8" >> /etc/locale.conf; \
+        echo "LANG=zh_CN.UTF-8" > /etc/locale.conf; \
     else \
         locale-gen && \
-        echo "LANG=en_US.UTF-8" > /etc/locale.conf && \
-        echo "LC_ALL=en_US.UTF-8" >> /etc/locale.conf; \
+        echo "LANG=en_US.UTF-8" > /etc/locale.conf; \
     fi && \
     # 配置 SSH 服务（禁用 root 密码登录，但允许常规密码认证）
     mkdir -p /var/run/sshd && \

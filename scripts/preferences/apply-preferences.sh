@@ -24,7 +24,7 @@
 set -eu
 umask 022
 
-PREFERENCES_VERSION=2026.11.15
+PREFERENCES_VERSION=2026.11.09
 
 PROFILE=${PREFERENCES_PROFILE:-arch-niri-noctalia}
 FONT_SIZE=${PREFERENCES_FONT_SIZE:-12.0}
@@ -357,6 +357,60 @@ prepare_user_parent() {
     return 0
 }
 
+# 把用户家目录下由构建期创建的子目录交还给用户。旧版 rime 步骤用 install -d
+# 以 root 建过 ~/.local/share/fcitx5，导致 colle 连 ~/.local/share/applications
+# 都建不出来（Chrome、Qt 应用因此启动即失败）。
+fix_user_ownership() {
+    if [ -z "$USER_HOME" ] || [ -z "$USER_UID" ]; then
+        return 0
+    fi
+    fu_paths=
+    for fu_rel in .config .local .cache .local/share .local/state; do
+        fu_full=$ROOT$USER_HOME/$fu_rel
+        [ -d "$fu_full" ] || continue
+        fu_paths="$fu_paths $fu_full"
+    done
+    [ -n "$fu_paths" ] || return 0
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        return 0
+    fi
+    # shellcheck disable=SC2086
+    chown -R "$USER_UID:$USER_GID" $fu_paths 2>/dev/null || warn "chown 用户目录失败"
+    return 0
+}
+
+# 以 KEY=VALUE 覆盖 /etc/environment 的同名键。桌面会话是 system unit
+# （EnvironmentFile=/etc/environment），不读 ~/.config/environment.d；只写
+# environment.d 的变量在会话里看不到。systemd/pam_env 都不解析 export 前缀。
+set_etc_environment() {
+    see_key=$1
+    see_val=$2
+    see_full=$ROOT/etc/environment
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    see_tmp=$nt_path
+    [ -f "$see_full" ] || : >"$see_full"
+    if ! awk -v k="$see_key" -v v="$see_val" '
+        BEGIN { done = 0 }
+        $0 ~ "^[[:space:]]*(export[[:space:]]+)?" k "[[:space:]]*=" {
+            if (!done) { print k "=" v; done = 1 }
+            next
+        }
+        { print }
+        END { if (!done) print k "=" v }
+    ' "$see_full" >"$see_tmp"; then
+        drop_tmp "$see_tmp"
+        fail_step "解析 /etc/environment 失败"
+        return 1
+    fi
+    install_content /etc/environment 0644 <"$see_tmp"
+    see_rc=$?
+    drop_tmp "$see_tmp"
+    return $see_rc
+}
+
 # 向文件追加一行（不存在该行时）。
 append_line_once() {
     al_dest=$1
@@ -500,7 +554,8 @@ step_packages() {
     packages="noto-fonts noto-fonts-cjk noto-fonts-emoji ttf-jetbrains-mono
 fcitx5 fcitx5-chinese-addons fcitx5-rime fcitx5-configtool fcitx5-gtk fcitx5-qt
 kitty fish fastfetch nemo nemo-fileroller gvfs gvfs-mtp cinnamon-translations
-upower qt5-wayland qt6-wayland neovim wl-clipboard xdg-utils xdg-user-dirs"
+upower qt5-wayland qt6-wayland neovim wl-clipboard xdg-utils xdg-user-dirs
+xdg-terminal-exec"
 
     if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
         log "dry-run: would install with pacman --needed: $(printf '%s' "$packages" | tr '\n' ' ')"
@@ -718,18 +773,34 @@ step_rime_ice() {
     fi
     ri_dir=$USER_HOME/.local/share/fcitx5/rime
     ri_src=$(gh_mirror_url https://github.com/iDvel/rime-ice)
-    # 旧用户目录里的 rime-ice 文件会遮蔽共享数据；保留 custom_phrase.txt，其余清掉。
-    if is_dir "$ri_dir"; then
+    # 先克隆到临时目录再拷贝：目标目录里保留过 custom_phrase.txt 时，直接
+    # git clone 到非空目录必然失败；同时避免留下 root 属主的半成品目录。
+    ri_stage=$(mktemp -d "${TMPDIR:-/tmp}/rime-ice.XXXXXX") || {
+        warn "mktemp 失败，无法克隆 rime-ice"
+        return 1
+    }
+    prepare_user_parent "$ri_dir/x" || true
+    if git clone --depth=1 "$ri_src" "$ri_stage/src" >/dev/null 2>&1; then
+        if ! mkdir -p "$ROOT$ri_dir"; then
+            rm -rf "$ri_stage"
+            warn "无法创建 $ri_dir"
+            return 1
+        fi
+        # 旧用户目录里的 rime-ice 文件会遮蔽共享数据；保留自定义短语。
         find "$ROOT$ri_dir" -mindepth 1 -maxdepth 1 ! -name custom_phrase.txt \
             -exec rm -rf {} + 2>/dev/null || true
-    fi
-    install -d -m 0755 "$ri_dir"
-    if git clone --depth=1 "$ri_src" "$ri_dir" >/dev/null 2>&1; then
-        chown -R "$USER_UID:$USER_GID" "$ri_dir" 2>/dev/null || true
+        cp -a "$ri_stage/src/." "$ROOT$ri_dir/" || {
+            rm -rf "$ri_stage"
+            warn "复制 rime-ice 到用户目录失败"
+            return 1
+        }
+        rm -rf "$ri_stage"
+        chown -R "$USER_UID:$USER_GID" "$ROOT$ri_dir" 2>/dev/null || true
         log "已从 GitHub 镜像克隆雾凇拼音到 $ri_dir"
         rime_deploy_build
         return 0
     fi
+    rm -rf "$ri_stage"
     warn "rime-ice 克隆失败（$ri_src）"
     return 1
 }
@@ -739,7 +810,17 @@ step_rime_ice() {
 rime_deploy_build() {
     rdb_user=$USER_HOME/.local/share/fcitx5/rime
     rdb_build=$rdb_user/build
-    if [ -z "$USER_HOME" ] || ! path_exists "$rdb_user"; then
+    if [ -z "$USER_HOME" ]; then
+        return 0
+    fi
+    # 用户目录不存在时先建出来：rime_deployer 需要它作为用户数据目录，
+    # 旧实现在这里直接 return 0，构建期部署从未真正执行。
+    if ! path_exists "$rdb_user"; then
+        prepare_user_parent "$rdb_user/x" || true
+        mkdir -p "$ROOT$rdb_user" 2>/dev/null || true
+        chown "$USER_UID:$USER_GID" "$ROOT$rdb_user" 2>/dev/null || true
+    fi
+    if ! path_exists "$rdb_user"; then
         return 0
     fi
     if ! have_bin rime_deployer; then
@@ -751,7 +832,7 @@ rime_deploy_build() {
         return 0
     fi
     if run_as_user "rime_deployer --build '$rdb_user' /usr/share/rime-data '$rdb_build'" >/dev/null 2>&1; then
-        chown -R "$USER_UID:$USER_GID" "$ROOT$rdb_build" 2>/dev/null || true
+        chown -R "$USER_UID:$USER_GID" "$ROOT$rdb_user" 2>/dev/null || true
         log "已部署 Rime 构建目录：$rdb_build（$(find "$ROOT$rdb_build" -type f 2>/dev/null | wc -l) 个文件）"
         return 0
     fi
@@ -857,6 +938,9 @@ step_environment() {
 
     if gtk3_present; then
         install_asset "$USER_HOME/.config/environment.d/gtk.conf" environment.d/gtk.conf 0644 || return 1
+        # 会话是 system unit，只读 /etc/environment；environment.d 只对
+        # systemd 用户实例（D-Bus 激活的服务）生效，两边都要写。
+        set_etc_environment GTK_THEME "Adwaita:dark" || return 1
         installed_any=true
     else
         warn "未检测到 GTK3，跳过 GTK_THEME=Adwaita:dark"
@@ -864,10 +948,19 @@ step_environment() {
 
     if have_bin fcitx5; then
         install_asset "$USER_HOME/.config/environment.d/input.conf" environment.d/input.conf 0644 || return 1
+        set_etc_environment XMODIFIERS "@im=fcitx" || return 1
+        set_etc_environment INPUT_METHOD "fcitx" || return 1
         installed_any=true
     else
         warn "未检测到 fcitx5，跳过输入法环境变量"
     fi
+
+    # droidspaces 会把宿主的 TMPDIR=/data/local/tmp 带进容器，该路径在容器里
+    # 不存在：Chromium 的 ProcessSingleton 建临时 socket 目录失败后直接退出，
+    # 表现就是“双击浏览器没反应”。会话脚本也导出了同一个值，这里保证
+    # 非会话路径（systemd 用户服务）同样正确。
+    set_etc_environment TMPDIR "/tmp" || return 1
+    installed_any=true
 
     if [ "$installed_any" = false ]; then
         skip_step "未安装 GTK3/fcitx5，无可应用的环境变量"
@@ -891,6 +984,41 @@ step_fontconfig() {
     return 0
 }
 
+# xring-o3 容器没有用户命名空间，bwrap 建不了 namespace；glycin 用它启动
+# SVG 加载器，加载器失败后 GTK 加载任意 SVG 图标都会 assert 并 abort
+# （Nemo 启动即崩在这里）。装一个跳过沙箱参数的 bwrap 包装器，等价于
+# glycin 文档里的“无沙箱”回退路径。只在设备档案存在时安装，避免影响
+# 其他设备上本来可用的沙箱。
+ensure_bwrap_fallback() {
+    if ! is_dir /usr/local/lib/droidspaces/device/xring-o3; then
+        return 0
+    fi
+    if ! have_bin bwrap; then
+        return 0
+    fi
+    if [ -x /usr/local/bin/bwrap ] && head -1 /usr/local/bin/bwrap 2>/dev/null | grep -q '^#!/bin/sh'; then
+        return 0
+    fi
+    install_content /usr/local/bin/bwrap 0755 <<'EOF_BWRAP' || return 1
+#!/bin/sh
+# 由 droidspaces-preferences 生成：容器内 bwrap 无法建立 namespace，
+# 跳过沙箱参数直接执行目标程序（glycin 的 SVG 加载器依赖这个回退）。
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --seccomp|--dbus-fd|--setenv|--bind|--bind-try|--ro-bind|--ro-bind-try|\
+--dev-bind|--dev-bind-try|--symlink|--chdir|--dev|--tmpfs|--proc|--dir|--file|\
+--remount-ro|--unsetenv)
+            shift 2 ;;
+        --*) shift ;;
+        *) [ -f "$1" ] && [ -x "$1" ] && exec "$@" ; shift ;;
+    esac
+done
+exit 1
+EOF_BWRAP
+    log "已安装 bwrap 回退包装器（glycin SVG 加载器）"
+    return 0
+}
+
 # 6) GTK 字体与暗色主题：仅在 Maple Mono NF CN 已安装时写入。
 step_gtk_settings() {
     if [ -z "$USER_HOME" ]; then
@@ -904,6 +1032,7 @@ step_gtk_settings() {
     if ! fonts_have_maple; then
         log "未安装 Maple Mono NF CN：GTK 仍写入，字体由 fontconfig 回退"
     fi
+    ensure_bwrap_fallback || return 1
     install_asset "$USER_HOME/.config/gtk-3.0/settings.ini" gtk-3.0/settings.ini 0644 || return 1
     install_asset "$USER_HOME/.config/gtk-3.0/gtk.css" gtk-3.0/gtk.css 0644 || return 1
     install_asset "$USER_HOME/.config/gtk-4.0/settings.ini" gtk-4.0/settings.ini 0644 || return 1
@@ -1021,10 +1150,74 @@ EOF
         path_exists "$USER_HOME/.local/share/fcitx5/rime/rime_ice.base.dict.yaml"; then
         install_asset "$USER_HOME/.local/share/fcitx5/rime/default.custom.yaml" \
             fcitx5/rime/default.custom.yaml 0644 || return 1
+        # 部署必须在 default.custom.yaml 落盘之后，否则 page_size 不生效。
+        rime_deploy_build
     else
         warn "未安装雾凇拼音（rime-ice），跳过 default.custom.yaml 以避免 Rime 部署失败"
     fi
-    log "提示：Rime 首次部署在设备登录后完成，构建期不生成 root 属主的 build/"
+
+    # D-Bus 激活 fcitx5 时拿不到会话的 WAYLAND_DISPLAY（systemd 用户实例的
+    # 环境在登录时就固定了），fcitx5 会报 "Failed to open wayland connection"
+    # 却仍然抢走 org.fcitx.Fcitx5，niri 拉起的实例随即退出，输入法没有候选词。
+    # 用系统级 dbus service 覆盖包里的那份，改走先探测 Wayland socket 的包装器。
+    install_content /usr/local/bin/fcitx5-dbus 0755 <<'EOF_DBUS' || return 1
+#!/bin/sh
+# 由 droidspaces-preferences 生成。两个职责：
+# 1) D-Bus 激活的 fcitx5 拿不到会话环境，这里从 XDG_RUNTIME_DIR 挑 Wayland socket；
+# 2) niri spawn 的实例启动需要约 1 秒，期间若有应用请求输入法会触发激活，
+#    于是并存两份。先等总线名出现（最多 4 秒），出现就退出，交给已运行的实例。
+if command -v busctl >/dev/null 2>&1; then
+    i=0
+    while [ "$i" -lt 20 ]; do
+        if busctl --user status org.fcitx.Fcitx5 >/dev/null 2>&1; then
+            exit 0
+        fi
+        sleep 0.2
+        i=$((i + 1))
+    done
+fi
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    for s in "$XDG_RUNTIME_DIR"/wayland-?; do
+        [ -S "$s" ] || continue
+        WAYLAND_DISPLAY=${s##*/}
+        export WAYLAND_DISPLAY
+        break
+    done
+fi
+exec /usr/bin/fcitx5 "$@"
+EOF_DBUS
+    # 放在 /usr/local/share 而不是用户目录：会话总线不保证把
+    # $XDG_DATA_HOME/dbus-1/services 纳入搜索路径；/usr/local/share 一定在
+    # XDG_DATA_DIRS 里且排在 /usr/share 之前，可以覆盖包里的那份。
+    install_content /usr/local/share/dbus-1/services/org.fcitx.Fcitx5.service 0644 <<'EOF_SVC' || return 1
+[D-BUS Service]
+Name=org.fcitx.Fcitx5
+Exec=/usr/local/bin/fcitx5-dbus
+EOF_SVC
+
+    # fcitx5 只保留一个启动入口：niri 的 spawn-at-startup（带 WAYLAND_DISPLAY）。
+    # systemd 用户实例会把 ~/.config/autostart 与 /etc/xdg/autostart 里两份
+    # fcitx5 都拉起来，而且没有 Wayland 连接；它们抢走 org.fcitx.Fcitx5 后，
+    # niri 拉起的实例退出，输入法就没有候选词。这里删掉用户副本，并用
+    # Hidden=true 覆盖系统那份。
+    if [ -f "$ROOT$USER_HOME/.config/autostart/fcitx5.desktop" ]; then
+        if [ "$DRY_RUN" = true ]; then
+            log "dry-run: would remove $USER_HOME/.config/autostart/fcitx5.desktop"
+        else
+            backup_file "$USER_HOME/.config/autostart/fcitx5.desktop" || true
+            rm -f "$ROOT$USER_HOME/.config/autostart/fcitx5.desktop"
+            log "已移除重复的 fcitx5 autostart 入口"
+        fi
+    fi
+    install_content "$USER_HOME/.config/autostart/org.fcitx.Fcitx5.desktop" 0644 <<'EOF_HIDDEN' || return 1
+[Desktop Entry]
+Type=Application
+Name=Fcitx5 (disabled by droidspaces-preferences)
+Comment=由 niri spawn-at-startup 启动，避免 systemd 用户实例抢总线名
+Exec=/bin/true
+Hidden=true
+NoDisplay=true
+EOF_HIDDEN
     return 0
 }
 
@@ -1045,7 +1238,9 @@ step_nemo() {
         warn "未安装 kitty，跳过 xdg-terminal-exec 与 Nemo 终端动作"
         return 0
     fi
-    install_asset "$USER_HOME/.config/xdg-terminal-exec/terminal-exec" \
+    # xdg-terminal-exec 读取 ~/.config/xdg-terminal-exec/xdg-terminals.list；
+    # 写成 terminal-exec 是死文件（GLib 启动 Terminal=true 应用时读不到）。
+    install_asset "$USER_HOME/.config/xdg-terminal-exec/xdg-terminals.list" \
         xdg-terminal-exec/terminal-exec 0644 || return 1
     install_asset /usr/local/bin/open-terminal nemo/open-terminal 0755 || return 1
     if is_dir /usr/share/nemo/actions; then
@@ -1152,7 +1347,7 @@ step_niri_ime_autostart() {
         return 1
     fi
     {
-        printf '%s\n' '' '// >>> droidspaces-preferences: 输入法自启动（niri 不读 XDG autostart）'
+        printf '%s\n' '' '// >>> droidspaces-preferences: 输入法自启动（systemd 用户 autostart 已屏蔽）'
         printf '%s\n' 'spawn-at-startup "fcitx5"'
         printf '%s\n' '// <<< droidspaces-preferences'
     } >>"$niri_full" || {
@@ -1274,11 +1469,50 @@ niri_apply_extras() {
     return 0
 }
 
+# 库存模板把终端绑定到未安装的 alacritty，并保留 waybar 自启动；早期版本给
+# fcitx5 加过 `-r`，会与 D-Bus 激活的实例互相替换。三条都做幂等修正。
+niri_fix_launchers() {
+    nfl_file=$1
+    nfl_full=$ROOT$nfl_file
+    path_exists "$nfl_file" || return 2
+    if ! grep -qE 'spawn(-sh)? +"alacritty"|: alacritty"|spawn-at-startup +"waybar"|spawn-at-startup +"fcitx5"' \
+        "$nfl_full" 2>/dev/null; then
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would fix launcher bindings in $nfl_file"
+        return 0
+    fi
+    backup_file "$nfl_file" || return 1
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nfl_tmp=$nt_path
+    sed -E \
+        -e 's/spawn(-sh)? +"alacritty"/spawn\1 "kitty"/' \
+        -e 's/: alacritty"/: kitty"/' \
+        -e '/^[[:space:]]*spawn-at-startup +"waybar"/d' \
+        -e 's/^([[:space:]]*spawn-at-startup +"fcitx5") +"-r"[[:space:]]*$/\1/' \
+        "$nfl_full" >"$nfl_tmp" || {
+        drop_tmp "$nfl_tmp"
+        fail_step "改写失败：$nfl_file"
+        return 1
+    }
+    cat "$nfl_tmp" >"$nfl_full"
+    drop_tmp "$nfl_tmp"
+    log "fixed: $nfl_file（alacritty→kitty、移除 waybar、fcitx5 去掉 -r）"
+    return 0
+}
+
 step_niri_extra() {
     if [ -z "$USER_HOME" ]; then
         skip_step "未找到普通用户"
         return 2
     fi
+    niri_fix_launchers "$USER_HOME/.config/niri/config.kdl" || true
+    niri_fix_launchers /usr/local/share/droidspaces/niri-default-config.kdl || true
+    niri_fix_launchers /etc/skel/.config/niri/config.kdl || true
     niri_apply_extras "$USER_HOME/.config/niri/config.kdl" || return $?
     niri_apply_extras /usr/local/share/droidspaces/niri-default-config.kdl || true
     return 0
@@ -1410,6 +1644,10 @@ fi
 if OFFLINE=$(normalize_bool "${PREFERENCES_OFFLINE:-false}"); then :; else
     OFFLINE=false
 fi
+# 设备上手工重跑（修配置、补包）用 PREFERENCES_FORCE=true 绕开版本标记。
+if FORCE=$(normalize_bool "${PREFERENCES_FORCE:-false}"); then :; else
+    FORCE=false
+fi
 
 if [ "$APPLY_PREFERENCES" != true ]; then
     printf '%s\n' '[preferences] APPLY_PREFERENCES=false：跳过偏好设置'
@@ -1428,11 +1666,14 @@ log "启动：profile=$PROFILE version=$PREFERENCES_VERSION strict=$STRICT dry_r
 if [ -f "$MANIFEST" ]; then
     marker_profile=$(manifest_value PREFERENCES_PROFILE)
     marker_version=$(manifest_value PREFERENCES_VERSION)
-    if [ "$marker_profile" = "$PROFILE" ] && [ "$marker_version" = "$PREFERENCES_VERSION" ]; then
+    marker_status=$(manifest_value PREFERENCES_STATUS)
+    # 只有上次完整成功才跳过：partial 说明有步骤失败，必须重试。
+    if [ "$FORCE" != true ] && [ "$marker_profile" = "$PROFILE" ] && \
+        [ "$marker_version" = "$PREFERENCES_VERSION" ] && [ "$marker_status" = applied ]; then
         log "已应用相同 profile+version（$PROFILE@$PREFERENCES_VERSION），跳过"
         exit 0
     fi
-    log "检测到旧标记（${marker_profile:-unknown}@${marker_version:-unknown}），重新应用"
+    log "检测到旧标记（${marker_profile:-unknown}@${marker_version:-unknown}/${marker_status:-unknown}），重新应用"
 fi
 
 if detect_user; then
@@ -1462,6 +1703,10 @@ for step in $STEPS; do
         warn "步骤 $step 失败：${STEP_REASON:-未知错误}；已按非严格模式继续"
     fi
 done
+
+# 构建期以 root 写入的用户目录统一交还给用户，修复旧镜像里 root 属主的
+# ~/.local（Chrome/Qt 应用因此写不了 ~/.local/share）。
+fix_user_ownership
 
 if [ -n "$FAILED" ]; then
     status=partial

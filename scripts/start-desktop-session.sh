@@ -49,7 +49,15 @@ pkill -u "$(id -u)" -x wl-copy 2>/dev/null || true
 
 # 上一次会话的 fcitx5 可能由 D-Bus/systemd 用户实例拉起（没有 WAYLAND_DISPLAY，
 # 报 "Failed to open wayland connection"），并占着 org.fcitx.Fcitx5 总线名。
-# 新会话由 niri spawn 启动带正确环境的实例，所以先清掉旧进程。
+# 新会话由 niri spawn 启动带正确环境的实例，所以先清掉旧进程。fcitx5 收到
+# SIGTERM 会先保存状态，多个残留实例叠在一起时会拖住退出，补一次 KILL。
 pkill -u "$(id -u)" -x fcitx5 2>/dev/null || true
+sleep 1
+pkill -9 -u "$(id -u)" -x fcitx5 2>/dev/null || true
+
+# droidspaces 把宿主（Android）的 TMPDIR=/data/local/tmp 继承进来，但这个路径在
+# 容器里不存在也建不出来。Chromium 的 ProcessSingleton 在创建临时 socket 目录时
+# 直接失败并以 "Failed to create socket directory" 退出，表现为双击图标没反应。
+export TMPDIR=/tmp
 
 exec /bin/bash -lc "$command_line"
