@@ -187,11 +187,12 @@ configure_niri_tray_autostart() {
             continue
         fi
         # Noctalia 由 Mali stack 安装的 noctalia-dt 包装器启动；缺少 wrapper 时
-        # 只记录一条 spawn 失败，不阻断 niri 会话。
+        # 只记录一条 spawn 失败，不阻断 niri 会话。当前 Noctalia CLI 不接受
+        # `noctalia` 子命令（会报 unknown command），包装器后不能再带参数。
         {
             printf '\n'
             printf '%s\n' '// >>> droidspaces: Noctalia shell autostart'
-            printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/noctalia-dt ] && exec /usr/local/bin/noctalia-dt noctalia"'
+            printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/noctalia-dt ] && exec /usr/local/bin/noctalia-dt"'
             printf '%s\n' '// <<< droidspaces: Noctalia shell autostart'
         } >> "$target"
         echo "--> 已写入 Noctalia 自启动：$target"
