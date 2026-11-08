@@ -22,6 +22,9 @@ ARG ENABLE_systemd257_ARG
 ARG USERNAME
 ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
 ARG ANLAND_PACKAGE_REVISION=unknown
+# XRING-O3 设备脚本从复刻包按固定 commit 拉取，builder 不再保存副本。
+ARG XRING_O3_KIT_REPO=https://github.com/collegeming/xring-o3-droidspaces-package.git
+ARG XRING_O3_KIT_REF=c71d58e598a3a38d399f583da1a3cc1aebbbc691
 # 最终阶段：桌面偏好设置开关（与 scripts/preferences/apply-preferences.sh 对应）
 ARG APPLY_PREFERENCES=false
 ARG PREFERENCES_PROFILE=arch-niri-noctalia
@@ -48,14 +51,13 @@ COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
-COPY scripts/device/ /usr/local/lib/droidspaces/device/
 COPY scripts/etc/wireplumber/wireplumber.conf.d/Anland-Audio.conf /tmp/Anland-Audio.conf
 RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
         install -D -m 0644 /tmp/Anland-Audio.conf /etc/wireplumber/wireplumber.conf.d/Anland-Audio.conf; \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh /usr/local/lib/droidspaces/device/xring-o3/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
@@ -76,6 +78,15 @@ RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/
     kmod tzdata tar && \
     # XRING-O3: DRM/GPU 诊断基础包（Mesa/Mali stack 由 device profile 安装）
     pacman -S --noconfirm --needed libdrm vulkan-tools mesa-utils zstd diffutils && \
+    # XRING-O3 设备脚本：固定 commit 拉取，避免 builder 与复刻包各存一份。
+    git init -q /tmp/xring-o3-kit && \
+    git -C /tmp/xring-o3-kit remote add origin "$XRING_O3_KIT_REPO" && \
+    git -C /tmp/xring-o3-kit fetch -q --depth=1 origin "$XRING_O3_KIT_REF" && \
+    git -C /tmp/xring-o3-kit checkout -q --detach FETCH_HEAD && \
+    install -d -m 0755 /usr/local/lib/droidspaces/device && \
+    cp -a /tmp/xring-o3-kit/rootfs/device/xring-o3 /usr/local/lib/droidspaces/device/ && \
+    rm -rf /tmp/xring-o3-kit && \
+    chmod +x /usr/local/lib/droidspaces/device/xring-o3/*.sh && \
     /usr/local/lib/droidspaces/device/xring-o3/profile.sh --install && \
     /usr/local/sbin/install-desktop "$DESKTOP" && \
     #输入法 fcitx5 (可选)
