@@ -31,7 +31,8 @@ configure_environment() {
     xring_o3_require_active || return 1
 
     mapfile -t assignments < <(xring_o3_environment_assignments)
-    assignments+=("XDG_CURRENT_DESKTOP=$xdg_desktop" "XDG_SESSION_DESKTOP=$xdg_desktop")
+    assignments+=("XDG_CURRENT_DESKTOP=$xdg_desktop" "XDG_SESSION_DESKTOP=$xdg_desktop" \
+        "MOZ_DRM_DEVICE=${XRING_O3_DRM_DEVICE}" "MOZ_ENABLE_WAYLAND=1")
 
     for assignment in "${assignments[@]}"; do
         managed_keys+=("${assignment%%=*}")
