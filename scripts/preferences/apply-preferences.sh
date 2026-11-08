@@ -987,7 +987,9 @@ EOF
     fi
 
     if path_exists /usr/share/rime-data/rime_ice.schema.yaml || \
-        path_exists /usr/share/rime-data/rime_ice.base.dict.yaml; then
+        path_exists /usr/share/rime-data/rime_ice.base.dict.yaml || \
+        path_exists "$USER_HOME/.local/share/fcitx5/rime/rime_ice.schema.yaml" || \
+        path_exists "$USER_HOME/.local/share/fcitx5/rime/rime_ice.base.dict.yaml"; then
         install_asset "$USER_HOME/.local/share/fcitx5/rime/default.custom.yaml" \
             fcitx5/rime/default.custom.yaml 0644 || return 1
     else
