@@ -10,6 +10,11 @@ Type=simple
 User=1000
 PAMName=login
 EnvironmentFile=-/etc/environment
+# /dev is a per-boot tmpfs and this unit runs as user 1000, so the session script
+# cannot create the DRM node. Chromium/WebKit open it through
+# --render-node-override / MOZ_DRM_DEVICE and fall back to wl_shm when it is
+# missing. The "+" prefix runs this step as root.
+ExecStartPre=+/usr/bin/sh -c 'mkdir -p /dev/dri; [ -e /dev/dri/card0 ] || mknod /dev/dri/card0 c 226 0; chmod 666 /dev/dri/card0'
 # The host MaliBridge server must listen first: a session that starts early finds
 # no renderer, dies with VK_ERROR_DEVICE_LOST and leaves Noctalia unspawned. The
 # helper warns and still returns 0 on timeout, so a missing GPU never blocks boot.
