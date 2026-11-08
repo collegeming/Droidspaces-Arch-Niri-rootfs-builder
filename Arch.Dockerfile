@@ -60,7 +60,6 @@ COPY scripts/tui/droidspaces-gpu.sh /usr/local/bin/droidspaces-gpu
 COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
-COPY scripts/install-zen.sh /usr/local/sbin/install-zen
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 COPY scripts/etc/niri-default-config.kdl /usr/local/share/droidspaces/niri-default-config.kdl
@@ -70,7 +69,7 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/install-zen /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
@@ -225,9 +224,6 @@ RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
 
 # 安装并配置原生 ARM64 Google Chrome。
 RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"
-
-# 安装 Zen Browser ARM64（固定版本与 SHA256），启动器走 zc-run 的 gecko 类。
-RUN /usr/local/sbin/install-zen
 
 # 修复容器内的 DHCP 网络服务配置
 RUN mkdir -p /etc/systemd/network && \
