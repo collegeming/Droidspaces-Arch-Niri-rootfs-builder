@@ -106,16 +106,29 @@ configure_niri_tray_autostart() {
             continue
         fi
         if grep -q 'droidspaces: mb-tray autostart' "$target"; then
+            :
+        else
+            # spawn-sh 在二进制缺失时只让这条启动命令返回非零，niri 会话继续运行。
+            {
+                printf '\n'
+                printf '%s\n' '// >>> droidspaces: mb-tray autostart (no-op without the Mali stack)'
+                printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/mb-tray ] && exec /usr/local/bin/mb-tray"'
+                printf '%s\n' '// <<< droidspaces: mb-tray autostart'
+            } >> "$target"
+            echo "--> 已写入 mb-tray 自启动：$target"
+        fi
+        if grep -q 'droidspaces: Noctalia shell autostart' "$target"; then
             continue
         fi
-        # spawn-sh 在二进制缺失时只让这条启动命令返回非零，niri 会话继续运行。
+        # Noctalia 由 Mali stack 安装的 noctalia-dt 包装器启动；缺少 wrapper 时
+        # 只记录一条 spawn 失败，不阻断 niri 会话。
         {
             printf '\n'
-            printf '%s\n' '// >>> droidspaces: mb-tray autostart (no-op without the Mali stack)'
-            printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/mb-tray ] && exec /usr/local/bin/mb-tray"'
-            printf '%s\n' '// <<< droidspaces: mb-tray autostart'
+            printf '%s\n' '// >>> droidspaces: Noctalia shell autostart'
+            printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/noctalia-dt ] && exec /usr/local/bin/noctalia-dt noctalia"'
+            printf '%s\n' '// <<< droidspaces: Noctalia shell autostart'
         } >> "$target"
-        echo "--> 已写入 mb-tray 自启动：$target"
+        echo "--> 已写入 Noctalia 自启动：$target"
     done
 }
 

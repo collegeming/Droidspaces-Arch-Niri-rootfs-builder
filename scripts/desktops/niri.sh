@@ -75,7 +75,7 @@ configure_environment() {
 install_niri_arch() {
     pacman -S --noconfirm --needed \
         xdg-desktop-portal xdg-desktop-portal-gtk \
-        alacritty fuzzel mako waybar swaybg swaylock wl-clipboard \
+        noctalia alacritty fuzzel mako waybar swaybg swaylock wl-clipboard \
         brightnessctl playerctl \
         pipewire pipewire-alsa pipewire-pulse wireplumber upower \
         mesa-utils vulkan-tools vulkan-icd-loader libdrm zstd clinfo dmidecode wayland-utils \
