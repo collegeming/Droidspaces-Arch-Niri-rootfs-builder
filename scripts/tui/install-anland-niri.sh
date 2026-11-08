@@ -560,11 +560,19 @@ check_architecture() {
 download_file() {
     local url="$1"
     local destination="$2"
+    local prefix="${GH_MIRROR_PREFIX:-}"
+
+    # GH_MIRROR_PREFIX can front GitHub's release CDN with a mirror (for
+    # example https://ghfast.top/); runners with direct access leave it unset.
+    if [[ -n "$prefix" ]]; then
+        url="${prefix%/}/${url}"
+    fi
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 "$url" -o "$destination"
+        curl -fL --retry 5 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 600 "$url" -o "$destination"
     elif command -v wget >/dev/null 2>&1; then
-        wget --tries=3 --timeout=20 --waitretry=3 --retry-connrefused -O "$destination" "$url"
+        wget --tries=5 --timeout=20 --waitretry=5 --retry-connrefused -O "$destination" "$url"
     else
         die "未找到 curl 或 wget，无法下载安装包。" "Neither curl nor wget was found; packages cannot be downloaded."
     fi
@@ -572,11 +580,17 @@ download_file() {
 
 download_stdout() {
     local url="$1"
+    local prefix="${GH_MIRROR_PREFIX:-}"
+
+    if [[ -n "$prefix" ]]; then
+        url="${prefix%/}/${url}"
+    fi
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 60 "$url"
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 60 "$url"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q --tries=3 --timeout=20 --waitretry=3 --retry-connrefused -O - "$url"
+        wget -q --tries=5 --timeout=20 --waitretry=5 --retry-connrefused -O - "$url"
     else
         die "未找到 curl 或 wget，无法读取 Release 信息。" "Neither curl nor wget was found; Release information cannot be read."
     fi
