@@ -24,13 +24,16 @@
 set -eu
 umask 022
 
-PREFERENCES_VERSION=2026.11.08
+PREFERENCES_VERSION=2026.11.09
 
 PROFILE=${PREFERENCES_PROFILE:-arch-niri-noctalia}
 FONT_SIZE=${PREFERENCES_FONT_SIZE:-12.0}
 case $FONT_SIZE in
     '' | *[!0-9.]*) FONT_SIZE=12.0 ;;
 esac
+
+# GitHub 直连在部分网络下不稳定；默认用镜像前缀，可用 GH_MIRROR_PREFIX 覆盖。
+GH_MIRROR_PREFIX=${GH_MIRROR_PREFIX:-https://gh-proxy.com/}
 
 ROOT=${PREFERENCES_ROOT:-}
 ROOT=${ROOT%/}
@@ -149,6 +152,32 @@ have_bin() {
         return 1
     fi
     command -v "$hb_name" >/dev/null 2>&1
+}
+
+# 把 github.com 链接改写到镜像前缀；其它链接原样返回。
+gh_mirror_url() {
+    case "$1" in
+        https://github.com/* | https://raw.githubusercontent.com/*)
+            printf '%s/%s\n' "${GH_MIRROR_PREFIX%/}" "$1"
+            ;;
+        *)
+            printf '%s\n' "$1"
+            ;;
+    esac
+}
+
+# 下载 URL 到文件；GitHub 链接走镜像，失败重试。
+fetch_url() {
+    fu_url=$(gh_mirror_url "$1")
+    fu_out=$2
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --retry 5 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 600 "$fu_url" -o "$fu_out"
+    elif command -v wget >/dev/null 2>&1; then
+        wget --tries=5 --timeout=20 --waitretry=5 -O "$fu_out" "$fu_url"
+    else
+        return 1
+    fi
 }
 
 same_content() {
@@ -499,18 +528,178 @@ step_pacman_mirrors() {
     fi
 
     if is_dir /etc/pacman.d; then
-        install_content /etc/pacman.d/mirrorlist 0644 <<'EOF' || return 1
+        # ALARM 与 x86_64 的镜像路径不同：ALARM 是 /archlinuxarm/$arch/$repo。
+        case "$(uname -m)" in
+            aarch64 | arm64)
+                install_content /etc/pacman.d/mirrorlist 0644 <<'EOF' || return 1
+## Droidspaces preferences: 清华 TUNA 优先，阿里云备用（Arch Linux ARM）
+Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm/$arch/$repo
+Server = https://mirrors.aliyun.com/archlinuxarm/$arch/$repo
+EOF
+                ;;
+            *)
+                install_content /etc/pacman.d/mirrorlist 0644 <<'EOF' || return 1
 ## Droidspaces preferences: 清华 TUNA 优先，阿里云备用
 Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch
 Server = https://mirrors.aliyun.com/archlinux/$repo/os/$arch
 EOF
+                ;;
+        esac
     else
         warn "/etc/pacman.d 不存在，跳过 mirrorlist"
+    fi
+
+    # archlinuxcn 提供 paru、rime-ice-git 等 ALARM 官方源没有的包。
+    # 首次以仓库级 SigLevel = Never 引导 keyring，装好后删掉这行恢复签名校验。
+    if ! grep -q '^\[archlinuxcn\]' "$ROOT/etc/pacman.conf" 2>/dev/null; then
+        if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+            log "dry-run: would add [archlinuxcn] repository and bootstrap its keyring"
+        else
+            {
+                printf '\n[archlinuxcn]\n'
+                printf 'SigLevel = Never\n'
+                printf 'Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/$arch\n'
+                printf 'Server = https://repo.archlinuxcn.org/$arch\n'
+            } >>"$ROOT/etc/pacman.conf"
+            pacman-key --init >/dev/null 2>&1 || warn "pacman-key --init 失败"
+            if pacman -Sy --noconfirm archlinux-keyring archlinuxcn-keyring >/dev/null 2>&1; then
+                pacman_set_option LocalFileSigLevel 'PackageOptional' || true
+                po_conf=$ROOT/etc/pacman.conf
+                if new_tmp; then
+                    awk '
+                        /^\[archlinuxcn\]$/ { in_cn = 1 }
+                        in_cn && /^SigLevel = Never$/ { next }
+                        /^\[/ && $0 != "[archlinuxcn]" { in_cn = 0 }
+                        { print }
+                    ' "$po_conf" >"$nt_path" && cat "$nt_path" >"$po_conf"
+                    drop_tmp
+                fi
+                log "已加入 archlinuxcn 仓库并安装 keyring"
+            else
+                warn "archlinuxcn-keyring 安装失败，保留 SigLevel = Never 以维持可用"
+            fi
+        fi
     fi
 
     pacman_set_option ParallelDownloads 10 || return 1
     pacman_set_option Color '' || return 1
     return 0
+}
+
+# 2b) archlinuxcn 的 AUR 助手：paru（Maple 字体与雾凇拼音的可选安装通道）。
+step_archlinuxcn() {
+    if ! is_arch || ! have_bin pacman; then
+        skip_step "非 Arch 或无 pacman"
+        return 2
+    fi
+    if have_bin paru; then
+        log "paru 已安装"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        log "dry-run: would install paru from archlinuxcn"
+        return 0
+    fi
+    if pacman -S --needed --noconfirm paru >/dev/null 2>&1; then
+        log "已安装 paru"
+        return 0
+    fi
+    warn "paru 安装失败；Maple 字体与雾凇拼音将走镜像下载回退"
+    return 0
+}
+
+# 2c) Maple Mono NF CN：仓库 → AUR → GitHub Release（走镜像）三级回退。
+step_maple_font() {
+    if ! is_arch; then
+        skip_step "非 Arch 系统"
+        return 2
+    fi
+    if fonts_have_maple; then
+        log "Maple Mono 字体已存在"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        log "dry-run: would install Maple Mono NF CN (repo -> AUR -> release)"
+        return 0
+    fi
+
+    if pacman -S --needed --noconfirm ttf-maplemono-nf-cn >/dev/null 2>&1; then
+        log "已从仓库安装 Maple Mono NF CN"
+        return 0
+    fi
+    if have_bin paru && paru -S --needed --noconfirm ttf-maplemono-nf-cn >/dev/null 2>&1; then
+        log "已从 AUR 安装 Maple Mono NF CN"
+        return 0
+    fi
+
+    mf_zip=${TMPDIR:-/tmp}/MapleMono-NF-CN.zip
+    mf_url=https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF-CN.zip
+    if ! fetch_url "$mf_url" "$mf_zip"; then
+        warn "Maple Mono NF CN 下载失败（$mf_url，经 ${GH_MIRROR_PREFIX}）"
+        return 1
+    fi
+    install -d -m 0755 "$ROOT/usr/share/fonts/MapleMono"
+    if command -v bsdtar >/dev/null 2>&1; then
+        bsdtar -xf "$mf_zip" -C "$ROOT/usr/share/fonts/MapleMono/" || {
+            warn "解压 Maple 字体失败"
+            rm -f "$mf_zip"
+            return 1
+        }
+    elif command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$mf_zip" -d "$ROOT/usr/share/fonts/MapleMono/" || {
+            warn "解压 Maple 字体失败"
+            rm -f "$mf_zip"
+            return 1
+        }
+    else
+        warn "缺少 bsdtar/unzip，无法解压 Maple 字体"
+        rm -f "$mf_zip"
+        return 1
+    fi
+    rm -f "$mf_zip"
+    fc-cache -f >/dev/null 2>&1 || true
+    if fonts_have_maple; then
+        log "已从 Release 安装 Maple Mono NF CN"
+        return 0
+    fi
+    warn "Maple 字体安装后仍未注册到 fontconfig"
+    return 1
+}
+
+# 2d) 雾凇拼音：archlinuxcn 的 rime-ice-git，失败则从 GitHub 镜像克隆。
+step_rime_ice() {
+    if ! is_arch; then
+        skip_step "非 Arch 系统"
+        return 2
+    fi
+    if path_exists /usr/share/rime-data/rime_ice.schema.yaml || \
+        path_exists "$USER_HOME/.local/share/fcitx5/rime/rime_ice.schema.yaml"; then
+        log "雾凇拼音已存在"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        log "dry-run: would install rime-ice"
+        return 0
+    fi
+
+    if pacman -S --needed --noconfirm rime-ice-git >/dev/null 2>&1; then
+        log "已从 archlinuxcn 安装 rime-ice-git"
+        return 0
+    fi
+    if [ -z "$USER_HOME" ] || ! have_bin git; then
+        warn "无普通用户或 git，无法克隆 rime-ice"
+        return 1
+    fi
+    ri_dir=$USER_HOME/.local/share/fcitx5/rime
+    ri_src=$(gh_mirror_url https://github.com/iDvel/rime-ice)
+    install -d -m 0755 "$ri_dir"
+    if git clone --depth=1 "$ri_src" "$ri_dir" >/dev/null 2>&1; then
+        chown -R "$USER_UID:$USER_GID" "$ri_dir" 2>/dev/null || true
+        log "已从 GitHub 镜像克隆雾凇拼音到 $ri_dir"
+        return 0
+    fi
+    warn "rime-ice 克隆失败（$ri_src）"
+    return 1
 }
 
 # 在 pacman.conf 的 [options] 段设置 key = value（value 为空表示裸开关）。
@@ -708,8 +897,29 @@ step_fish() {
         tide_present=true
     fi
     if [ "$tide_present" = false ]; then
-        warn "未检测到 tide，跳过 tide-apply.fish（安装 tide 后重跑本脚本即可）"
-        return 0
+        if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+            log "dry-run: would install fisher and tide from the GitHub mirror"
+        elif have_bin fish; then
+            ft_tmp=${TMPDIR:-/tmp}/fisher.fish
+            if fetch_url https://raw.githubusercontent.com/jorgebucaran/fisher/main/functions/fisher.fish "$ft_tmp"; then
+                chmod 0644 "$ft_tmp" 2>/dev/null || true
+                run_as_user "git config --global url.${GH_MIRROR_PREFIX%/}/https://github.com/.insteadOf https://github.com/" >/dev/null 2>&1 || true
+                if run_as_user "fish -c 'source $ft_tmp; fisher install jorgebucaran/fisher ilancosman/tide@v6'" >/dev/null 2>&1; then
+                    run_as_user "git config --global --unset-all url.${GH_MIRROR_PREFIX%/}/https://github.com/.insteadOf" >/dev/null 2>&1 || true
+                    tide_present=true
+                    log "已安装 fisher 与 tide（经 ${GH_MIRROR_PREFIX}）"
+                else
+                    warn "fisher/tide 安装失败，跳过 tide 配置"
+                fi
+                rm -f "$ft_tmp"
+            else
+                warn "fisher.fish 下载失败（经 ${GH_MIRROR_PREFIX}），跳过 tide 配置"
+            fi
+        fi
+        if [ "$tide_present" = false ]; then
+            warn "未检测到 tide，跳过 tide-apply.fish（安装 tide 后重跑本脚本即可）"
+            return 0
+        fi
     fi
     install_asset "$USER_HOME/.config/fish/tide-apply.fish" fish/tide-apply.fish 0755 || return 1
     if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
@@ -894,6 +1104,117 @@ step_niri_ime_autostart() {
     return 0
 }
 
+# 12b) niri 外观与行为：背景透明、焦点环、壁纸层规则、Noctalia 浮窗。
+# 只写一次（带标记）；layout 段是单例，配置项插进已有 layout 块而不是新建。
+niri_apply_extras() {
+    nae_file=$1
+    nae_full=$ROOT$nae_file
+    if ! path_exists "$nae_file"; then
+        return 2
+    fi
+    if grep -q 'droidspaces-preferences: niri 外观与行为' "$nae_full" 2>/dev/null; then
+        log "unchanged: $nae_file（niri 外观块已存在）"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would add niri appearance block to $nae_file"
+        return 0
+    fi
+    if ! backup_file "$nae_file"; then
+        fail_step "备份失败：$nae_file"
+        return 1
+    fi
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nae_tmp=$nt_path
+    # layout 段只能出现一次；background-color 插在 layout 开头，focus-ring 的值
+    # 在已有块内就地替换（库存配置里 focus-ring 已经是活动节点，重复节点会解析失败）。
+    awk '
+        BEGIN { layout_done = 0; in_fr = 0; fr_seen = 0 }
+        /^[[:space:]]*layout[[:space:]]*\{/ && !layout_done {
+            print
+            print "    background-color \"transparent\""
+            layout_done = 1
+            next
+        }
+        /^[[:space:]]*focus-ring[[:space:]]*\{/ && !in_fr {
+            print
+            in_fr = 1
+            fr_seen = 1
+            next
+        }
+        in_fr && /^[[:space:]]*width[[:space:]]/ {
+            print "        width 2"
+            next
+        }
+        in_fr && /^[[:space:]]*active-color[[:space:]]/ {
+            print "        active-color \"#8caaee99\""
+            next
+        }
+        in_fr && /^[[:space:]]*\}/ {
+            print
+            in_fr = 0
+            next
+        }
+        { print }
+    ' "$nae_full" >"$nae_tmp" || {
+        drop_tmp
+        fail_step "改写失败：$nae_file"
+        return 1
+    }
+    {
+        printf '%s\n' ''
+        printf '%s\n' '// >>> droidspaces-preferences: niri 外观与行为（managed）'
+        printf '%s\n' 'debug {'
+        printf '%s\n' '    honor-xdg-activation-with-invalid-serial'
+        printf '%s\n' '}'
+        printf '%s\n' 'layer-rule {'
+        printf '%s\n' '    match namespace="noctalia-wallpaper"'
+        printf '%s\n' '    place-within-backdrop true'
+        printf '%s\n' '}'
+        printf '%s\n' 'window-rule {'
+        printf '%s\n' '    match app-id="noctalia"'
+        printf '%s\n' '    open-floating true'
+        printf '%s\n' '}'
+        printf '%s\n' '// <<< droidspaces-preferences: niri 外观与行为'
+    } >>"$nae_tmp" || {
+        drop_tmp
+        fail_step "追加失败：$nae_file"
+        return 1
+    }
+    cat "$nae_tmp" >"$nae_full"
+    drop_tmp
+    nae_validator=
+    if have_bin niri-anland; then
+        nae_validator=niri-anland
+    elif have_bin niri; then
+        nae_validator=niri
+    fi
+    if [ -n "$nae_validator" ]; then
+        if ! "$nae_validator" validate -c "$nae_full" >/dev/null 2>&1; then
+            warn "$nae_file 校验失败，已回滚"
+            if [ -n "${BACKUP_DIR:-}" ] && [ -f "$BACKUP_DIR$nae_file" ]; then
+                cat "$BACKUP_DIR$nae_file" >"$nae_full"
+            fi
+            return 1
+        fi
+    fi
+    log "appended: $nae_file（niri 外观块）"
+    return 0
+}
+
+step_niri_extra() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    niri_apply_extras "$USER_HOME/.config/niri/config.kdl" || return $?
+    niri_apply_extras /usr/local/share/droidspaces/niri-default-config.kdl || true
+    return 0
+}
+
 # 13) 中文用户目录，仅在中文本地化生效时。
 step_user_dirs() {
     if [ -z "$USER_HOME" ]; then
@@ -1048,7 +1369,7 @@ else
     warn "未找到 uid>=1000 的普通用户，用户级步骤将被跳过"
 fi
 
-STEPS="packages pacman_mirrors locale environment fontconfig gtk_settings kitty fish fcitx5 nemo noctalia niri_ime_autostart user_dirs services"
+STEPS="pacman_mirrors archlinuxcn packages maple_font rime_ice locale environment fontconfig gtk_settings kitty fish fcitx5 nemo noctalia niri_ime_autostart niri_extra user_dirs services"
 
 for step in $STEPS; do
     STEP_NAME=$step
