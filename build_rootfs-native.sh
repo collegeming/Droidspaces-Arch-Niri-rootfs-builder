@@ -15,6 +15,8 @@ source "$REPO_DIR/scripts/lib/rootfs-config.sh"
 : "${MALI_STACK_BUNDLE_SHA256:=}"
 : "${MALI_STACK_VERSION:=}"
 : "${DROIDSPACES_DEVICE_PROFILE:=}"
+: "${OUTPUT_SCALE:=2}"
+: "${OUTPUT_MODE:=native}"
 
 # Docker 构建上下文无法访问宿主机目录；本地目录模式只适用于独立安装脚本。
 # 镜像构建必须用可下载归档 + SHA256，避免把宿主机路径传进容器后静默失败。
@@ -158,6 +160,16 @@ if [ -n "$MALI_STACK_BUNDLE_URL" ] && [ -z "$MALI_STACK_BUNDLE_SHA256" ]; then
   exit 1
 fi
 
+# niri 默认配置的 anland-0 输出块参数；非法值直接失败，避免把错误配置烤进镜像。
+case "$OUTPUT_SCALE" in
+  1|1.5|2|2.5) ;;
+  *) echo "错误：OUTPUT_SCALE 只支持 1、1.5、2、2.5（当前：$OUTPUT_SCALE）。" >&2; exit 1 ;;
+esac
+if [[ "$OUTPUT_MODE" != native && ! "$OUTPUT_MODE" =~ ^[0-9]+x[0-9]+(@[0-9]+(\.[0-9]+)?)?$ ]]; then
+  echo "错误：OUTPUT_MODE 只支持 native、<宽>x<高> 或 <宽>x<高>@<刷新率>（当前：$OUTPUT_MODE）。" >&2
+  exit 1
+fi
+
 if ! desktop_target_supported "$PREFIX" "$DESKTOP"; then
   echo "错误：$PREFIX 不支持桌面 $DESKTOP。" >&2
   exit 1
@@ -182,6 +194,8 @@ echo " systemd 257 旧内核兼容：$ENABLE_systemd257"
 echo " 桌面：$DESKTOP"
 echo " 显示后端：$DISPLAY_BACKEND"
 echo " 桌面自启动：$DESKTOP_AUTOSTART"
+echo " Anland 输出缩放：$OUTPUT_SCALE"
+echo " Anland 输出模式：$OUTPUT_MODE"
 echo " 应用桌面偏好设置：$APPLY_PREFERENCES（profile=$PREFERENCES_PROFILE，strict=$PREFERENCES_STRICT）"
 if [ -n "$MALI_STACK_BUNDLE_URL" ]; then
   echo " Mali 栈离线包：${MALI_STACK_VERSION:-未指定版本}"
@@ -262,6 +276,8 @@ docker buildx build \
   --build-arg ANLAND_RELEASE_REPOSITORY="$ANLAND_RELEASE_REPOSITORY" \
   --build-arg ANLAND_PACKAGE_REVISION="$ANLAND_PACKAGE_REVISION" \
   --build-arg USERNAME="$USERNAME" \
+  --build-arg OUTPUT_SCALE="$OUTPUT_SCALE" \
+  --build-arg OUTPUT_MODE="$OUTPUT_MODE" \
   -f "$DOCKERFILE" \
   .
 

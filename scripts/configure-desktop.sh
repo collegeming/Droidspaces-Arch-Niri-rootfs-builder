@@ -76,6 +76,71 @@ EOF
     chmod 0755 "$kate_wrapper"
 }
 
+configure_niri_output_config() {
+    local target="$1"
+    local scale="${OUTPUT_SCALE:-2}"
+    local mode="${OUTPUT_MODE:-native}"
+    local tmp
+
+    [[ -f "$target" ]] || return 0
+
+    case "$scale" in
+        1|1.5|2|2.5) ;;
+        *)
+            echo "无效的 Anland 输出缩放：$scale（只支持 1、1.5、2、2.5）" >&2
+            exit 1
+            ;;
+    esac
+    if [[ "$mode" != native && ! "$mode" =~ ^[0-9]+x[0-9]+(@[0-9]+(\.[0-9]+)?)?$ ]]; then
+        echo "无效的 Anland 输出模式：$mode（应为 native、<宽>x<高> 或 <宽>x<高>@<刷新率>）" >&2
+        exit 1
+    fi
+
+    tmp="$(mktemp)"
+    # 只重写受管块：先删除旧块及其尾部空行，再按当前构建参数追加一次，重复执行结果一致。
+    awk '
+        /^\/\/ >>> droidspaces: output scale \(managed\)\r?$/ { managed = 1; next }
+        /^\/\/ <<< droidspaces: output scale \(managed\)\r?$/ { managed = 0; next }
+        managed { next }
+        { lines[++count] = $0 }
+        END {
+            while (count > 0 && lines[count] ~ /^[[:space:]]*$/) count--
+            for (i = 1; i <= count; i++) print lines[i]
+        }
+    ' "$target" > "$tmp"
+
+    {
+        printf '\n'
+        printf '%s\n' '// >>> droidspaces: output scale (managed)'
+        printf '%s\n' 'output "anland-0" {'
+        if [[ "$mode" != native ]]; then
+            printf '    mode "%s"\n' "$mode"
+        fi
+        printf '    scale %s\n' "$scale"
+        printf '%s\n' '}'
+        printf '%s\n' '// <<< droidspaces: output scale (managed)'
+    } >> "$tmp"
+
+    chmod 0644 "$tmp"
+    mv "$tmp" "$target"
+}
+
+configure_niri_output_config_all() {
+    local username="$1"
+    local seed="$rootfs/usr/local/share/droidspaces/niri-default-config.kdl"
+    local -a targets=(
+        "$rootfs/home/$username/.config/niri/config.kdl"
+        "$rootfs/etc/skel/.config/niri/config.kdl"
+    )
+    local target
+
+    # 镜像内的默认配置和已铺设的用户配置都使用同一组构建参数，避免两处不一致。
+    configure_niri_output_config "$seed"
+    for target in "${targets[@]}"; do
+        configure_niri_output_config "$target"
+    done
+}
+
 configure_niri_tray_autostart() {
     local username="$1"
     local default_config="" candidate target
@@ -182,6 +247,7 @@ fi
 
 if [[ "$desktop" == niri ]]; then
     configure_niri_tray_autostart "$username"
+    configure_niri_output_config_all "$username"
 fi
 
 if [[ "$desktop" == kde ]]; then

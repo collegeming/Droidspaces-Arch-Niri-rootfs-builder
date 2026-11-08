@@ -630,3 +630,9 @@ binds {
     // moving the mouse or pressing any other key.
     Mod+Shift+P { power-off-monitors; }
 }
+
+// >>> droidspaces: output scale (managed)
+output "anland-0" {
+    scale 2
+}
+// <<< droidspaces: output scale (managed)

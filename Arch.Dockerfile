@@ -28,6 +28,9 @@ ARG XRING_O3_KIT_REF=c71d58e598a3a38d399f583da1a3cc1aebbbc691
 ARG APPLY_PREFERENCES=false
 ARG PREFERENCES_PROFILE=arch-niri-noctalia
 ARG PREFERENCES_STRICT=false
+# niri 默认配置中的 anland-0 输出块：缩放与模式由构建参数决定（mode=native 表示不写 mode）。
+ARG OUTPUT_SCALE=2
+ARG OUTPUT_MODE=native
 ######################################################
 
 # 本分支只交付 Arch + niri + XRING-O3 Mali。其它组合在拉取依赖前直接失败，
@@ -207,7 +210,8 @@ GLFW_IM_MODULE=fcitx
 EOF
 fi
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
-    /usr/local/sbin/configure-desktop "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME"
+    OUTPUT_SCALE="${OUTPUT_SCALE}" OUTPUT_MODE="${OUTPUT_MODE}" \
+        /usr/local/sbin/configure-desktop "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME"
     rm -rf /tmp/droidspaces-start
 EOF_RUN
 

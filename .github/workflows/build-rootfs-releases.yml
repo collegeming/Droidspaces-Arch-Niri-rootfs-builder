@@ -145,6 +145,21 @@ on:
         required: false
         type: string
         default: "2026.11.08"
+      output_scale:
+        description: Anland 输出缩放（默认 2；只对 niri 桌面写入 anland-0 输出块）
+        required: true
+        type: choice
+        default: "2"
+        options:
+          - "1"
+          - "1.5"
+          - "2"
+          - "2.5"
+      output_mode:
+        description: Anland 输出模式（native 表示不写 mode；可填 3408x2272 或 3408x2272@120）
+        required: true
+        type: string
+        default: native
 
 permissions:
   contents: write
@@ -178,3 +193,5 @@ jobs:
       mali_stack_bundle_url: ${{ inputs.mali_stack_bundle_url }}
       mali_stack_bundle_sha256: ${{ inputs.mali_stack_bundle_sha256 }}
       mali_stack_version: ${{ inputs.mali_stack_version }}
+      output_scale: ${{ inputs.output_scale }}
+      output_mode: ${{ inputs.output_mode }}

@@ -84,6 +84,14 @@ on:
         required: false
         type: string
         default: '2026.11.08'
+      output_scale:
+        required: false
+        type: string
+        default: '2'
+      output_mode:
+        required: false
+        type: string
+        default: native
       build_id:
         required: false
         type: string
@@ -429,6 +437,27 @@ jobs:
             echo "Build ID: $BUILD_ID"
           fi
 
+      - name: ${{ inputs.ui_language == 'zh' && '写入构建输出配置摘要' || 'Write output configuration summary' }}
+        env:
+          UI_LANGUAGE: ${{ inputs.ui_language }}
+          OUTPUT_SCALE: ${{ inputs.output_scale }}
+          OUTPUT_MODE: ${{ inputs.output_mode }}
+        run: |
+          set -euo pipefail
+          {
+            if [ "$UI_LANGUAGE" = zh ]; then
+              echo "### Anland 输出配置"
+              echo ""
+              echo "- output_scale：\`$OUTPUT_SCALE\`"
+              echo "- output_mode：\`$OUTPUT_MODE\`"
+            else
+              echo "### Anland output configuration"
+              echo ""
+              echo "- output_scale: \`$OUTPUT_SCALE\`"
+              echo "- output_mode: \`$OUTPUT_MODE\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # --------------------------------------------------------
   # Phase 2: build (Build of regular Linux distribution RootFS)
   # --------------------------------------------------------
@@ -455,6 +484,8 @@ jobs:
           MALI_STACK_BUNDLE_URL: ${{ inputs.mali_stack_bundle_url }}
           MALI_STACK_BUNDLE_SHA256: ${{ inputs.mali_stack_bundle_sha256 }}
           MALI_STACK_VERSION: ${{ inputs.mali_stack_version }}
+          OUTPUT_SCALE: ${{ inputs.output_scale }}
+          OUTPUT_MODE: ${{ inputs.output_mode }}
           DROIDSPACES_DEVICE_PROFILE: ${{ inputs.device_profile }}
         run: |
           chmod +x build_rootfs-native.sh
