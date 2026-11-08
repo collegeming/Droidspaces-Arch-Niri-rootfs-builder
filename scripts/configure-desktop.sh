@@ -85,6 +85,7 @@ configure_niri_tray_autostart() {
     )
 
     for candidate in \
+        "$rootfs/usr/local/share/droidspaces/niri-default-config.kdl" \
         "$rootfs/usr/share/doc/niri/default-config.kdl" \
         "$rootfs/usr/share/doc/niri-anland/default-config.kdl"; do
         if [[ -f "$candidate" ]]; then
