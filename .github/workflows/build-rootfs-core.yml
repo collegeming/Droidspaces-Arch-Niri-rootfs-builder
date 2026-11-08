@@ -456,7 +456,7 @@ jobs:
               echo "- output_scale: \`$OUTPUT_SCALE\`"
               echo "- output_mode: \`$OUTPUT_MODE\`"
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   # --------------------------------------------------------
   # Phase 2: build (Build of regular Linux distribution RootFS)
