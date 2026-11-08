@@ -24,7 +24,7 @@
 set -eu
 umask 022
 
-PREFERENCES_VERSION=2026.11.09
+PREFERENCES_VERSION=2026.11.13
 
 PROFILE=${PREFERENCES_PROFILE:-arch-niri-noctalia}
 FONT_SIZE=${PREFERENCES_FONT_SIZE:-12.0}
@@ -42,6 +42,13 @@ ASSETS_DIR=$SCRIPT_DIR/assets
 STATE_DIR=$ROOT/var/lib/droidspaces-preferences
 MANIFEST=$STATE_DIR/manifest.env
 TMPFILES=
+
+# TMPDIR 可能从宿主/容器环境继承成不存在的路径（例如 Android 的
+# /data/local/tmp 在容器内不存在），mktemp 会全部失败。只在可用时保留。
+if [ -z "${TMPDIR:-}" ] || [ ! -d "$TMPDIR" ] || [ ! -w "$TMPDIR" ]; then
+    TMPDIR=/tmp
+fi
+export TMPDIR
 
 USER_NAME=
 USER_UID=
@@ -553,7 +560,9 @@ EOF
 
     # archlinuxcn 提供 paru、rime-ice-git 等 ALARM 官方源没有的包。
     # 首次以仓库级 SigLevel = Never 引导 keyring，装好后删掉这行恢复签名校验。
-    if ! grep -q '^\[archlinuxcn\]' "$ROOT/etc/pacman.conf" 2>/dev/null; then
+    if [ "$OFFLINE" = true ]; then
+        log "offline: 跳过 archlinuxcn 仓库与 keyring 引导"
+    elif ! grep -q '^\[archlinuxcn\]' "$ROOT/etc/pacman.conf" 2>/dev/null; then
         if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
             log "dry-run: would add [archlinuxcn] repository and bootstrap its keyring"
         else
@@ -594,6 +603,10 @@ step_archlinuxcn() {
         skip_step "非 Arch 或无 pacman"
         return 2
     fi
+    if [ "$OFFLINE" = true ]; then
+        skip_step "PREFERENCES_OFFLINE=true"
+        return 2
+    fi
     if have_bin paru; then
         log "paru 已安装"
         return 0
@@ -619,6 +632,10 @@ step_maple_font() {
     if fonts_have_maple; then
         log "Maple Mono 字体已存在"
         return 0
+    fi
+    if [ "$OFFLINE" = true ]; then
+        skip_step "PREFERENCES_OFFLINE=true（跳过 Maple 字体下载/AUR）"
+        return 2
     fi
     if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
         log "dry-run: would install Maple Mono NF CN (repo -> AUR -> release)"
@@ -678,6 +695,10 @@ step_rime_ice() {
         path_exists "$USER_HOME/.local/share/fcitx5/rime/rime_ice.schema.yaml"; then
         log "雾凇拼音已存在"
         return 0
+    fi
+    if [ "$OFFLINE" = true ]; then
+        skip_step "PREFERENCES_OFFLINE=true（跳过 rime-ice 安装与克隆）"
+        return 2
     fi
     if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
         log "dry-run: would install rime-ice"
@@ -852,10 +873,10 @@ step_gtk_settings() {
         return 2
     fi
     if ! fonts_have_maple; then
-        skip_step "未安装 Maple Mono NF CN，保留系统默认字体"
-        return 2
+        log "未安装 Maple Mono NF CN：GTK 仍写入，字体由 fontconfig 回退"
     fi
     install_asset "$USER_HOME/.config/gtk-3.0/settings.ini" gtk-3.0/settings.ini 0644 || return 1
+    install_asset "$USER_HOME/.config/gtk-3.0/gtk.css" gtk-3.0/gtk.css 0644 || return 1
     install_asset "$USER_HOME/.config/gtk-4.0/settings.ini" gtk-4.0/settings.ini 0644 || return 1
     return 0
 }
@@ -906,7 +927,7 @@ step_fish() {
     if [ "$tide_present" = false ]; then
         if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
             log "dry-run: would install fisher and tide from the GitHub mirror"
-        elif have_bin fish; then
+        elif [ "$OFFLINE" != true ] && have_bin fish; then
             ft_tmp=${TMPDIR:-/tmp}/fisher.fish
             if fetch_url https://raw.githubusercontent.com/jorgebucaran/fisher/main/functions/fisher.fish "$ft_tmp"; then
                 chmod 0644 "$ft_tmp" 2>/dev/null || true
@@ -1138,8 +1159,9 @@ niri_apply_extras() {
     nae_tmp=$nt_path
     # layout 段只能出现一次；background-color 插在 layout 开头，focus-ring 的值
     # 在已有块内就地替换（库存配置里 focus-ring 已经是活动节点，重复节点会解析失败）。
+    # binds 段同理，只能插在已有 binds 块内。
     awk '
-        BEGIN { layout_done = 0; in_fr = 0; fr_seen = 0 }
+        BEGIN { layout_done = 0; in_fr = 0; fr_named = 0 }
         /^[[:space:]]*layout[[:space:]]*\{/ && !layout_done {
             print
             print "    background-color \"transparent\""
@@ -1149,7 +1171,7 @@ niri_apply_extras() {
         /^[[:space:]]*focus-ring[[:space:]]*\{/ && !in_fr {
             print
             in_fr = 1
-            fr_seen = 1
+            fr_named = 0
             next
         }
         in_fr && /^[[:space:]]*width[[:space:]]/ {
@@ -1160,7 +1182,13 @@ niri_apply_extras() {
             print "        active-color \"#8caaee99\""
             next
         }
+        in_fr && /^[[:space:]]*inactive-color[[:space:]]/ {
+            print "        inactive-color \"transparent\""
+            fr_named = 1
+            next
+        }
         in_fr && /^[[:space:]]*\}/ {
+            if (!fr_named) print "        inactive-color \"transparent\""
             print
             in_fr = 0
             next
@@ -1203,8 +1231,8 @@ niri_apply_extras() {
         nae_validator=niri
     fi
     if [ -n "$nae_validator" ]; then
-        if ! "$nae_validator" validate -c "$nae_full" >/dev/null 2>&1; then
-            warn "$nae_file 校验失败，已回滚"
+        if ! nae_err=$("$nae_validator" validate -c "$nae_full" 2>&1); then
+            warn "$nae_file 校验失败，已回滚：$(printf '%s' "$nae_err" | tr '\n' ' ' | cut -c1-300)"
             if [ -n "${BACKUP_DIR:-}" ] && [ -f "$BACKUP_DIR$nae_file" ]; then
                 cat "$BACKUP_DIR$nae_file" >"$nae_full"
             fi
@@ -1347,6 +1375,9 @@ if DRY_RUN=$(normalize_bool "${PREFERENCES_DRY_RUN:-false}"); then :; else
 fi
 if INSTALL_PACKAGES=$(normalize_bool "${PREFERENCES_INSTALL_PACKAGES:-true}"); then :; else
     INSTALL_PACKAGES=true
+fi
+if OFFLINE=$(normalize_bool "${PREFERENCES_OFFLINE:-false}"); then :; else
+    OFFLINE=false
 fi
 
 if [ "$APPLY_PREFERENCES" != true ]; then

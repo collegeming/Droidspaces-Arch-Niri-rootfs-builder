@@ -41,4 +41,10 @@ if [[ "${DROIDSPACES_SESSION_DRY_RUN:-false}" == true ]]; then
     exit 0
 fi
 
+# Wayland 下剪贴板内容由持有它的进程（wl-copy）提供。上一次会话或测试脚本
+# 残留的 wl-copy 会继续占用所有权、把内容覆盖成旧数据，表现为“复制了却粘贴
+# 不出来”。进入新会话前清掉本用户的旧 wl-copy：旧进程连接的是上一个
+# compositor，已经无法为新会话服务，清理不会丢失当前会话的剪贴板。
+pkill -u "$(id -u)" -x wl-copy 2>/dev/null || true
+
 exec /bin/bash -lc "$command_line"
