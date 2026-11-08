@@ -76,7 +76,7 @@ configure_environment() {
 install_niri_arch() {
     pacman -S --noconfirm --needed \
         xdg-desktop-portal xdg-desktop-portal-gtk \
-        noctalia alacritty fuzzel mako waybar swaybg swaylock wl-clipboard \
+        noctalia fuzzel swaylock wl-clipboard \
         brightnessctl playerctl \
         pipewire pipewire-alsa pipewire-pulse wireplumber upower \
         mesa-utils vulkan-tools vulkan-icd-loader libdrm zstd clinfo dmidecode wayland-utils \
@@ -88,7 +88,7 @@ install_niri_arch() {
 install_minimal_deb() {
     apt-get install -y --no-install-recommends \
         xdg-desktop-portal xdg-desktop-portal-gtk \
-        alacritty fuzzel waybar swaylock brightnessctl playerctl \
+        fuzzel swaylock brightnessctl playerctl \
         wl-clipboard pipewire pipewire-alsa pipewire-pulse wireplumber upower \
         mesa-utils vulkan-tools wayland-utils xdg-user-dirs \
         fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji
@@ -97,7 +97,7 @@ install_minimal_deb() {
 install_minimal_fedora() {
     dnf install -y --setopt=install_weak_deps=False \
         xdg-desktop-portal xdg-desktop-portal-gtk \
-        alacritty fuzzel waybar swaylock brightnessctl playerctl \
+        fuzzel swaylock brightnessctl playerctl \
         wl-clipboard pipewire pipewire-alsa pipewire-pulseaudio wireplumber upower \
         glx-utils vulkan-tools wayland-utils xdg-user-dirs \
         google-noto-sans-fonts google-noto-sans-cjk-fonts google-noto-color-emoji-fonts

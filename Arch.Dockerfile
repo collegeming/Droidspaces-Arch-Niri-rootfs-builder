@@ -203,10 +203,7 @@ NoDisplay=true
 EOF
     cat <<'EOF' >> /etc/environment
 XMODIFIERS=@im=fcitx5
-GTK_IM_MODULE=fcitx5
-QT_IM_MODULE=fcitx5
-SDL_IM_MODULE=fcitx5
-GLFW_IM_MODULE=fcitx
+INPUT_METHOD=fcitx5
 EOF
 fi
     echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc

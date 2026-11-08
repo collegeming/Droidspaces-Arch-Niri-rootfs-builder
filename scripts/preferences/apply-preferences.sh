@@ -89,9 +89,11 @@ new_tmp() {
 }
 
 drop_tmp() {
-    rm -f "$1" 2>/dev/null || true
+    dt_file=${1:-}
+    [ -n "$dt_file" ] || return 0
+    rm -f "$dt_file" 2>/dev/null || true
     if [ -n "$TMPFILES" ]; then
-        TMPFILES=$(printf '%s' " $TMPFILES " | sed "s| $1 | |")
+        TMPFILES=$(printf '%s' " $TMPFILES " | sed "s| $dt_file | |")
     fi
 }
 
@@ -692,6 +694,11 @@ step_rime_ice() {
     fi
     ri_dir=$USER_HOME/.local/share/fcitx5/rime
     ri_src=$(gh_mirror_url https://github.com/iDvel/rime-ice)
+    # 旧用户目录里的 rime-ice 文件会遮蔽共享数据；保留 custom_phrase.txt，其余清掉。
+    if is_dir "$ri_dir"; then
+        find "$ROOT$ri_dir" -mindepth 1 -maxdepth 1 ! -name custom_phrase.txt \
+            -exec rm -rf {} + 2>/dev/null || true
+    fi
     install -d -m 0755 "$ri_dir"
     if git clone --depth=1 "$ri_src" "$ri_dir" >/dev/null 2>&1; then
         chown -R "$USER_UID:$USER_GID" "$ri_dir" 2>/dev/null || true
@@ -1177,6 +1184,9 @@ niri_apply_extras() {
         printf '%s\n' 'window-rule {'
         printf '%s\n' '    match app-id="noctalia"'
         printf '%s\n' '    open-floating true'
+        printf '%s\n' '}'
+        printf '%s\n' 'window-rule {'
+        printf '%s\n' '    draw-border-with-background false'
         printf '%s\n' '}'
         printf '%s\n' '// <<< droidspaces-preferences: niri 外观与行为'
     } >>"$nae_tmp" || {
