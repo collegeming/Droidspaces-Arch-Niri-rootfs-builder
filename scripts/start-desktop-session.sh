@@ -55,6 +55,11 @@ pkill -u "$(id -u)" -x fcitx5 2>/dev/null || true
 sleep 1
 pkill -9 -u "$(id -u)" -x fcitx5 2>/dev/null || true
 
+# 上一次会话遗留的 Xwayland（被 reparent 到 pid 1）会一直占着 :N 显示号，
+# 其中一些已经不再响应 X 握手。新会话里的应用连到这种显示会卡死在 xcb 连接
+# （fcitx5 和 Chrome 都踩过），所以在 niri 启动前清掉本用户的旧 Xwayland。
+pkill -u "$(id -u)" -x Xwayland 2>/dev/null || true
+
 # droidspaces 把宿主（Android）的 TMPDIR=/data/local/tmp 继承进来，但这个路径在
 # 容器里不存在也建不出来。Chromium 的 ProcessSingleton 在创建临时 socket 目录时
 # 直接失败并以 "Failed to create socket directory" 退出，表现为双击图标没反应。
