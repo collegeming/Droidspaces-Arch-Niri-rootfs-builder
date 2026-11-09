@@ -1,16 +1,16 @@
 patch:
   __include: rime_ice_suggestion:/
   menu/page_size: 7
-  # 与目标机（192.168.110.16）一致：左 Shift 把已输入的拼音原样作为英文上屏
-  # (inline_ascii)，右 Shift 提交候选中文 (commit_text)。
-  # rime_ice_suggestion 会把 default.yaml 的默认值覆盖成 Shift_L=commit_code、
-  # Shift_R=noop —— 那样按 Shift 会把拼音字母/候选直接提交，用户无法“按 Shift
-  # 打英文”。这里显式覆盖回来。
+  # 左 Shift = commit_code：把已输入的编码字母直接上屏并切到英文
+  # （用户要的“按 Shift 打英文”）；右 Shift = noop。
+  # 注意：inline_ascii 只切行内英文、不立即上屏，语义与需求不符（曾误配）。
+  # 与主容器 archniri 实际生效值一致（commit_code/noop），也是 rime_ice_suggestion
+  # 的默认值；此处显式写出，避免预设变更后行为漂移。
   ascii_composer:
     good_old_caps_lock: true
     switch_key:
-      Shift_L: inline_ascii
-      Shift_R: commit_text
+      Shift_L: commit_code
+      Shift_R: noop
       Control_L: noop
       Control_R: noop
       Caps_Lock: clear

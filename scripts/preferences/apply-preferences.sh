@@ -1807,24 +1807,34 @@ step_noctalia() {
     # pdev：Noctalia 自身渲染异常，而且它 spawn 出的应用（从启动器打开 kitty/
     # nemo）会继承错误的 LD_LIBRARY_PATH 与缺失的 EGL/Vulkan 变量，表现为
     # “程序打不开”。这里对齐到 niri/zc-run 用的 kopper 那一套。
-    # noctalia-dt 的环境配置由 Mali stack 安装时生成。默认值里
-    # NOCTALIA_LD_PRELOAD 指向 vkbridge 的 wl-surface-gone shim：那个 shim 是给
-    # Noctalia 自身用的，一旦被 Noctalia spawn 的子进程（kitty/nemo/nvim…）继承，
-    # 进程会在启动时 SIGSEGV —— 用户看到的是“从启动器点图标没反应/应用打不开”。
-    # 只清空这一项，其余保持 bundle 默认（Mesa 路径/ICD/总线都由 stack 决定），
-    # 改动面最小；实测清空后 kitty/nemo/fcitx5-config-qt/mark-shot 全部正常。
+    # 实测更正（2026-11-10，archniri13 验收）：NOCTALIA_LD_PRELOAD 指向的
+    # wl-surface-gone shim 是 Noctalia 稳定运行所必需。清空后 Noctalia 在
+    # wl_surface 销毁（壁纸纹理回收、SNI 图标更新、输入法切换）时收到
+    # wl_display "invalid object" 并 fatal 退出，10~40 秒内必崩；恢复后
+    # Noctalia 连续运行并正常响应输入法切换（日志可见
+    # "vkb-wlhook: wl_surface destroy -> vkb_wayland_surface_gone"）。
+    # 子进程继承的担忧不成立：shim 在未加载 vkbridge 客户端的进程里只打印
+    # "vkb-wlhook: resolve ... hook=(nil)" 后 noop；实测 ZCode(Electron)、
+    # kitty、nvim 用启动器环境（含该 LD_PRELOAD）启动均正常。
+    # 因此这里只在 shim 存在时确保 NOCTALIA_LD_PRELOAD 指向它，不再清空。
     noct_conf=/opt/mali-stack/current/conf/noctalia-env.conf
-    if path_exists "$noct_conf"; then
-        if grep -q '^NOCTALIA_LD_PRELOAD=' "$noct_conf" 2>/dev/null; then
+    noct_shim=/opt/mali-stack/current/vkbridge/shim/libvkb_wl_gone.so
+    if path_exists "$noct_conf" && path_exists "$noct_shim"; then
+        if ! grep -qx "NOCTALIA_LD_PRELOAD=$noct_shim" "$noct_conf" 2>/dev/null; then
             if [ "$DRY_RUN" = true ]; then
-                log "dry-run: would clear NOCTALIA_LD_PRELOAD in $noct_conf"
+                log "dry-run: would set NOCTALIA_LD_PRELOAD=$noct_shim in $noct_conf"
             elif ! new_tmp; then
                 fail_step "mktemp 失败"
                 return 1
             else
                 noct_tmp=$nt_path
-                if ! sed 's|^NOCTALIA_LD_PRELOAD=.*|NOCTALIA_LD_PRELOAD=|' \
-                    "$noct_conf" >"$noct_tmp"; then
+                if grep -q '^NOCTALIA_LD_PRELOAD=' "$noct_conf" 2>/dev/null; then
+                    sed "s|^NOCTALIA_LD_PRELOAD=.*|NOCTALIA_LD_PRELOAD=$noct_shim|" \
+                        "$noct_conf" >"$noct_tmp"
+                else
+                    { cat "$noct_conf"; printf 'NOCTALIA_LD_PRELOAD=%s\n' "$noct_shim"; } >"$noct_tmp"
+                fi
+                if ! grep -qx "NOCTALIA_LD_PRELOAD=$noct_shim" "$noct_tmp" 2>/dev/null; then
                     drop_tmp "$noct_tmp"
                     fail_step "改写失败：$noct_conf"
                     return 1
@@ -1834,7 +1844,7 @@ step_noctalia() {
                     return 1
                 fi
                 drop_tmp "$noct_tmp"
-                log "fixed: $noct_conf（清空 NOCTALIA_LD_PRELOAD，避免子进程继承 shim 崩溃）"
+                log "fixed: $noct_conf（NOCTALIA_LD_PRELOAD 指向 wl-gone shim）"
             fi
         fi
     fi
