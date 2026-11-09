@@ -250,7 +250,7 @@ RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
 #    libgbm 补上该路径（实测可建 device，且能触发 zink→MaliBridge）。
 # 2) zc-run 默认从 /opt/zc/current/conf/zc-env.conf 读配置；镜像里只有
 #    /opt/mali-stack/current，配置读不到时会回落到硬编码旧路径导致 EGL 全挂。
-RUN mkdir -p /opt/gbm-spike /opt/mesa-kopper-retire-42194036783/candidate/usr/lib && \
+RUN mkdir -p /opt/gbm-spike /opt/zc /opt/mesa-kopper-retire-42194036783/candidate/usr/lib && \
     if [ ! -e /opt/mesa-kopper-retire-42194036783/candidate/usr/lib/libgbm.so.1.0.0 ]; then \
         ln -sf /usr/lib/libgbm.so.1.0.0 \
             /opt/mesa-kopper-retire-42194036783/candidate/usr/lib/libgbm.so.1.0.0; \
