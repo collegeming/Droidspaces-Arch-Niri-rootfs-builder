@@ -318,6 +318,16 @@ if [ "$cls" = chromium ]; then
     # 时不需要 DISPLAY，清掉可稳定恢复零拷贝（实测 create_immed=3）。
     unset DISPLAY
 fi
+if [ "$cls" = webkit ]; then
+    # WebKitGTK（含 Tauri / WebView 应用）的 web 进程在容器里起不来：
+    #   bwrap: setting up uid map: No such file or directory
+    # 容器不允许 user namespace，沙箱初始化失败后 web 进程退出，表现为
+    # “Tauri 应用白屏/打不开”。禁用沙箱后实测走 dmabuf 零拷贝：
+    # create_immed=8、无 wl_shm 池。
+    export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+    # 与 chromium 同理：niri 注入的 DISPLAY 可能指向挂死的 Xwayland。
+    unset DISPLAY
+fi
 exec "$REAL" "$@"
 EOF
 chmod 0755 "$link"
