@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # 在 Arch rootfs 中从 AUR 构建并安装 mark-shot（Qt6 Wayland 截图标注工具）。
 #
-# AUR 只提供源码包（GitHub Release 仅有 x86_64 产物），aarch64 必须本地编译。
+# 为什么不用官方预编译包（mark-shot-bin，Release 有 aarch64 产物）：
+#   1) 该产物在 Ubuntu/FFmpeg 6 上编译，录像插件链 libavcodec.so.60 等 soname，
+#      而 Arch Linux ARM 是 FFmpeg 9（.so.63），pacman 依赖无法满足；
+#   2) 更关键的是它没有 grim/wlr-screencopy 后端（构建环境里没有 grim），在
+#      niri 下连选区截屏都失败：QScreen::grabWindow returned null pixmap。
+#      源码构建在 Arch 环境检测到 grim，走 `route=grim`，截图/标注正常。
 # 构建在无特权用户下完成，避免 makepkg 拒绝 root；依赖从 .SRCINFO 读取，
 # 构建完成后仅卸载本次新装、且未被其他包依赖的 makedepends。
 set -euo pipefail
@@ -12,7 +17,7 @@ rootfs="${ROOTFS_DIR:-}"
 binary="${rootfs}/usr/bin/mark-shot"
 
 # mark-shot 依赖 Wayland + layer-shell，只在 niri/anland-wayland 组合下安装。
-if [[ "$DISPLAY_BACKEND" != anland-wayland ]]; then
+if [[ "$display_backend" != anland-wayland ]]; then
     exit 0
 fi
 case "$desktop" in
@@ -51,8 +56,18 @@ pacman -S --noconfirm --needed base-devel git
 useradd --system --create-home --home-dir "$build_root" --shell /bin/bash "$build_user"
 chown -R "$build_user:$build_user" "$build_root"
 
-runuser -u "$build_user" -- env HOME="$build_root" \
-    git clone --depth=1 https://aur.archlinux.org/mark-shot.git "$build_root/mark-shot"
+# 网络抖动时 AUR 的 TLS 连接会偶发失败；重试几次再放弃。
+cloned=false
+for _ in 1 2 3; do
+    if runuser -u "$build_user" -- env HOME="$build_root" \
+        git clone --depth=1 https://aur.archlinux.org/mark-shot.git "$build_root/mark-shot"; then
+        cloned=true
+        break
+    fi
+    rm -rf "$build_root/mark-shot"
+    sleep 3
+done
+[[ "$cloned" == true ]] || { echo "AUR mark-shot 克隆失败" >&2; exit 1; }
 
 srcinfo="$build_root/mark-shot/.SRCINFO"
 [[ -f "$srcinfo" ]] || { echo "缺少 .SRCINFO" >&2; exit 1; }
