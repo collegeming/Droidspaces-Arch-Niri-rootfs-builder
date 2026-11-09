@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2.5 2.5 19 19" width="24" height="24">
+  <title>MaliBridge memory budget</title>
+  <g fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5" y="7" width="14" height="10" rx="2"/>
+    <path d="M8 4.5v2.5M12 4.5v2.5M16 4.5v2.5M8 17v2.5M12 17v2.5M16 17v2.5"/>
+    <path d="M5 10.5H2.5M5 13.5H2.5M21.5 10.5H19M21.5 13.5H19"/>
+    <path d="M10.5 9.5h2.2l-1.1 2.2h2.4l-3 3.3.6-2.4h-2.1z" fill="#ffffff" stroke="none"/>
+  </g>
+</svg>

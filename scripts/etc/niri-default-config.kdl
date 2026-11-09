@@ -3,6 +3,12 @@
 // Check the wiki for a full description of the configuration:
 // https://niri-wm.github.io/niri/Configuration:-Introduction
 
+// X11 兼容层：容器只有 /dev/dri/card0，Xwayland 走 card0+zink 会在 glamor
+// 初始化时 SIGSEGV；wrapper 强制 llvmpipe，X11 应用稳定可用（软件渲染）。
+xwayland-satellite {
+    path "/usr/local/bin/xwayland-satellite-soft"
+}
+
 // Input device configuration.
 // Find the full list of options on the wiki:
 // https://niri-wm.github.io/niri/Configuration:-Input

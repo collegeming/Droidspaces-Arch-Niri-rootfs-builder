@@ -1946,6 +1946,12 @@ niri_apply_extras() {
     {
         printf '%s\n' ''
         printf '%s\n' '// >>> droidspaces-preferences: niri 外观与行为（managed）'
+        # X11 兼容层：容器只有 /dev/dri/card0，Xwayland 走 card0+zink 会在 glamor
+        # 初始化时崩溃，随后 niri 反复重启 satellite、多个 Xwayland 抢同一个 :N，
+        # X 客户端永远等不到握手。软件渲染 wrapper 稳定可用。
+        printf '%s\n' 'xwayland-satellite {'
+        printf '%s\n' '    path "/usr/local/bin/xwayland-satellite-soft"'
+        printf '%s\n' '}'
         printf '%s\n' 'debug {'
         printf '%s\n' '    honor-xdg-activation-with-invalid-serial'
         printf '%s\n' '}'

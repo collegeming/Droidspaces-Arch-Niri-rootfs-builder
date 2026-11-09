@@ -73,8 +73,11 @@ COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/configure-mark-shot.sh /usr/local/sbin/configure-mark-shot
+COPY scripts/configure-mb-tray.sh /usr/local/sbin/configure-mb-tray
+COPY scripts/vendor/mb-tray/ /usr/local/share/droidspaces/mb-tray/
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
+COPY scripts/xwayland-satellite-soft.sh /usr/local/bin/xwayland-satellite-soft
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 COPY scripts/etc/niri-default-config.kdl /usr/local/share/droidspaces/niri-default-config.kdl
 COPY scripts/etc/wireplumber/wireplumber.conf.d/Anland-Audio.conf /tmp/Anland-Audio.conf
@@ -83,7 +86,7 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/sbin/configure-mb-tray /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/bin/xwayland-satellite-soft /usr/local/lib/droidspaces/desktops/*.sh && \
     chmod 0644 /etc/profile.d/ds-aliases.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
@@ -320,6 +323,10 @@ EOF
 chmod 0755 "$link"
 EOF_ZCRUN
 
+# MaliBridge 离线包只带英文预编译 mb-tray；用 vendored 源码编译本地化版本
+# （zh/en 跟随 LANG），并修正托盘图标内边距。
+RUN /usr/local/sbin/configure-mb-tray "$DESKTOP" "$DISPLAY_BACKEND"
+
 # 设备节点与 Anland socket 的容器侧准备；构建阶段只安装 unit，不创建设备节点。
 RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
     /usr/local/lib/droidspaces/device/xring-o3/anland.sh --install
@@ -497,6 +504,7 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
 RUN rm -f \
         /usr/local/sbin/configure-chrome \
         /usr/local/sbin/configure-mark-shot \
+        /usr/local/sbin/configure-mb-tray \
         /usr/local/sbin/configure-desktop \
         /usr/local/sbin/install-desktop \
         /usr/local/sbin/install-anland-desktop \
