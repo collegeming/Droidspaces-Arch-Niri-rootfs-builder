@@ -1603,6 +1603,11 @@ if command -v busctl >/dev/null 2>&1; then
         kill "$pid" 2>/dev/null || true
     done
 fi
+# niri 会给 spawn 的应用注入 DISPLAY，但容器里的 Xwayland 可能挂死（socket 能
+# connect、X 握手永不响应）。fcitx5 的 xcb 插件在启动时会连 X，直接卡在
+# xcb_connect，导致输入法根本没初始化：没有候选窗、classicui 主题也不加载。
+# fcitx5 走 Wayland 不需要 X11，启动前清掉 DISPLAY。
+unset DISPLAY
 exec /usr/bin/fcitx5 "$@"
 EOF_DBUS
     # 放在 /usr/local/share 而不是用户目录：会话总线不保证把
