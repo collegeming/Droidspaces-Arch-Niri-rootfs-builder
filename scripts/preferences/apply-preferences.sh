@@ -2500,6 +2500,50 @@ niri_has_active_radius() {
     ' "$nhcr_full" 2>/dev/null
 }
 
+# Noctalia 自启动：configure-desktop.sh 只在首次铺设配置时写入，preferences
+# 重跑（FORCE 或版本升级）会从快照/备份恢复 config.kdl，把它丢掉——顶栏就没了。
+# 这里做幂等补齐：缺少标记时追加，已有则不动。
+niri_fix_noctalia_autostart() {
+    nna_file=$1
+    nna_full=$ROOT$nna_file
+    path_exists "$nna_file" || return 2
+    if grep -q 'droidspaces: Noctalia shell autostart' "$nna_full" 2>/dev/null; then
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would add Noctalia autostart to $nna_file"
+        return 0
+    fi
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nna_tmp=$nt_path
+    cp "$nna_full" "$nna_tmp" || { drop_tmp "$nna_tmp"; return 1; }
+    {
+        printf '\n'
+        printf '%s\n' '// >>> droidspaces: Noctalia shell autostart'
+        printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/noctalia-dt ] && exec /usr/local/bin/noctalia-dt"'
+        printf '%s\n' '// <<< droidspaces: Noctalia shell autostart'
+    } >>"$nna_tmp" || { drop_tmp "$nna_tmp"; fail_step "追加失败：$nna_file"; return 1; }
+    # 追加后必须整份校验：写坏了会让 niri 起不来。
+    nna_validator=
+    if have_bin niri-anland; then
+        nna_validator=niri-anland
+    elif have_bin niri; then
+        nna_validator=niri
+    fi
+    if [ -n "$nna_validator" ] && ! "$nna_validator" validate --config "$nna_tmp" >/dev/null 2>&1; then
+        drop_tmp "$nna_tmp"
+        warn "$nna_file 追加 Noctalia 自启动后校验失败，已跳过"
+        return 1
+    fi
+    cat "$nna_tmp" >"$nna_full"
+    drop_tmp "$nna_tmp"
+    log "fixed: $nna_file（补 Noctalia 自启动）"
+    return 0
+}
+
 # xwayland-satellite 节点去重：niri 的 KDL 只允许该节点出现一次。老配置里可能
 # 已经有一份（或历史 managed 块写过），重复会让整份 config.kdl 校验失败。
 # 保留第一份，删除其后重复的顶层节点块。
@@ -2894,6 +2938,7 @@ step_niri_extra() {
         niri_fix_terminal_blur "$niri_cfg" || true
         niri_fix_corner_radius "$niri_cfg" || true
         niri_fix_xwayland_satellite "$niri_cfg" || true
+        niri_fix_noctalia_autostart "$niri_cfg" || true
         niri_inject_binds "$niri_cfg" || true
     done
     # 外观块最后加：它的 validate 覆盖整份文件，前面必须已经没有坏写法。
