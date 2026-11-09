@@ -1946,12 +1946,9 @@ niri_apply_extras() {
     {
         printf '%s\n' ''
         printf '%s\n' '// >>> droidspaces-preferences: niri 外观与行为（managed）'
-        # X11 兼容层：容器只有 /dev/dri/card0，Xwayland 走 card0+zink 会在 glamor
-        # 初始化时崩溃，随后 niri 反复重启 satellite、多个 Xwayland 抢同一个 :N，
-        # X 客户端永远等不到握手。软件渲染 wrapper 稳定可用。
-        printf '%s\n' 'xwayland-satellite {'
-        printf '%s\n' '    path "/usr/local/bin/xwayland-satellite-soft"'
-        printf '%s\n' '}'
+        # xwayland-satellite 节点由 seed 配置（/usr/local/share/droidspaces/
+        # niri-default-config.kdl）提供；niri 的 KDL 里该节点只允许出现一次，
+        # 这里若再写一遍会 duplicate node，导致整块 managed 配置校验失败回滚。
         printf '%s\n' 'debug {'
         printf '%s\n' '    honor-xdg-activation-with-invalid-serial'
         printf '%s\n' '}'
@@ -2503,6 +2500,62 @@ niri_has_active_radius() {
     ' "$nhcr_full" 2>/dev/null
 }
 
+# xwayland-satellite 节点去重：niri 的 KDL 只允许该节点出现一次。老配置里可能
+# 已经有一份（或历史 managed 块写过），重复会让整份 config.kdl 校验失败。
+# 保留第一份，删除其后重复的顶层节点块。
+niri_fix_xwayland_satellite() {
+    nxws_file=$1
+    nxws_full=$ROOT$nxws_file
+    path_exists "$nxws_file" || return 2
+    if ! grep -q '^[[:space:]]*xwayland-satellite[[:space:]]*{' "$nxws_full" 2>/dev/null; then
+        return 0
+    fi
+    nxws_count=$(grep -c '^[[:space:]]*xwayland-satellite[[:space:]]*{' "$nxws_full" 2>/dev/null)
+    [ "$nxws_count" -gt 1 ] || return 0
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would drop duplicate xwayland-satellite from $nxws_file"
+        return 0
+    fi
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nxws_tmp=$nt_path
+    awk '
+        function delta(s,   o, c) {
+            o = gsub(/{/, "{", s)
+            c = gsub(/}/, "}", s)
+            return o - c
+        }
+        BEGIN { seen = 0; skip = 0; depth = 0; skipdepth = 0 }
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            is_node = (line ~ /^xwayland-satellite[[:space:]]*\{/)
+            if (!skip && is_node) {
+                seen++
+                if (seen > 1) {
+                    skip = 1
+                    skipdepth = depth + delta($0)
+                    depth += delta($0)
+                    next
+                }
+            }
+            if (skip) {
+                depth += delta($0)
+                if (depth <= skipdepth) skip = 0
+                next
+            }
+            depth += delta($0)
+            print
+        }
+    ' "$nxws_full" >"$nxws_tmp" || { drop_tmp "$nxws_tmp"; fail_step "改写失败：$nxws_file"; return 1; }
+    cat "$nxws_tmp" >"$nxws_full"
+    drop_tmp "$nxws_tmp"
+    log "fixed: $nxws_file（删除重复的 xwayland-satellite 节点）"
+    return 0
+}
+
 # 全窗口圆角 12 + 裁剪的幂等修补：库存配置的圆角规则往往还是 /- 注释示例，
 # 或根本没有。已有活动规则时不动。
 niri_fix_corner_radius() {
@@ -2840,6 +2893,7 @@ step_niri_extra() {
         niri_fix_shadow "$niri_cfg" || true
         niri_fix_terminal_blur "$niri_cfg" || true
         niri_fix_corner_radius "$niri_cfg" || true
+        niri_fix_xwayland_satellite "$niri_cfg" || true
         niri_inject_binds "$niri_cfg" || true
     done
     # 外观块最后加：它的 validate 覆盖整份文件，前面必须已经没有坏写法。

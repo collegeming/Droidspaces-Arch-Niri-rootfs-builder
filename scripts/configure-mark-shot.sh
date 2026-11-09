@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# 在 Arch rootfs 中从 AUR 构建并安装 mark-shot（Qt6 Wayland 截图标注工具）。
+# 安装 mark-shot（Qt6 Wayland 截图标注工具）的官方 aarch64 预编译包。
 #
-# 为什么用源码包而不是官方 aarch64 预编译包（mark-shot-bin）：
-#   预编译包在 Ubuntu/FFmpeg 6 上编译，录像插件链 libavcodec.so.60 等 soname，
-#   而 Arch Linux ARM 是 FFmpeg 9（.so.63）：pacman 需要 --assume-installed
-#   旁路依赖，且「Record GIF / Record video」运行时必然失败。截图/标注本身
-#   在两种包里都正常（前提是会话环境带 XDG_SESSION_TYPE=wayland，否则会退回
-#   Qt 的 grabWindow 并报 null pixmap）。源码构建能让录像也按 Arch 的 FFmpeg 9
-#   链接，功能完整；若只在意构建速度，可改用 mark-shot-bin + --assume-installed。
-# 构建在无特权用户下完成，避免 makepkg 拒绝 root；依赖从 .SRCINFO 读取，
-# 构建完成后仅卸载本次新装、且未被其他包依赖的 makedepends。
+# 为什么用 mark-shot-bin 而不是源码包：源码在设备/CI 上要编译约 13 分钟
+# （1489 个 ninja 步骤 + cargo），而官方 Release 直接提供 aarch64 产物。
+# 代价：该产物在 Ubuntu 上用 FFmpeg 6 编译，录像插件链 libavcodec.so.60 等
+# soname，Arch Linux ARM 是 FFmpeg 9（.so.63），所以「Record GIF / Record
+# video」运行时不可用；截图、标注、QR/翻译插件不受影响（实测 3408×2272 正常）。
 set -euo pipefail
 
 desktop="${1:-}"
@@ -38,126 +34,91 @@ if [[ "${ID:-}" != arch && "${ID:-}" != archarm && "${ID:-}" != archlinux ]]; th
     exit 0
 fi
 
-build_user=mark-shot-build
-build_root=/tmp/mark-shot-build
-: > /tmp/mark-shot-build-packages
-
-cleanup() {
-    if id "$build_user" >/dev/null 2>&1; then
-        userdel -r "$build_user" >/dev/null 2>&1 || true
-    fi
-    rm -rf "$build_root"
-}
-trap cleanup EXIT
-
-install -d -m 0755 "$build_root"
-# base-devel 按参考实现常驻镜像（用户要用 paru 构建 AUR 包）；这里只补齐，
-# 不在构建结束后卸载，避免和后续 step_archlinuxcn 的 reef 构建互相拆装。
-pacman -S --noconfirm --needed base-devel git
-useradd --system --create-home --home-dir "$build_root" --shell /bin/bash "$build_user"
-chown -R "$build_user:$build_user" "$build_root"
-
-# 网络抖动时 AUR 的 TLS 连接会偶发失败；重试几次再放弃。
-cloned=false
-for _ in 1 2 3; do
-    if runuser -u "$build_user" -- env HOME="$build_root" \
-        git clone --depth=1 https://aur.archlinux.org/mark-shot.git "$build_root/mark-shot"; then
-        cloned=true
-        break
-    fi
-    rm -rf "$build_root/mark-shot"
-    sleep 3
-done
-[[ "$cloned" == true ]] || { echo "AUR mark-shot 克隆失败" >&2; exit 1; }
-
-srcinfo="$build_root/mark-shot/.SRCINFO"
-[[ -f "$srcinfo" ]] || { echo "缺少 .SRCINFO" >&2; exit 1; }
-# 只用 aarch64 可构建的包；x86_64-only 时明确跳过而不是留下半成品。
-if ! grep -Eq '^[[:space:]]*arch = .*aarch64' "$srcinfo"; then
-    echo "AUR mark-shot 不再声明 aarch64，跳过安装" >&2
+# 已装源码版时不重复安装（两个包 provides/conflicts 同名）。
+if pacman -Qq mark-shot >/dev/null 2>&1; then
+    echo "mark-shot（源码包）已安装，跳过 mark-shot-bin"
     exit 0
 fi
 
-dependencies="$(
-    {
-        sed -n 's/^[[:space:]]*depends = //p' "$srcinfo"
-        sed -n 's/^[[:space:]]*makedepends = //p' "$srcinfo"
-        sed -n 's/^[[:space:]]*\(depends\|makedepends\)_aarch64 = //p' "$srcinfo"
-    } | sed 's/[<>=].*$//' | sort -u
-)"
-[[ -n "$dependencies" ]] || { echo "AUR 配方没有可用依赖" >&2; exit 1; }
-if printf '%s\n' "$dependencies" | grep -Eqv '^[A-Za-z0-9@._+][A-Za-z0-9@._+:-]*$'; then
-    echo "AUR 配方包含无效的 mark-shot 依赖" >&2
-    exit 1
-fi
-# 配方里以 soname 形式声明的 FFmpeg 依赖（libavcodec.so 等）无法用包名安装，
-# 统一由 ffmpeg 提供；其余 soname 若出现，makepkg 的依赖检查会直接报错。
-soname_dependency=false
-install_list=()
-while IFS= read -r dependency; do
-    case "$dependency" in
-        *.so) soname_dependency=true ;;
-        *) install_list+=("$dependency") ;;
-    esac
-done <<< "$dependencies"
-if [[ "$soname_dependency" == true ]]; then
-    install_list+=(ffmpeg)
-fi
+# 与仓库其它下载一致：GitHub 直连在部分网络下不可用，默认走镜像前缀。
+GH_MIRROR_PREFIX=${GH_MIRROR_PREFIX:-https://gh-proxy.com/}
 
-# 记录安装前已存在的包，构建结束后只卸载本次新增的 makedepends。
-for package in cargo cmake ninja pkgconf; do
-    if ! pacman -Qq "$package" >/dev/null 2>&1; then
-        printf '%s\n' "$package" >> /tmp/mark-shot-build-packages
+work=$(mktemp -d /tmp/mark-shot.XXXXXX)
+trap 'rm -rf "$work"' EXIT
+
+pacman -S --needed --noconfirm git libarchive >/dev/null
+
+# AUR 的 TLS 连接会偶发中断；重试几次再放弃。
+cloned=false
+for _ in 1 2 3; do
+    if git clone --depth=1 https://aur.archlinux.org/mark-shot-bin.git "$work/aur" >/dev/null 2>&1; then
+        cloned=true
+        break
     fi
+    rm -rf "$work/aur"
+    sleep 3
 done
+[[ "$cloned" == true ]] || { echo "AUR mark-shot-bin 克隆失败" >&2; exit 1; }
 
-# 只安装缺失的包，避免把已显式安装的运行时包改标成依赖。
-missing=()
-for package in "${install_list[@]}"; do
-    if ! pacman -Qq "$package" >/dev/null 2>&1; then
-        missing+=("$package")
+srcinfo="$work/aur/.SRCINFO"
+[[ -f "$srcinfo" ]] || { echo "缺少 .SRCINFO" >&2; exit 1; }
+if ! grep -Eq '^[[:space:]]*arch = .*aarch64' "$srcinfo"; then
+    echo "AUR mark-shot-bin 不再声明 aarch64，跳过安装" >&2
+    exit 0
+fi
+
+asset_url=$(sed -n 's/^[[:space:]]*source_aarch64 = //p' "$srcinfo" | head -n1)
+asset_sha=$(sed -n 's/^[[:space:]]*sha256sums_aarch64 = //p' "$srcinfo" | head -n1)
+[[ -n "$asset_url" && -n "$asset_sha" ]] || {
+    echo "AUR 配方缺少 aarch64 产物 URL 或校验和" >&2
+    exit 1
+}
+
+package_file="$work/mark-shot-bin.pkg.tar.zst"
+downloaded=false
+# 镜像可能返回 200 的错误页，所以每个源都做完整 sha256 校验，失败换下一个。
+for candidate in "${GH_MIRROR_PREFIX%/}/${asset_url}" "$asset_url"; do
+    if curl -fsSL --retry 2 --retry-delay 2 --max-time 300 -o "$package_file" "$candidate" && \
+        printf '%s  %s\n' "$asset_sha" "$package_file" | sha256sum -c - >/dev/null 2>&1; then
+        downloaded=true
+        break
     fi
+    echo "mark-shot: 下载或校验失败，尝试下一个源：$candidate" >&2
+done
+[[ "$downloaded" == true ]] || { echo "mark-shot 下载失败" >&2; exit 1; }
+
+[[ "$(pacman -Qqp "$package_file")" = "mark-shot-bin" ]]
+LC_ALL=C pacman -Qip "$package_file" | grep -Eq '^Architecture[[:space:]]*: aarch64$'
+
+# 依赖分两类：包名（qt6-base/grim/...）先补齐；soname（libavcodec.so=60-64）
+# 用 --assume-installed 旁路，因为 Arch Linux ARM 的 FFmpeg 9 无法满足 FFmpeg 6
+# 的 soname，硬解析会让整次安装失败。
+assume=()
+deps=()
+while IFS= read -r dep; do
+    [[ -n "$dep" ]] || continue
+    case "$dep" in
+        *.so=*) assume+=(--assume-installed "$dep") ;;
+        *) deps+=("$dep") ;;
+    esac
+done < <(bsdtar -xOf "$package_file" .PKGINFO | sed -n 's/^depend = //p')
+
+missing=()
+for dep in "${deps[@]}"; do
+    pacman -Qq "$dep" >/dev/null 2>&1 || missing+=("$dep")
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
     pacman -S --noconfirm --needed --asdeps "${missing[@]}"
 fi
 
-# makepkg 会自己 clone GitHub 源码（配方里是 git+https://github.com/...）。部分
-# 网络下直连 GitHub 不通，此时用 git 的 insteadOf 把 clone 重定向到镜像前缀；
-# 通过 GIT_CONFIG_* 传递，避免改构建用户的全局 git 配置。
-build_env=(HOME="$build_root")
-if ! timeout 15 git ls-remote --exit-code https://github.com/jswysnemc/mark-shot.git \
-        >/dev/null 2>&1; then
-    build_env+=(
-        GIT_CONFIG_COUNT=1
-        GIT_CONFIG_KEY_0="url.${GH_MIRROR_PREFIX:-https://gh-proxy.com/}/https://github.com/.insteadOf"
-        GIT_CONFIG_VALUE_0="https://github.com/"
-    )
-fi
-runuser -u "$build_user" -- env "${build_env[@]}" bash -c \
-    'cd "$1" && makepkg --cleanbuild --clean --noconfirm' _ "$build_root/mark-shot"
-
-package_file="$(find "$build_root/mark-shot" -maxdepth 1 -type f \
-    -name 'mark-shot-*.pkg.tar.*' ! -name '*.sig' -print -quit)"
-[[ -n "$package_file" ]] || { echo "makepkg 没有产出 mark-shot 包" >&2; exit 1; }
-
-sed -e '/^[[:space:]]*LocalFileSigLevel[[:space:]]*=/d' \
-    -e '/^\[options\][[:space:]]*$/a LocalFileSigLevel = Optional' \
-    /etc/pacman.conf > /tmp/pacman-mark-shot.conf
-[[ "$(pacman --config /tmp/pacman-mark-shot.conf -Qqp "$package_file")" = "mark-shot" ]]
-LC_ALL=C pacman --config /tmp/pacman-mark-shot.conf -Qip "$package_file" | \
-    grep -Eq '^Architecture[[:space:]]*: aarch64$'
-pacman --config /tmp/pacman-mark-shot.conf -U --noconfirm "$package_file"
-
-rm -f /tmp/pacman-mark-shot.conf
-if [[ -s /tmp/mark-shot-build-packages ]]; then
-    # 卸载失败不影响交付：mark-shot 本体已安装并通过校验，构建工具留在镜像里
-    # 只是多占空间，不该让整个构建失败。
-    # shellcheck disable=SC2046
-    pacman -Rns --noconfirm $(cat /tmp/mark-shot-build-packages) >/dev/null 2>&1 || \
-        echo "mark-shot: 构建依赖卸载失败，保留（不影响 mark-shot 使用）" >&2
-fi
-rm -f /tmp/mark-shot-build-packages
+pacman -U --noconfirm --needed "${assume[@]}" "$package_file"
 
 [[ -x "$binary" ]] || { echo "mark-shot 安装后未找到：$binary" >&2; exit 1; }
-echo "--> [enabled] mark-shot 已从 AUR 构建并安装"
+[[ -f /usr/share/applications/mark-shot.desktop ]] || {
+    echo "mark-shot 安装后缺少桌面入口" >&2
+    exit 1
+}
+if [[ ${#assume[@]} -gt 0 ]]; then
+    echo "mark-shot: 已旁路 ${#assume[@]} 个 FFmpeg 6 soname 依赖（录像/GIF 不可用，截图/标注正常）"
+fi
+echo "--> [enabled] mark-shot 已安装（官方 aarch64 预编译包）"
