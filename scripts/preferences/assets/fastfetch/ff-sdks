@@ -1,0 +1,66 @@
+#!/bin/bash
+# ff-sdks —— 输出已安装的开发工具/SDK 及版本，供 fastfetch command 模块调用
+# config.jsonc 中该模块 splitLines=true，故每行一个工具。
+# 用法: ff-sdks
+
+# 收集结果到一个数组，每个元素 "icon name version"
+out=()
+
+# node
+if command -v node >/dev/null 2>&1; then
+    out+=("󰎙 Node $(node --version 2>/dev/null)")
+fi
+# python
+if command -v python3 >/dev/null 2>&1; then
+    out+=("󰌠 Python $(python3 --version 2>&1 | awk '{print $2}')")
+elif command -v python >/dev/null 2>&1; then
+    out+=("󰌠 Python $(python --version 2>&1 | awk '{print $2}')")
+fi
+# rust (cargo)
+if command -v cargo >/dev/null 2>&1; then
+    out+=("󱘗 Rust $(rustc --version 2>/dev/null | awk '{print $2}')")
+fi
+# go
+if command -v go >/dev/null 2>&1; then
+    out+=("󰟓 Go $(go version 2>/dev/null | awk '{print $3}' | sed 's/^go//')")
+fi
+# java
+if command -v java >/dev/null 2>&1; then
+    jver="$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9._-]+)".*/\1/')"
+    [ -n "$jver" ] && out+=("󰬳 Java $jver")
+fi
+# ruby
+if command -v ruby >/dev/null 2>&1; then
+    out+=("󰴭 Ruby $(ruby --version 2>/dev/null | awk '{print $2}')")
+fi
+# php
+if command -v php >/dev/null 2>&1; then
+    out+=("󰌟 PHP $(php --version 2>/dev/null | head -1 | awk '{print $2}')")
+fi
+# zig
+if command -v zig >/dev/null 2>&1; then
+    out+=("󰢷 Zig $(zig version 2>/dev/null)")
+fi
+# bun
+if command -v bun >/dev/null 2>&1; then
+    out+=("󰛓 Bun $(bun --version 2>/dev/null)")
+fi
+# deno
+if command -v deno >/dev/null 2>&1; then
+    out+=("󰋘 Deno $(deno --version 2>/dev/null | head -1 | awk '{print $2}')")
+fi
+# cargo / make / cmake 等构建工具归并
+if command -v cmake >/dev/null 2>&1; then
+    out+=("󰔶 CMake $(cmake --version 2>/dev/null | head -1 | awk '{print $3}')")
+fi
+# git
+if command -v git >/dev/null 2>&1; then
+    out+=("󰊢 Git $(git --version 2>/dev/null | awk '{print $3}')")
+fi
+
+# 输出：每行一项；无任何工具时给出提示
+if [ "${#out[@]}" -eq 0 ]; then
+    printf '无'
+else
+    printf '%s\n' "${out[@]}"
+fi

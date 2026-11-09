@@ -125,9 +125,29 @@ install_chrome
 install -d -m 0755 "$wrapper_dir"
 # 与设备上验证过的包装器一致：GPU/零拷贝环境与 Chromium 参数由 zc-run 统一
 # 注入，这里只补需要强制开启的 VA-API 特性，避免两处各写一份 GPU 变量。
+#
+# 2026-11-09 实测结论（create_immed=3、wl_shm 仅光标池、GPU crash=0）：
+# - EGL 必须用发行版 Mesa：候选 kopper 26.3 的 GBM 初始化在无 DRM 属性时
+#   在 dri2_setup_screen 解引用空指针，GPU 进程 exit 11。
+# - GBM 必须用项目 shim：它把所有分配强制成 LINEAR；用系统 libgbm 时 Chrome
+#   会拿 tiled/AFB 缓冲，桥接侧 dma-buf 导入被拒（INVALID_EXTERNAL_HANDLE）。
+# - VKBRIDGE_DRM_RENDER 让 zink 在 GBM 路径按 226:0 匹配到唯一 pdev。
+# - LD_LIBRARY_PATH 必须在这里收敛到 /usr/lib：zc-run 只 prepend 不清继承值，
+#   而 niri 会话全局注入了 kopper 的 mesa 路径；从桌面启动时 libEGL 会命中
+#   kopper 26.3 并复现 exit 11（手工干净 env 测不出来）。
 cat > "$wrapper" <<'EOF'
 #!/bin/sh
 # Thin alias: GPU/zero-copy env and Chromium flags are owned by zc-run.
+ZC_MESA_DIR=/usr
+ZC_EGL_VENDOR_JSON=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+VKBRIDGE_DRM_RENDER=226:0
+LD_LIBRARY_PATH=/usr/lib
+export ZC_MESA_DIR ZC_EGL_VENDOR_JSON VKBRIDGE_DRM_RENDER LD_LIBRARY_PATH
+# 2026-11-09 实测：niri 会给 spawn 的应用注入 DISPLAY，但容器里的 Xwayland 可能
+# 挂死（socket 能 connect、X 握手永不响应）。Chrome 会在 xdg_surface.configure
+# 之后不 ack、不 attach：没有窗口、没有 dmabuf，只剩光标 shm 池。Chrome 走
+# Wayland 不需要 DISPLAY，清掉后稳定恢复 create_immed=3。
+unset DISPLAY
 exec /usr/local/bin/zc-run --class chromium /opt/google/chrome/google-chrome \
     --enable-features=VaapiVideoDecodeLinux,VaapiVideoDecoder,VaapiVideoDecodeLinuxGL \
     "$@"
@@ -154,12 +174,15 @@ for desktop_file in \
     [[ -f "$desktop_file" ]] || continue
 
     temporary_file="$(mktemp "${desktop_file}.tmp.XXXXXXXX")"
+    # 官方包与 AUR 包的 Exec 写法不同：/usr/bin/google-chrome(-stable) 与
+    # /opt/google/chrome/google-chrome 都要改写，否则点图标会绕过 wrapper 直跑
+    # kopper，复现 GPU exit 11。
     awk -v launcher="/usr/local/bin/google-chrome" '
-        /^Exec=\/usr\/bin\/google-chrome(-stable)?([[:space:]]|$)/ {
-            sub(/^Exec=\/usr\/bin\/google-chrome(-stable)?/, "Exec=" launcher)
+        /^Exec=(\/usr\/bin\/google-chrome(-stable)?|\/opt\/google\/chrome\/google-chrome)([[:space:]]|$)/ {
+            sub(/^Exec=(\/usr\/bin\/google-chrome(-stable)?|\/opt\/google\/chrome\/google-chrome)/, "Exec=" launcher)
         }
-        /^TryExec=\/usr\/bin\/google-chrome(-stable)?([[:space:]]|$)/ {
-            sub(/^TryExec=\/usr\/bin\/google-chrome(-stable)?/, "TryExec=" launcher)
+        /^TryExec=(\/usr\/bin\/google-chrome(-stable)?|\/opt\/google\/chrome\/google-chrome)([[:space:]]|$)/ {
+            sub(/^TryExec=(\/usr\/bin\/google-chrome(-stable)?|\/opt\/google\/chrome\/google-chrome)/, "TryExec=" launcher)
         }
         { print }
     ' "$desktop_file" > "$temporary_file"

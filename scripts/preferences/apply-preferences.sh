@@ -24,7 +24,7 @@
 set -eu
 umask 022
 
-PREFERENCES_VERSION=2026.11.09
+PREFERENCES_VERSION=2026.11.10
 
 PROFILE=${PREFERENCES_PROFILE:-arch-niri-noctalia}
 FONT_SIZE=${PREFERENCES_FONT_SIZE:-12.0}
@@ -193,6 +193,59 @@ same_content() {
     sc_first=$(cksum <"$1" 2>/dev/null) || sc_first=missing
     sc_second=$(cksum <"$2" 2>/dev/null) || sc_second=absent
     [ "$sc_first" = "$sc_second" ]
+}
+
+# 统计花括号净值（忽略 "" 字符串与 // 注释）；供 niri 配置改写后做平衡自检。
+brace_sum() {
+    awk '
+        {
+            line = $0
+            kept = ""
+            quoted = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (quoted) {
+                    if (c == "\"") quoted = 0
+                    continue
+                }
+                if (c == "\"") { quoted = 1; continue }
+                if (c == "/" && substr(line, i + 1, 1) == "/") break
+                kept = kept c
+            }
+            nopen = gsub(/{/, "{", kept)
+            nclose = gsub(/}/, "}", kept)
+            sum += nopen - nclose
+        }
+        END { printf "%d\n", sum + 0 }
+    ' "$1"
+}
+
+# 为一次改写建立"本函数动手前"的回滚基线，结果写入全局 rb_path。
+# BACKUP_DIR 里放的是该文件本次运行的首次备份：若同一文件在本次运行里已被
+# 前面的步骤改过（例如 niri_fix_launchers 已迁移 fcitx5 自启动），从备份恢复
+# 会把那些修改一并抹掉，所以回滚必须用调用前的即时快照。
+rollback_snapshot() {
+    if ! new_tmp; then
+        return 1
+    fi
+    rb_path=$nt_path
+    if ! cat "$1" >"$rb_path" 2>/dev/null; then
+        drop_tmp "$rb_path"
+        rb_path=
+        return 1
+    fi
+    return 0
+}
+
+# 用基线恢复；基线不可用时才退回 BACKUP_DIR<原路径>。
+restore_snapshot() {
+    if [ -n "${1:-}" ] && [ -f "$1" ]; then
+        cat "$1" >"$2" && return 0
+    fi
+    if [ -n "${BACKUP_DIR:-}" ] && [ -f "$BACKUP_DIR$3" ]; then
+        cat "$BACKUP_DIR$3" >"$2" && return 0
+    fi
+    return 1
 }
 
 # 备份已有文件到 $BACKUP_DIR/<原绝对路径>；同一次运行内同一文件只备份一次。
@@ -411,6 +464,37 @@ set_etc_environment() {
     return $see_rc
 }
 
+# 从 /etc/environment 按键名删行（保留其它行）。fcitx5 在 Wayland 下按
+# XMODIFIERS/INPUT_METHOD 自动探测，历史镜像里写死的 GTK_IM_MODULE/QT_IM_MODULE
+# 会让 GTK4/Qt6 退回旧路径，必须清掉。
+unset_etc_environment() {
+    uee_key=$1
+    uee_full=$ROOT/etc/environment
+    [ -f "$uee_full" ] || return 0
+    grep -qE "^[[:space:]]*(export[[:space:]]+)?$uee_key[[:space:]]*=" "$uee_full" 2>/dev/null || return 0
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would drop $uee_key from /etc/environment"
+        return 0
+    fi
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    uee_tmp=$nt_path
+    if ! awk -v k="$uee_key" '
+        $0 ~ "^[[:space:]]*(export[[:space:]]+)?" k "[[:space:]]*=" { next }
+        { print }
+    ' "$uee_full" >"$uee_tmp"; then
+        drop_tmp "$uee_tmp"
+        fail_step "解析 /etc/environment 失败"
+        return 1
+    fi
+    install_content /etc/environment 0644 <"$uee_tmp"
+    uee_rc=$?
+    drop_tmp "$uee_tmp"
+    return $uee_rc
+}
+
 # 向文件追加一行（不存在该行时）。
 append_line_once() {
     al_dest=$1
@@ -506,13 +590,18 @@ fonts_have_maple() {
     return 1
 }
 
+# 可用性只看系统 locale 列表；/etc/locale.conf 只代表会话配置，不能当作可用。
 locale_zh_available() {
-    if grep -qE '^LANG=zh_CN\.UTF-8' "$ROOT/etc/locale.conf" 2>/dev/null; then
-        return 0
-    fi
-    if [ -z "$ROOT" ] && command -v locale >/dev/null 2>&1 && locale -a 2>/dev/null | grep -qi '^zh_CN\.utf-\?8$'; then
-        return 0
-    fi
+    command -v locale >/dev/null 2>&1 || return 1
+    locale -a 2>/dev/null | grep -qi '^zh_CN\.utf-\?8$'
+}
+
+# 会话是否真的生效：systemd 会话读 /etc/locale.conf 里实际的 LANG= 值。
+locale_zh_configured() {
+    lzc_lang=$(sed -n 's/^[[:space:]]*LANG=//p' "$ROOT/etc/locale.conf" 2>/dev/null | tail -n1 | tr -d '"')
+    case $lzc_lang in
+        zh_CN.UTF-8 | zh_CN.utf8 | zh_CN.utf-8) return 0 ;;
+    esac
     return 1
 }
 
@@ -551,11 +640,14 @@ step_packages() {
         return 2
     fi
 
+    # 对应文档 02:126（可选）：Qt 翻译包由脚本尝试安装，缺失不判失败。
+    # 末行是 reef 工具包（搜索/查看/跳转类 CLI），缺失只 warn，不进必需包断言。
     packages="noto-fonts noto-fonts-cjk noto-fonts-emoji ttf-jetbrains-mono
 fcitx5 fcitx5-chinese-addons fcitx5-rime fcitx5-configtool fcitx5-gtk fcitx5-qt
 kitty fish fastfetch nemo nemo-fileroller gvfs gvfs-mtp cinnamon-translations
-upower qt5-wayland qt6-wayland neovim wl-clipboard xdg-utils xdg-user-dirs
-xdg-terminal-exec"
+upower qt5-wayland qt6-wayland qt5-translations qt6-translations neovim
+wl-clipboard xdg-utils xdg-user-dirs xdg-terminal-exec
+ripgrep fd sd dust procs eza bat zoxide"
 
     if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
         log "dry-run: would install with pacman --needed: $(printf '%s' "$packages" | tr '\n' ' ')"
@@ -576,6 +668,21 @@ xdg-terminal-exec"
             warn "以下包安装失败，可在设备上手动补装：$missing"
         fi
     fi
+    # 批量安装会吞掉单包错误，这里断言文档要求的必需包真的在位。
+    # 离线构建看不到真实软件源，只记为跳过/警告，不把产物判成失败。
+    req_missing=
+    for pkg in kitty fish nemo fcitx5 fcitx5-rime; do
+        pacman -Q "$pkg" >/dev/null 2>&1 || req_missing="$req_missing $pkg"
+    done
+    if [ -n "$req_missing" ]; then
+        if [ "$OFFLINE" = true ]; then
+            warn "离线构建缺少必需包：$req_missing"
+            skip_step "离线构建，跳过必需包校验"
+            return 2
+        fi
+        fail_step "缺少必需包：$req_missing"
+        return 1
+    fi
     # 只清下载缓存；保留 sync 数据库，镜像离线时也能直接 pacman -S。
     rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
     return 0
@@ -592,6 +699,10 @@ step_pacman_mirrors() {
         return 2
     fi
 
+    # LocalFileSigLevel 必须无条件设置：除了 archlinuxcn 引导，本地 .pkg.tar.zst
+    # 安装（离线补包）也需要放行缺失签名，不能只在首次添加 archlinuxcn 时设置。
+    pacman_set_option LocalFileSigLevel 'PackageOptional' || return 1
+
     if is_dir /etc/pacman.d; then
         # ALARM 与 x86_64 的镜像路径不同：ALARM 是 /archlinuxarm/$arch/$repo。
         case "$(uname -m)" in
@@ -600,6 +711,8 @@ step_pacman_mirrors() {
 ## Droidspaces preferences: 清华 TUNA 优先，阿里云备用（Arch Linux ARM）
 Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm/$arch/$repo
 Server = https://mirrors.aliyun.com/archlinuxarm/$arch/$repo
+# 官方 ALARM 源兜底：镜像同步滞后或 404 时仍能安装
+Server = https://mirror.archlinuxarm.org/$arch/$repo
 EOF
                 ;;
             *)
@@ -625,6 +738,7 @@ EOF
             {
                 printf '\n[archlinuxcn]\n'
                 printf 'SigLevel = Never\n'
+                printf 'Server = https://mirrors.ustc.edu.cn/archlinuxcn/$arch\n'
                 printf 'Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/$arch\n'
                 printf 'Server = https://repo.archlinuxcn.org/$arch\n'
             } >>"$ROOT/etc/pacman.conf"
@@ -665,17 +779,30 @@ step_archlinuxcn() {
     fi
     if have_bin paru; then
         log "paru 已安装"
-        return 0
-    fi
-    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+    elif [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
         log "dry-run: would install paru from archlinuxcn"
         return 0
-    fi
-    if pacman -S --needed --noconfirm paru >/dev/null 2>&1; then
+    elif pacman -S --needed --noconfirm paru >/dev/null 2>&1; then
         log "已安装 paru"
+    else
+        warn "paru 安装失败；Maple 字体与雾凇拼音将走镜像下载回退"
         return 0
     fi
-    warn "paru 安装失败；Maple 字体与雾凇拼音将走镜像下载回退"
+
+    # reef/reef-tools 只在 AUR，失败不影响构建（登录时 conf.d 会打印未安装提示）。
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        log "dry-run: would install reef/reef-tools with paru (AUR)"
+        return 0
+    fi
+    # paru 用 makepkg 构建 AUR 包，需要 base-devel。缺了它 reef 只会 warn 后跳过，
+    # 镜像会静默没有 reef；这里显式兜底（已安装时 pacman 立即返回）。
+    pacman -S --needed --noconfirm --asdeps base-devel >/dev/null 2>&1 || \
+        warn "base-devel 安装失败，AUR 包（reef/reef-tools）可能无法构建"
+    if paru -S --needed --noconfirm --ignore mesa reef reef-tools >/dev/null 2>&1; then
+        log "已安装 reef / reef-tools"
+    else
+        warn "reef/reef-tools 安装失败（AUR 不可用？），已跳过"
+    fi
     return 0
 }
 
@@ -920,11 +1047,45 @@ step_locale() {
         skip_step "未找到普通用户"
         return 2
     fi
-    LOCALE_ZH_APPLIED=true
-    install_content "$USER_HOME/.config/environment.d/locale.conf" 0644 <<'EOF' || return 1
+    # 可用不等于生效：user_dirs 依赖会话真正使用中文 locale。
+    if locale_zh_configured; then
+        LOCALE_ZH_APPLIED=true
+    else
+        warn "/etc/locale.conf 的 LANG 不是 zh_CN.UTF-8，user_dirs 保持默认目录"
+    fi
+    # 文档 02:15：只设 LANG。旧镜像的 /etc/locale.conf 里带 LC_ALL=，
+    # 它会压过 LANG，升级路径也必须清掉；没有该行就完全不动。
+    if grep -qE '^[[:space:]]*LC_ALL=' "$ROOT/etc/locale.conf" 2>/dev/null; then
+        if [ "$DRY_RUN" = true ]; then
+            log "dry-run: would drop LC_ALL from /etc/locale.conf（文档 02:15：只设 LANG）"
+        elif ! new_tmp; then
+            fail_step "mktemp 失败，无法清理 LC_ALL"
+            return 1
+        else
+            lc_tmp=$nt_path
+            if ! awk '!/^[[:space:]]*LC_ALL=/' "$ROOT/etc/locale.conf" >"$lc_tmp"; then
+                drop_tmp "$lc_tmp"
+                fail_step "改写 /etc/locale.conf 失败"
+                return 1
+            fi
+            if ! install_content /etc/locale.conf 0644 <"$lc_tmp"; then
+                drop_tmp "$lc_tmp"
+                return 1
+            fi
+            drop_tmp "$lc_tmp"
+            log "fixed: /etc/locale.conf（文档 02:15：只设 LANG，删除 LC_ALL=）"
+        fi
+    fi
+    # 只在系统本身使用中文 locale 时改用户会话语言：英文镜像（-g false）不应
+    # 被偏好脚本悄悄切成中文。
+    if locale_zh_configured; then
+        install_content "$USER_HOME/.config/environment.d/locale.conf" 0644 <<'EOF' || return 1
 # 由 droidspaces-preferences 生成：只设 LANG，单项分类仍可单独覆盖。
 LANG=zh_CN.UTF-8
 EOF
+    else
+        log "系统 LANG 不是 zh_CN.UTF-8，跳过用户会话语言设置"
+    fi
     return 0
 }
 
@@ -950,6 +1111,10 @@ step_environment() {
         install_asset "$USER_HOME/.config/environment.d/input.conf" environment.d/input.conf 0644 || return 1
         set_etc_environment XMODIFIERS "@im=fcitx" || return 1
         set_etc_environment INPUT_METHOD "fcitx" || return 1
+        # 历史镜像写死过 GTK_IM_MODULE/QT_IM_MODULE，会让 GTK4/Qt6 走旧的
+        # XIM 兼容路径；fcitx5 在 Wayland 下靠 XMODIFIERS 自动探测，删掉更稳。
+        unset_etc_environment GTK_IM_MODULE || return 1
+        unset_etc_environment QT_IM_MODULE || return 1
         installed_any=true
     else
         warn "未检测到 fcitx5，跳过输入法环境变量"
@@ -960,6 +1125,11 @@ step_environment() {
     # 表现就是“双击浏览器没反应”。会话脚本也导出了同一个值，这里保证
     # 非会话路径（systemd 用户服务）同样正确。
     set_etc_environment TMPDIR "/tmp" || return 1
+    installed_any=true
+
+    # 主线 /etc/environment 带 XCURSOR_SIZE=48；容器内没有该变量时光标会按
+    # 默认的 24px 加载，在平板高分屏上过小。
+    set_etc_environment XCURSOR_SIZE "48" || return 1
     installed_any=true
 
     if [ "$installed_any" = false ]; then
@@ -1036,6 +1206,22 @@ step_gtk_settings() {
     install_asset "$USER_HOME/.config/gtk-3.0/settings.ini" gtk-3.0/settings.ini 0644 || return 1
     install_asset "$USER_HOME/.config/gtk-3.0/gtk.css" gtk-3.0/gtk.css 0644 || return 1
     install_asset "$USER_HOME/.config/gtk-4.0/settings.ini" gtk-4.0/settings.ini 0644 || return 1
+    # GTK4 没有 GTK_THEME 等价物，用 gtk.css 的 color-scheme 声明暗色。
+    install_asset "$USER_HOME/.config/gtk-4.0/gtk.css" gtk-4.0/gtk.css 0644 || return 1
+    return 0
+}
+
+# 6b) neovim：最小可用默认配置（行号、真彩、系统剪贴板）。
+step_nvim() {
+    if [ -z "$USER_HOME" ]; then
+        skip_step "未找到普通用户"
+        return 2
+    fi
+    if ! have_bin nvim; then
+        skip_step "未安装 neovim"
+        return 2
+    fi
+    install_asset "$USER_HOME/.config/nvim/init.lua" nvim/init.lua 0644 || return 1
     return 0
 }
 
@@ -1074,6 +1260,20 @@ step_fish() {
     install_asset "$USER_HOME/.config/fish/conf.d/fastfetch.fish" fish/conf.d/fastfetch.fish 0644 || return 1
     install_asset "$USER_HOME/.config/fish/conf.d/reef.fish" fish/conf.d/reef.fish 0644 || return 1
     install_asset "$USER_HOME/.config/fish/conf.d/mirrors.fish" fish/conf.d/mirrors.fish 0644 || return 1
+    install_asset "$USER_HOME/.config/fastfetch/config.jsonc" fastfetch/config.jsonc 0644 || return 1
+    # fastfetch 的 command 模块直接调用这两个脚本，缺失会在每次登录多打两行失败。
+    install_asset /usr/local/bin/ff-shell-stack fastfetch/ff-shell-stack 0755 || return 1
+    install_asset /usr/local/bin/ff-sdks fastfetch/ff-sdks 0755 || return 1
+
+    # 登录默认 shell 改为 fish。放在 tide 处理之前：tide 未安装时本步骤会提前
+    # return 2，放到后面就永远不会执行。
+    if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
+        log "dry-run: would chsh -s /usr/bin/fish $USER_NAME"
+    elif chsh -s /usr/bin/fish "$USER_NAME" 2>/dev/null; then
+        log "已将 $USER_NAME 的登录 shell 设为 fish"
+    else
+        warn "chsh -s /usr/bin/fish $USER_NAME 失败，登录 shell 保持原值"
+    fi
 
     tide_present=false
     if path_exists "$USER_HOME/.config/fish/functions/tide.fish"; then
@@ -1103,20 +1303,87 @@ step_fish() {
             fi
         fi
         if [ "$tide_present" = false ]; then
-            warn "未检测到 tide，跳过 tide-apply.fish（安装 tide 后重跑本脚本即可）"
-            return 0
+            # 没装上 tide 是跳过而不是成功，manifest 的 skipped 才能反映真实情况。
+            skip_step "未安装 tide"
+            return 2
         fi
     fi
     install_asset "$USER_HOME/.config/fish/tide-apply.fish" fish/tide-apply.fish 0755 || return 1
     if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
-        run_as_user "fish --no-config $USER_HOME/.config/fish/tide-apply.fish"
+        run_as_user "fish -c 'source $USER_HOME/.config/fish/tide-apply.fish'"
         return 0
     fi
-    if run_as_user "fish --no-config $USER_HOME/.config/fish/tide-apply.fish"; then
+    if run_as_user "fish -c 'source $USER_HOME/.config/fish/tide-apply.fish'"; then
         log "已写入 tide universal 变量"
     else
         warn "tide 配置脚本执行失败，可在设备上运行 fish ~/.config/fish/tide-apply.fish"
     fi
+    return 0
+}
+
+# 候选窗主题：发行版只带 default/default-dark，classicui 里写死的
+# catppuccin-mocha-mauve 并不存在，候选窗会退回默认样式。主题体积很小
+# （tarball 约 98KB），直接从上游源码包取，失败不影响输入法本身。
+ensure_fcitx_theme() {
+    eft_dest=/usr/share/fcitx5/themes/catppuccin-mocha-mauve
+    if path_exists "$eft_dest"; then
+        log "fcitx5 主题已存在：$eft_dest"
+        return 0
+    fi
+    if [ "$OFFLINE" = true ]; then
+        warn "PREFERENCES_OFFLINE=true，跳过 catppuccin-mocha-mauve 主题下载"
+        return 1
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would install $eft_dest"
+        return 0
+    fi
+    if ! have_bin tar; then
+        warn "缺少 tar，无法解压 catppuccin-mocha-mauve 主题"
+        return 1
+    fi
+    eft_stage=$(mktemp -d "${TMPDIR:-/tmp}/fcitx5-theme.XXXXXX" 2>/dev/null) || {
+        warn "mktemp 失败，无法安装 catppuccin-mocha-mauve 主题"
+        return 1
+    }
+    eft_url=$(gh_mirror_url https://github.com/catppuccin/fcitx5/archive/refs/heads/main.tar.gz)
+    if ! fetch_url "$eft_url" "$eft_stage/main.tar.gz"; then
+        rm -rf "$eft_stage"
+        warn "catppuccin fcitx5 主题下载失败（$eft_url）"
+        return 1
+    fi
+    if ! tar -xzf "$eft_stage/main.tar.gz" -C "$eft_stage" 2>/dev/null; then
+        rm -rf "$eft_stage"
+        warn "解压 catppuccin fcitx5 主题失败"
+        return 1
+    fi
+    # 归档顶层目录名带分支后缀（如 fcitx5-main），用通配避开具体版本。
+    eft_src=
+    for eft_cand in "$eft_stage"/*/src/catppuccin-mocha-mauve; do
+        if [ -d "$eft_cand" ]; then
+            eft_src=$eft_cand
+            break
+        fi
+    done
+    if [ -z "$eft_src" ]; then
+        rm -rf "$eft_stage"
+        warn "主题包内未找到 src/catppuccin-mocha-mauve"
+        return 1
+    fi
+    if ! mkdir -p "$ROOT/usr/share/fcitx5/themes"; then
+        rm -rf "$eft_stage"
+        warn "无法创建 /usr/share/fcitx5/themes"
+        return 1
+    fi
+    rm -rf "$ROOT$eft_dest"
+    if ! cp -a "$eft_src" "$ROOT$eft_dest"; then
+        rm -rf "$eft_stage"
+        warn "复制 catppuccin-mocha-mauve 主题失败"
+        return 1
+    fi
+    chmod -R a+rX "$ROOT$eft_dest" 2>/dev/null || true
+    rm -rf "$eft_stage"
+    log "已安装 fcitx5 主题：$eft_dest"
     return 0
 }
 
@@ -1132,12 +1399,25 @@ step_fcitx5() {
     fi
 
     install_asset "$USER_HOME/.config/fcitx5/config" fcitx5/config 0644 || return 1
-    install_asset "$USER_HOME/.config/fcitx5/profile" fcitx5/profile 0644 || return 1
+    # 只有 rime 插件真的存在时才把默认输入法设为 rime；否则 fcitx5 找不到
+    # 该引擎，开机后没有候选词，退回 fcitx5-chinese-addons 自带的 pinyin。
+    # fcitx5-rime 装出来的插件名是 librime.so（Arch 的 fcitx5 也按此命名），
+    # 既不是 rime.so，也没有 /usr/lib/fcitx5/rime/ 目录；后两者只作回退兼容。
+    if path_exists /usr/lib/fcitx5/librime.so || \
+        path_exists /usr/lib/fcitx5/rime.so || is_dir /usr/lib/fcitx5/rime; then
+        install_asset "$USER_HOME/.config/fcitx5/profile" fcitx5/profile 0644 || return 1
+    else
+        warn "未检测到 fcitx5 rime 插件，默认输入法改用 pinyin"
+        install_asset "$USER_HOME/.config/fcitx5/profile" fcitx5/profile 0644 's/=rime$/=pinyin/' || return 1
+    fi
 
-    if path_exists "$USER_HOME/.local/share/fcitx5/themes/catppuccin-mocha-mauve"; then
+    ensure_fcitx_theme || true
+    if path_exists /usr/share/fcitx5/themes/catppuccin-mocha-mauve || \
+        path_exists "$USER_HOME/.local/share/fcitx5/themes/catppuccin-mocha-mauve" || \
+        [ "$DRY_RUN" = true ]; then
         install_asset "$USER_HOME/.config/fcitx5/conf/classicui.conf" fcitx5/conf/classicui.conf 0644 || return 1
     else
-        log "未安装 catppuccin-mocha-mauve 主题，classicui 仅写 DPI 设置"
+        warn "catppuccin-mocha-mauve 主题不可用，classicui 仅写 DPI 设置"
         install_content "$USER_HOME/.config/fcitx5/conf/classicui.conf" 0644 <<'EOF' || return 1
 [Theme]
 PerScreenDPI=True
@@ -1162,13 +1442,17 @@ EOF
     # 用系统级 dbus service 覆盖包里的那份，改走先探测 Wayland socket 的包装器。
     install_content /usr/local/bin/fcitx5-dbus 0755 <<'EOF_DBUS' || return 1
 #!/bin/sh
-# 由 droidspaces-preferences 生成。两个职责：
+# 由 droidspaces-preferences 生成。职责：
 # 1) D-Bus 激活的 fcitx5 拿不到会话环境，这里从 XDG_RUNTIME_DIR 挑 Wayland socket；
 # 2) niri spawn 的实例启动需要约 1 秒，期间若有应用请求输入法会触发激活，
-#    于是并存两份。先等总线名出现（最多 4 秒），出现就退出，交给已运行的实例。
+#    于是并存两份。先等总线名出现（最多 1 秒），出现就退出，交给已运行的实例；
+# 3) systemd 用户实例在 default.target 阶段启动，niri 可能还没建好 Wayland
+#    socket。此时先等 socket 出现（最多 30 秒），避免 fcitx5 报
+#    "Failed to open wayland connection" 后成为没有总线名的第二份。
 if command -v busctl >/dev/null 2>&1; then
     i=0
-    while [ "$i" -lt 20 ]; do
+    # 1 秒足够覆盖“D-Bus 激活正在起”的窗口；再久只会拖慢登录。
+    while [ "$i" -lt 5 ]; do
         if busctl --user status org.fcitx.Fcitx5 >/dev/null 2>&1; then
             exit 0
         fi
@@ -1177,11 +1461,37 @@ if command -v busctl >/dev/null 2>&1; then
     done
 fi
 if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    # 0.2 秒 × 150 次 = 30 秒上限；socket 一出现立即结束等待。
+    w=0
+    while [ "$w" -lt 150 ]; do
+        ws_ready=
+        for s in "$XDG_RUNTIME_DIR"/wayland-?; do
+            if [ -S "$s" ]; then
+                ws_ready=1
+                break
+            fi
+        done
+        [ "$ws_ready" = 1 ] && break
+        sleep 0.2
+        w=$((w + 1))
+    done
     for s in "$XDG_RUNTIME_DIR"/wayland-?; do
         [ -S "$s" ] || continue
         WAYLAND_DISPLAY=${s##*/}
         export WAYLAND_DISPLAY
         break
+    done
+fi
+if command -v busctl >/dev/null 2>&1; then
+    # 等满仍无 owner：会话启动的那份没有注册到总线（缺 DBUS_SESSION_BUS_ADDRESS
+    # 时就是这样），留着它只会与新实例并存、候选词落到错误进程。按精确 pid 结束
+    # 未持有总线名的 fcitx5，再启动本实例。
+    owner=$(busctl --user status org.fcitx.Fcitx5 2>/dev/null | sed -n 's/^PID=//p')
+    for pr in /proc/[0-9]*; do
+        pid=${pr#/proc/}
+        [ "$(cat "$pr/comm" 2>/dev/null)" = fcitx5 ] || continue
+        [ "$pid" = "${owner:-}" ] && continue
+        kill "$pid" 2>/dev/null || true
     done
 fi
 exec /usr/bin/fcitx5 "$@"
@@ -1195,11 +1505,36 @@ Name=org.fcitx.Fcitx5
 Exec=/usr/local/bin/fcitx5-dbus
 EOF_SVC
 
-    # fcitx5 只保留一个启动入口：niri 的 spawn-at-startup（带 WAYLAND_DISPLAY）。
-    # systemd 用户实例会把 ~/.config/autostart 与 /etc/xdg/autostart 里两份
-    # fcitx5 都拉起来，而且没有 Wayland 连接；它们抢走 org.fcitx.Fcitx5 后，
-    # niri 拉起的实例退出，输入法就没有候选词。这里删掉用户副本，并用
-    # Hidden=true 覆盖系统那份。
+    # 会话入口以 systemd 用户单元为主：unit 与 niri 的 spawn-at-startup 走同一个
+    # wrapper，wrapper 见到已有总线名会立即退出，所以两者并存不会拉起两份实例。
+    install_asset "$USER_HOME/.config/systemd/user/fcitx5-session.service" \
+        systemd/user/fcitx5-session.service 0644 || return 1
+    fcitx_wants=$USER_HOME/.config/systemd/user/default.target.wants
+    fcitx_link=$fcitx_wants/fcitx5-session.service
+    # 相对链接：unit 目录随家目录整体迁移或挂载到别处时仍然有效。
+    if [ "$(readlink "$ROOT$fcitx_link" 2>/dev/null || true)" = ../fcitx5-session.service ]; then
+        log "unchanged: $fcitx_link"
+    elif [ "$DRY_RUN" = true ]; then
+        log "dry-run: would link $fcitx_link -> ../fcitx5-session.service"
+    else
+        if ! prepare_user_parent "$fcitx_link"; then
+            fail_step "无法创建 $fcitx_wants"
+            return 1
+        fi
+        if ! ln -sfn ../fcitx5-session.service "$ROOT$fcitx_link"; then
+            fail_step "无法创建 $fcitx_link"
+            return 1
+        fi
+        if [ -z "$ROOT" ] && [ -n "$USER_UID" ]; then
+            chown -h "$USER_UID:$USER_GID" "$ROOT$fcitx_link" 2>/dev/null || \
+                warn "chown 失败：$fcitx_link"
+        fi
+        log "linked: $fcitx_link -> ../fcitx5-session.service"
+    fi
+
+    # niri 的 spawn-at-startup 保留作 systemd 单元未起时的兜底；autostart 里的
+    # 两份仍要屏蔽：它们既不经过 wrapper，也拿不到会话的 WAYLAND_DISPLAY。删掉
+    # 用户副本，并用 Hidden=true 覆盖系统那份。
     if [ -f "$ROOT$USER_HOME/.config/autostart/fcitx5.desktop" ]; then
         if [ "$DRY_RUN" = true ]; then
             log "dry-run: would remove $USER_HOME/.config/autostart/fcitx5.desktop"
@@ -1218,6 +1553,25 @@ Exec=/bin/true
 Hidden=true
 NoDisplay=true
 EOF_HIDDEN
+
+    # 在活动会话里重跑本脚本时，旧的 fcitx5 仍持有旧配置：候选窗主题/profile
+    # 不生效，而且改配置期间掉总线名后会被 D-Bus 激活出第二个实例（实测两个
+    # fcitx5，org.fcitx.Fcitx5 无 owner）。这里只在确有会话时做一次干净重启，
+    # 镜像构建阶段没有 wayland socket，自然跳过。
+    if [ "$DRY_RUN" != true ] && [ -z "$ROOT" ] && [ -n "$USER_UID" ] && \
+        [ -S "/run/user/$USER_UID/wayland-1" ]; then
+        if pgrep -u "$USER_UID" -x fcitx5 >/dev/null 2>&1; then
+            log "检测到活动会话中的 fcitx5，重启以加载新配置"
+            pkill -u "$USER_UID" -x fcitx5 >/dev/null 2>&1 || true
+            sleep 1
+            pkill -9 -u "$USER_UID" -x fcitx5 >/dev/null 2>&1 || true
+            run_as_user "XDG_RUNTIME_DIR=/run/user/$USER_UID \
+                WAYLAND_DISPLAY=wayland-1 \
+                DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$USER_UID/bus \
+                setsid /usr/local/bin/fcitx5-dbus >/dev/null 2>&1 &" || \
+                warn "重启 fcitx5 失败；下次登录会重新启动"
+        fi
+    fi
     return 0
 }
 
@@ -1233,6 +1587,13 @@ step_nemo() {
     fi
 
     merge_mimeapps || return 1
+    # Arch 的 xdg-utils 不提供 default-file-manager 属性（实测 `xdg-settings set
+    # default-file-manager` 直接打印用法并返回非零）。`inode/directory` 已由
+    # mimeapps.list 覆盖，这里只在支持该属性时才额外写，避免无意义的告警。
+    if run_as_user "xdg-settings --list 2>/dev/null | grep -qx default-file-manager"; then
+        run_as_user "xdg-settings set default-file-manager nemo.desktop" || \
+            warn "xdg-settings 设置默认文件管理器失败（nemo.desktop）"
+    fi
 
     if ! have_bin kitty; then
         warn "未安装 kitty，跳过 xdg-terminal-exec 与 Nemo 终端动作"
@@ -1253,18 +1614,27 @@ step_nemo() {
 }
 
 merge_mimeapps() {
-    mm_dest=$USER_HOME/.config/mimeapps.list
+    merge_mimeapps_into "$USER_HOME/.config/mimeapps.list" || return 1
+    # 系统级兜底：新建用户/未应用偏好的会话也能用 Nemo 打开目录。
+    merge_mimeapps_into /etc/xdg/mimeapps.list || return 1
+    return 0
+}
+
+# 幂等地把 inode/directory -> nemo.desktop 写进单个 mimeapps.list，
+# [Default Applications] 里的其它键与其它分组原样保留。
+merge_mimeapps_into() {
+    mmi_dest=$1
     if [ "$DRY_RUN" = true ]; then
-        log "dry-run: would map inode/directory -> nemo.desktop in $mm_dest"
+        log "dry-run: would map inode/directory -> nemo.desktop in $mmi_dest"
         return 0
     fi
-    mm_full=$ROOT$mm_dest
+    mmi_full=$ROOT$mmi_dest
     if ! new_tmp; then
         fail_step "mktemp 失败"
         return 1
     fi
-    mm_tmp=$nt_path
-    if [ -f "$mm_full" ]; then
+    mmi_tmp=$nt_path
+    if [ -f "$mmi_full" ]; then
         if ! awk '
             BEGIN { in_defaults = 0; written = 0 }
             /^\[/ {
@@ -1279,29 +1649,29 @@ merge_mimeapps() {
                 print
             }
             END { if (in_defaults && !written) print "inode/directory=nemo.desktop" }
-        ' "$mm_full" >"$mm_tmp"; then
-            drop_tmp "$mm_tmp"
-            fail_step "解析 $mm_dest 失败"
+        ' "$mmi_full" >"$mmi_tmp"; then
+            drop_tmp "$mmi_tmp"
+            fail_step "解析 $mmi_dest 失败"
             return 1
         fi
-        if ! grep -q '^\[Default Applications\]' "$mm_tmp"; then
-            if ! printf '%s\n' '[Default Applications]' 'inode/directory=nemo.desktop' >>"$mm_tmp"; then
-                drop_tmp "$mm_tmp"
-                fail_step "写入 $mm_dest 失败"
+        if ! grep -q '^\[Default Applications\]' "$mmi_tmp"; then
+            if ! printf '%s\n' '[Default Applications]' 'inode/directory=nemo.desktop' >>"$mmi_tmp"; then
+                drop_tmp "$mmi_tmp"
+                fail_step "写入 $mmi_dest 失败"
                 return 1
             fi
         fi
     else
-        if ! printf '%s\n' '[Default Applications]' 'inode/directory=nemo.desktop' >"$mm_tmp"; then
-            drop_tmp "$mm_tmp"
-            fail_step "写入 $mm_dest 失败"
+        if ! printf '%s\n' '[Default Applications]' 'inode/directory=nemo.desktop' >"$mmi_tmp"; then
+            drop_tmp "$mmi_tmp"
+            fail_step "写入 $mmi_dest 失败"
             return 1
         fi
     fi
-    install_content "$mm_dest" 0644 <"$mm_tmp"
-    mm_rc=$?
-    drop_tmp "$mm_tmp"
-    return $mm_rc
+    install_content "$mmi_dest" 0644 <"$mmi_tmp"
+    mmi_rc=$?
+    drop_tmp "$mmi_tmp"
+    return $mmi_rc
 }
 
 # 11) Noctalia：顶栏铺满 + 外壳字体；既有配置不覆盖。
@@ -1314,7 +1684,9 @@ step_noctalia() {
         skip_step "未安装 Noctalia"
         return 2
     fi
-    install_if_absent "$USER_HOME/.config/noctalia/config.toml" 0644 noctalia/config.toml
+    # 用 install_asset 覆盖而不是 install_if_absent：胶囊/间距等偏好会随版本
+    # 调整，保留旧文件会让升级后的镜像看不到新值。覆盖前按统一机制备份。
+    install_asset "$USER_HOME/.config/noctalia/config.toml" noctalia/config.toml 0644
     return $?
 }
 
@@ -1348,7 +1720,9 @@ step_niri_ime_autostart() {
     fi
     {
         printf '%s\n' '' '// >>> droidspaces-preferences: 输入法自启动（systemd 用户 autostart 已屏蔽）'
-        printf '%s\n' 'spawn-at-startup "fcitx5"'
+        # 走包装器而不是裸 fcitx5：启动瞬间若有 D-Bus 激活先占了总线名，裸实例会
+        # 永久成为“无总线”的第二份；包装器会等名、清理无名实例后再 exec。
+        printf '%s\n' 'spawn-at-startup "/usr/local/bin/fcitx5-dbus"'
         printf '%s\n' '// <<< droidspaces-preferences'
     } >>"$niri_full" || {
         fail_step "追加失败：$niri_config"
@@ -1383,14 +1757,43 @@ niri_apply_extras() {
         return 1
     fi
     nae_tmp=$nt_path
+    if ! rollback_snapshot "$nae_full"; then
+        drop_tmp "$nae_tmp"
+        fail_step "回滚基线创建失败：$nae_file"
+        return 1
+    fi
+    nae_orig=$rb_path
     # layout 段只能出现一次；background-color 插在 layout 开头，focus-ring 的值
     # 在已有块内就地替换（库存配置里 focus-ring 已经是活动节点，重复节点会解析失败）。
+    # shadow 节点同理只能有一个：仅在库存配置没有 shadow 块时补一份光晕阴影
+    #（对应 Nyxuri §4）；已有块交给 niri_fix_shadow 幂等修补。
+    nae_has_shadow=false
+    if grep -q '^[[:space:]]*shadow[[:space:]]*{' "$nae_full" 2>/dev/null; then
+        nae_has_shadow=true
+    fi
+    # 圆角规则同理只补一次：库存配置已有活动 geometry-corner-radius 时不重复写。
+    nae_has_radius=false
+    if niri_has_active_radius "$nae_full"; then
+        nae_has_radius=true
+    fi
     # binds 段同理，只能插在已有 binds 块内。
-    awk '
+    awk -v has_shadow="$nae_has_shadow" '
         BEGIN { layout_done = 0; in_fr = 0; fr_named = 0 }
         /^[[:space:]]*layout[[:space:]]*\{/ && !layout_done {
             print
             print "    background-color \"transparent\""
+            if (has_shadow == "false") {
+                print "    shadow {"
+                print "        // 对应 Nyxuri §4：光晕阴影。"
+                print "        on"
+                print "        softness 28"
+                print "        spread 6"
+                print "        offset x=0 y=0"
+                print "        draw-behind-window false"
+                print "        color \"#b6c7e795\""
+                print "        inactive-color \"#00000045\""
+                print "    }"
+            }
             layout_done = 1
             next
         }
@@ -1421,7 +1824,8 @@ niri_apply_extras() {
         }
         { print }
     ' "$nae_full" >"$nae_tmp" || {
-        drop_tmp
+        drop_tmp "$nae_tmp"
+        drop_tmp "$nae_orig"
         fail_step "改写失败：$nae_file"
         return 1
     }
@@ -1435,21 +1839,43 @@ niri_apply_extras() {
         printf '%s\n' '    match namespace="noctalia-wallpaper"'
         printf '%s\n' '    place-within-backdrop true'
         printf '%s\n' '}'
+        # niri 26.04-modified 不认识 default-window-width/height，写了会导致
+        # 整份配置校验失败（unexpected node）。浮窗尺寸改用 niri 默认值；
+        # 文档 01:64 记为不可实现。
         printf '%s\n' 'window-rule {'
         printf '%s\n' '    match app-id="noctalia"'
         printf '%s\n' '    open-floating true'
         printf '%s\n' '}'
+        # kitty 只保留半透明；模糊必须由 niri 合成层做，kitty 的
+        # background_blur 在 Wayland 下不生效。
+        # 注意：niri 的 KDL 解析器不接受 `}` 紧跟值的内联子块
+        # （`background-effect { blur true }` 会整份配置校验失败），
+        # 必须写成多行块，且 `}` 前有换行。
+        printf '%s\n' 'window-rule {'
+        printf '%s\n' '    match app-id="^kitty$"'
+        printf '%s\n' '    background-effect {'
+        printf '%s\n' '        blur true'
+        printf '%s\n' '    }'
+        printf '%s\n' '}'
         printf '%s\n' 'window-rule {'
         printf '%s\n' '    draw-border-with-background false'
         printf '%s\n' '}'
+        if [ "$nae_has_radius" = false ]; then
+            # 全窗口圆角 12 + 裁剪；已有活动规则时由 niri_fix_corner_radius 跳过。
+            printf '%s\n' 'window-rule {'
+            printf '%s\n' '    geometry-corner-radius 12'
+            printf '%s\n' '    clip-to-geometry true'
+            printf '%s\n' '}'
+        fi
         printf '%s\n' '// <<< droidspaces-preferences: niri 外观与行为'
     } >>"$nae_tmp" || {
-        drop_tmp
+        drop_tmp "$nae_tmp"
+        drop_tmp "$nae_orig"
         fail_step "追加失败：$nae_file"
         return 1
     }
     cat "$nae_tmp" >"$nae_full"
-    drop_tmp
+    drop_tmp "$nae_tmp"
     nae_validator=
     if have_bin niri-anland; then
         nae_validator=niri-anland
@@ -1459,13 +1885,288 @@ niri_apply_extras() {
     if [ -n "$nae_validator" ]; then
         if ! nae_err=$("$nae_validator" validate -c "$nae_full" 2>&1); then
             warn "$nae_file 校验失败，已回滚：$(printf '%s' "$nae_err" | tr '\n' ' ' | cut -c1-300)"
-            if [ -n "${BACKUP_DIR:-}" ] && [ -f "$BACKUP_DIR$nae_file" ]; then
-                cat "$BACKUP_DIR$nae_file" >"$nae_full"
-            fi
+            restore_snapshot "$nae_orig" "$nae_full" "$nae_file" || warn "回滚失败：$nae_file"
+            drop_tmp "$nae_orig"
             return 1
         fi
     fi
+    drop_tmp "$nae_orig"
     log "appended: $nae_file（niri 外观块）"
+    return 0
+}
+
+# layout 的幂等修补：
+#   1) layout 块内 gaps 统一为 8（对应文档 01:59）；
+#   2) 删除 niri 26.04 不支持的 default-window-width/height。旧版本脚本曾把它们
+#      写进 Noctalia 的 window-rule，niri 26.04-modified 校验时报
+#      unexpected node default-window-width 并整体拒绝加载。浮窗尺寸改用 niri
+#      默认值；文档 01:64 记为不可实现。
+# 只改已存在的 layout，不新建块；括号深度判定保证不动 layout 之外的节点。
+# 备份 → temp → validate → 失败回滚。
+niri_fix_layout_noctalia() {
+    nfln_file=$1
+    nfln_full=$ROOT$nfln_file
+    path_exists "$nfln_file" || return 2
+
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nfln_tmp=$nt_path
+    awk '
+        function delta(line,   i, c, q, kept, o, cl) {
+            kept = ""; q = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (q) { if (c == "\"") q = 0; continue }
+                if (c == "\"") { q = 1; continue }
+                if (c == "/" && substr(line, i + 1, 1) == "/") break
+                kept = kept c
+            }
+            o = gsub(/{/, "{", kept)
+            cl = gsub(/}/, "}", kept)
+            return o - cl
+        }
+        {
+            line = $0
+            d = delta(line)
+            before = depth
+            depth = before + d
+
+            # layout 只认第一个顶层节点；单行 inline 的 layout 不处理。
+            if (!in_layout && before == 0 && d > 0 && line ~ /^[[:space:]]*layout[[:space:]]*\{/) {
+                in_layout = 1
+                layout_depth = depth
+                print
+                print "    gaps 8"
+                next
+            }
+            # 直接子层的旧 gaps 行删掉，由上面插入的那行统一。
+            if (in_layout && before == layout_depth && line ~ /^[[:space:]]*gaps[[:space:]]/) next
+            if (in_layout && depth < layout_depth) in_layout = 0
+            # niri 26.04 不认识这两个键，任何位置都删。
+            if (line ~ /^[[:space:]]*default-window-(width|height)[[:space:]]/) next
+            print
+        }
+    ' "$nfln_full" >"$nfln_tmp" || {
+        drop_tmp "$nfln_tmp"
+        fail_step "改写失败：$nfln_file"
+        return 1
+    }
+    if same_content "$nfln_tmp" "$nfln_full"; then
+        drop_tmp "$nfln_tmp"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        drop_tmp "$nfln_tmp"
+        log "dry-run: would normalize gaps and drop default-window-* in $nfln_file"
+        return 0
+    fi
+    backup_file "$nfln_file" || {
+        drop_tmp "$nfln_tmp"
+        return 1
+    }
+    if ! rollback_snapshot "$nfln_full"; then
+        drop_tmp "$nfln_tmp"
+        fail_step "回滚基线创建失败：$nfln_file"
+        return 1
+    fi
+    nfln_orig=$rb_path
+    cat "$nfln_tmp" >"$nfln_full"
+    drop_tmp "$nfln_tmp"
+    nfln_validator=
+    if have_bin niri-anland; then
+        nfln_validator=niri-anland
+    elif have_bin niri; then
+        nfln_validator=niri
+    fi
+    if [ -n "$nfln_validator" ]; then
+        if ! nfln_err=$("$nfln_validator" validate -c "$nfln_full" 2>&1); then
+            warn "$nfln_file 校验失败，已回滚：$(printf '%s' "$nfln_err" | tr '\n' ' ' | cut -c1-300)"
+            restore_snapshot "$nfln_orig" "$nfln_full" "$nfln_file" || warn "回滚失败：$nfln_file"
+            drop_tmp "$nfln_orig"
+            return 1
+        fi
+    fi
+    drop_tmp "$nfln_orig"
+    log "fixed: $nfln_file（layout gaps 8；移除 default-window-*）"
+    return 0
+}
+
+# 阴影光晕的幂等修补（对应 Nyxuri §4）：
+#   在已有 layout 块的直接子层保证 shadow 为 on，softness 28、spread 6、
+#   offset x=0 y=0、draw-behind-window false、color #b6c7e795、
+#   inactive-color #00000045。只改已存在的 layout，不新建块。
+# 改写按花括号深度判定，只在 layout 的直接子层动手，绝不跨出 layout 块；
+# 写回前对输入/输出各做一次括号计数自检（open==close），不等就失败回滚。
+# 写法与 niri_fix_layout_noctalia 一致：备份 → temp → 自检 → validate → 失败回滚。
+niri_fix_shadow() {
+    nfs_file=$1
+    nfs_full=$ROOT$nfs_file
+    path_exists "$nfs_file" || return 2
+
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nfs_tmp=$nt_path
+    awk '
+        # 计算一行的花括号净值：忽略 "" 字符串和 // 注释里的括号。
+        function delta(line,   i, c, q, kept, o, cl) {
+            kept = ""; q = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (q) { if (c == "\"") q = 0; continue }
+                if (c == "\"") { q = 1; continue }
+                if (c == "/" && substr(line, i + 1, 1) == "/") break
+                kept = kept c
+            }
+            o = gsub(/{/, "{", kept)
+            cl = gsub(/}/, "}", kept)
+            return o - cl
+        }
+        function shadow_block() {
+            print "    shadow {"
+            print "        // 对应 Nyxuri §4：光晕阴影。"
+            print "        on"
+            print "        softness 28"
+            print "        spread 6"
+            print "        offset x=0 y=0"
+            print "        draw-behind-window false"
+            print "        color \"#b6c7e795\""
+            print "        inactive-color \"#00000045\""
+            print "    }"
+        }
+        function fill_missing() {
+            if (!has_on) print "        on"
+            if (!has_soft) print "        softness 28"
+            if (!has_spread) print "        spread 6"
+            if (!has_offset) print "        offset x=0 y=0"
+            if (!has_draw) print "        draw-behind-window false"
+            if (!has_color) print "        color \"#b6c7e795\""
+            if (!has_inactive) print "        inactive-color \"#00000045\""
+        }
+        {
+            line = $0
+            d = delta(line)
+            before = depth
+            depth = before + d
+
+            # layout 只认第一个顶层节点；单行 inline 的 layout 不处理。
+            if (!in_layout && before == 0 && d > 0 && line ~ /^[[:space:]]*layout[[:space:]]*\{/) {
+                in_layout = 1
+                layout_depth = depth
+                print
+                next
+            }
+
+            # shadow 必须在 layout 的直接子层出现。
+            if (in_layout && !in_shadow && before == layout_depth && d > 0 && \
+                line ~ /^[[:space:]]*shadow[[:space:]]*\{/) {
+                in_shadow = 1
+                shadow_seen = 1
+                shadow_depth = depth
+                has_on = 0; has_soft = 0; has_spread = 0; has_offset = 0
+                has_draw = 0; has_color = 0; has_inactive = 0
+                print
+                next
+            }
+
+            if (in_shadow) {
+                # 只改写 shadow 的直接子层；更深的嵌套原样通过。
+                if (before == shadow_depth) {
+                    if (line ~ /^[[:space:]]*\/\/[[:space:]]*on[[:space:]]*$/) {
+                        if (!has_on) {
+                            print "        on"
+                            has_on = 1
+                        }
+                        next
+                    }
+                    if (line ~ /^[[:space:]]*on[[:space:]]*$/) { has_on = 1; print; next }
+                    if (line ~ /^[[:space:]]*softness[[:space:]]/) { print "        softness 28"; has_soft = 1; next }
+                    if (line ~ /^[[:space:]]*spread[[:space:]]/) { print "        spread 6"; has_spread = 1; next }
+                    if (line ~ /^[[:space:]]*offset[[:space:]]/) { print "        offset x=0 y=0"; has_offset = 1; next }
+                    if (line ~ /^[[:space:]]*draw-behind-window[[:space:]]/) { print "        draw-behind-window false"; has_draw = 1; next }
+                    if (line ~ /^[[:space:]]*inactive-color[[:space:]]/) { print "        inactive-color \"#00000045\""; has_inactive = 1; next }
+                    if (line ~ /^[[:space:]]*color[[:space:]]/) { print "        color \"#b6c7e795\""; has_color = 1; next }
+                }
+                # 深度回落到 shadow 之前即为其收尾行：补齐缺失项再输出。
+                if (depth < shadow_depth) {
+                    fill_missing()
+                    in_shadow = 0
+                }
+                print
+                next
+            }
+
+            # layout 收尾：整份 layout 都没有 shadow 时，在它的直接子层末尾补一份。
+            if (in_layout && depth < layout_depth) {
+                if (!shadow_seen) {
+                    shadow_block()
+                    shadow_seen = 1
+                }
+                in_layout = 0
+            }
+            print
+        }
+    ' "$nfs_full" >"$nfs_tmp" || {
+        drop_tmp "$nfs_tmp"
+        fail_step "改写失败：$nfs_file"
+        return 1
+    }
+    if same_content "$nfs_tmp" "$nfs_full"; then
+        drop_tmp "$nfs_tmp"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        drop_tmp "$nfs_tmp"
+        log "dry-run: would adjust niri shadow glow in $nfs_file"
+        return 0
+    fi
+    # 括号计数自检：改写前后净值必须一致且为 0，否则绝不写回。
+    nfs_in=$(brace_sum "$nfs_full") || {
+        drop_tmp "$nfs_tmp"
+        fail_step "括号计数失败：$nfs_file"
+        return 1
+    }
+    nfs_out=$(brace_sum "$nfs_tmp") || {
+        drop_tmp "$nfs_tmp"
+        fail_step "括号计数失败：$nfs_file"
+        return 1
+    }
+    if [ "$nfs_out" != "$nfs_in" ] || [ "$nfs_out" != 0 ]; then
+        drop_tmp "$nfs_tmp"
+        warn "$nfs_file 阴影改写后花括号不平衡（$nfs_in -> $nfs_out），已放弃写回"
+        return 1
+    fi
+    backup_file "$nfs_file" || {
+        drop_tmp "$nfs_tmp"
+        return 1
+    }
+    if ! rollback_snapshot "$nfs_full"; then
+        drop_tmp "$nfs_tmp"
+        fail_step "回滚基线创建失败：$nfs_file"
+        return 1
+    fi
+    nfs_orig=$rb_path
+    cat "$nfs_tmp" >"$nfs_full"
+    drop_tmp "$nfs_tmp"
+    nfs_validator=
+    if have_bin niri-anland; then
+        nfs_validator=niri-anland
+    elif have_bin niri; then
+        nfs_validator=niri
+    fi
+    if [ -n "$nfs_validator" ]; then
+        if ! nfs_err=$("$nfs_validator" validate -c "$nfs_full" 2>&1); then
+            warn "$nfs_file 校验失败，已回滚：$(printf '%s' "$nfs_err" | tr '\n' ' ' | cut -c1-300)"
+            restore_snapshot "$nfs_orig" "$nfs_full" "$nfs_file" || warn "回滚失败：$nfs_file"
+            drop_tmp "$nfs_orig"
+            return 1
+        fi
+    fi
+    drop_tmp "$nfs_orig"
+    log "fixed: $nfs_file（阴影光晕 softness 28 / spread 6）"
     return 0
 }
 
@@ -1489,11 +2190,13 @@ niri_fix_launchers() {
         return 1
     fi
     nfl_tmp=$nt_path
+    # fcitx5 自启动统一改走包装器。旧版本给它加过 -r，也要一并去掉；这里的
+    # `-r` 不写成 "-r" 引号形式，避免某些 sed 实现把引号当语法字符吃掉。
     sed -E \
         -e 's/spawn(-sh)? +"alacritty"/spawn\1 "kitty"/' \
         -e 's/: alacritty"/: kitty"/' \
         -e '/^[[:space:]]*spawn-at-startup +"waybar"/d' \
-        -e 's/^([[:space:]]*spawn-at-startup +"fcitx5") +"-r"[[:space:]]*$/\1/' \
+        -e 's|^([[:space:]]*spawn-at-startup) +"fcitx5"( +-r)?[[:space:]]*$|\1 "/usr/local/bin/fcitx5-dbus"|' \
         "$nfl_full" >"$nfl_tmp" || {
         drop_tmp "$nfl_tmp"
         fail_step "改写失败：$nfl_file"
@@ -1501,7 +2204,503 @@ niri_fix_launchers() {
     }
     cat "$nfl_tmp" >"$nfl_full"
     drop_tmp "$nfl_tmp"
-    log "fixed: $nfl_file（alacritty→kitty、移除 waybar、fcitx5 去掉 -r）"
+    log "fixed: $nfl_file（alacritty→kitty、移除 waybar、fcitx5 改走包装器）"
+    return 0
+}
+
+# kitty 的 background_blur 在 niri Wayland 下不生效，模糊改由 niri 合成：
+# 幂等保证配置里有 kitty 的 window-rule，并清掉误写到 niri 配置里的该键。
+# 旧版脚本写出的单行内联规则会让 niri 的 KDL 解析失败，这里一并改写为多行块。
+# 写法与 niri_fix_launchers 一致：备份 → temp → 改写 → validate → 失败回滚。
+niri_fix_terminal_blur() {
+    ntb_file=$1
+    ntb_full=$ROOT$ntb_file
+    path_exists "$ntb_file" || return 2
+    ntb_key=false
+    ntb_rule=false
+    ntb_inline=false
+    if grep -q '^[[:space:]]*background_blur[[:space:]]' "$ntb_full" 2>/dev/null; then
+        ntb_key=true
+    fi
+    if grep -qF 'match app-id="^kitty$"' "$ntb_full" 2>/dev/null; then
+        ntb_rule=true
+    fi
+    # 旧版脚本写的是单行内联规则（`window-rule { match ...; background-effect { blur true } }`）。
+    # niri 的 KDL 解析器不接受 `}` 紧跟值的内联子块，这种行会让整份配置
+    # 校验失败，必须就地改写为多行块。
+    if awk '
+        /^[[:space:]]*(\/\/|\/-)/ { next }
+        index($0, "background-effect") > 0 && index($0, "match app-id=\"^kitty$\"") > 0 { found = 1 }
+        END { exit(found ? 0 : 1) }
+    ' "$ntb_full" 2>/dev/null; then
+        ntb_inline=true
+    fi
+    if [ "$ntb_key" = false ] && [ "$ntb_rule" = true ] && [ "$ntb_inline" = false ]; then
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would ensure kitty blur window-rule in $ntb_file"
+        return 0
+    fi
+    backup_file "$ntb_file" || return 1
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    ntb_tmp=$nt_path
+    # 一次改写完成两件事：删掉误写的 background_blur 键，把内联 kitty 规则
+    # 展开成多行块。多行块里 background-effect 独占一行，第二遍不会再命中。
+    awk '
+        /^[[:space:]]*background_blur[[:space:]]/ { next }
+        /^[[:space:]]*(\/\/|\/-)/ { print; next }
+        {
+            if (index($0, "background-effect") > 0 && index($0, "match app-id=\"^kitty$\"") > 0) {
+                ind = ""
+                if (match($0, /[^[:space:]]/) > 1) ind = substr($0, 1, RSTART - 1)
+                print ind "window-rule {"
+                print ind "    match app-id=\"^kitty$\""
+                print ind "    background-effect {"
+                print ind "        blur true"
+                print ind "    }"
+                print ind "}"
+                next
+            }
+            print
+        }
+    ' "$ntb_full" >"$ntb_tmp" || {
+        drop_tmp "$ntb_tmp"
+        fail_step "改写失败：$ntb_file"
+        return 1
+    }
+    if [ "$ntb_rule" = false ]; then
+        {
+            printf '%s\n' ''
+            printf '%s\n' '// >>> droidspaces-preferences: kitty 模糊（managed）'
+            printf '%s\n' '// niri 的 KDL 解析器不接受内联子块，必须多行书写。'
+            printf '%s\n' 'window-rule {'
+            printf '%s\n' '    match app-id="^kitty$"'
+            printf '%s\n' '    background-effect {'
+            printf '%s\n' '        blur true'
+            printf '%s\n' '    }'
+            printf '%s\n' '}'
+            printf '%s\n' '// <<< droidspaces-preferences: kitty 模糊'
+        } >>"$ntb_tmp" || {
+            drop_tmp "$ntb_tmp"
+            fail_step "追加失败：$ntb_file"
+            return 1
+        }
+    fi
+    if ! rollback_snapshot "$ntb_full"; then
+        drop_tmp "$ntb_tmp"
+        fail_step "回滚基线创建失败：$ntb_file"
+        return 1
+    fi
+    ntb_orig=$rb_path
+    cat "$ntb_tmp" >"$ntb_full"
+    drop_tmp "$ntb_tmp"
+    ntb_validator=
+    if have_bin niri-anland; then
+        ntb_validator=niri-anland
+    elif have_bin niri; then
+        ntb_validator=niri
+    fi
+    if [ -n "$ntb_validator" ]; then
+        if ! ntb_err=$("$ntb_validator" validate -c "$ntb_full" 2>&1); then
+            warn "$ntb_file 校验失败，已回滚：$(printf '%s' "$ntb_err" | tr '\n' ' ' | cut -c1-300)"
+            restore_snapshot "$ntb_orig" "$ntb_full" "$ntb_file" || warn "回滚失败：$ntb_file"
+            drop_tmp "$ntb_orig"
+            return 1
+        fi
+    fi
+    drop_tmp "$ntb_orig"
+    log "fixed: $ntb_file（kitty 模糊 window-rule，多行化）"
+    return 0
+}
+
+# 设备上已安装的 kitty.conf 可能还留着失效的 background_blur，一并删掉。
+kitty_drop_background_blur() {
+    kdb_dest=$USER_HOME/.config/kitty/kitty.conf
+    kdb_full=$ROOT$kdb_dest
+    [ -f "$kdb_full" ] || return 0
+    grep -q '^[[:space:]]*background_blur[[:space:]]' "$kdb_full" 2>/dev/null || return 0
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would drop background_blur from $kdb_dest"
+        return 0
+    fi
+    backup_file "$kdb_dest" || return 1
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    kdb_tmp=$nt_path
+    sed -E '/^[[:space:]]*background_blur[[:space:]]/d' "$kdb_full" >"$kdb_tmp" || {
+        drop_tmp "$kdb_tmp"
+        fail_step "改写失败：$kdb_dest"
+        return 1
+    }
+    cat "$kdb_tmp" >"$kdb_full"
+    drop_tmp "$kdb_tmp"
+    log "fixed: $kdb_dest（移除 background_blur）"
+    return 0
+}
+
+# 判断配置里是否存在「活动」的 geometry-corner-radius。
+# 只看未被 /- 注释掉的节点：niri 的 /-window-rule 里子行仍是普通文本，
+# 单纯 grep 会把注释示例当成已生效。
+niri_has_active_radius() {
+    nhcr_full=$1
+    awk '
+        function delta(line,   i, c, q, kept, o, cl) {
+            kept = ""; q = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (q) { if (c == "\"") q = 0; continue }
+                if (c == "\"") { q = 1; continue }
+                if (c == "/" && substr(line, i + 1, 1) == "/") break
+                kept = kept c
+            }
+            o = gsub(/{/, "{", kept)
+            cl = gsub(/}/, "}", kept)
+            return o - cl
+        }
+        {
+            d = delta($0)
+            depth += d
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            # /- 关掉的节点：带块的开头进入禁用态，直到深度回落。
+            if (line ~ /^\/-/) {
+                if (d > 0) { disabled = 1; dis_depth = depth }
+                next
+            }
+            if (disabled) {
+                if (depth < dis_depth) disabled = 0
+                next
+            }
+            if (line ~ /^geometry-corner-radius[[:space:]]/) { found = 1; exit }
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$nhcr_full" 2>/dev/null
+}
+
+# 全窗口圆角 12 + 裁剪的幂等修补：库存配置的圆角规则往往还是 /- 注释示例，
+# 或根本没有。已有活动规则时不动。
+niri_fix_corner_radius() {
+    nfc_file=$1
+    nfc_full=$ROOT$nfc_file
+    path_exists "$nfc_file" || return 2
+    if niri_has_active_radius "$nfc_full"; then
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would add corner-radius window-rule to $nfc_file"
+        return 0
+    fi
+    backup_file "$nfc_file" || return 1
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nfc_tmp=$nt_path
+    cp "$nfc_full" "$nfc_tmp" || {
+        drop_tmp "$nfc_tmp"
+        fail_step "读取失败：$nfc_file"
+        return 1
+    }
+    {
+        printf '%s\n' ''
+        printf '%s\n' '// >>> droidspaces-preferences: 圆角（managed）'
+        printf '%s\n' 'window-rule {'
+        printf '%s\n' '    geometry-corner-radius 12'
+        printf '%s\n' '    clip-to-geometry true'
+        printf '%s\n' '}'
+        printf '%s\n' '// <<< droidspaces-preferences: 圆角'
+    } >>"$nfc_tmp" || {
+        drop_tmp "$nfc_tmp"
+        fail_step "追加失败：$nfc_file"
+        return 1
+    }
+    if ! rollback_snapshot "$nfc_full"; then
+        drop_tmp "$nfc_tmp"
+        fail_step "回滚基线创建失败：$nfc_file"
+        return 1
+    fi
+    nfc_orig=$rb_path
+    cat "$nfc_tmp" >"$nfc_full"
+    drop_tmp "$nfc_tmp"
+    nfc_validator=
+    if have_bin niri-anland; then
+        nfc_validator=niri-anland
+    elif have_bin niri; then
+        nfc_validator=niri
+    fi
+    if [ -n "$nfc_validator" ]; then
+        if ! nfc_err=$("$nfc_validator" validate -c "$nfc_full" 2>&1); then
+            warn "$nfc_file 校验失败，已回滚：$(printf '%s' "$nfc_err" | tr '\n' ' ' | cut -c1-300)"
+            restore_snapshot "$nfc_orig" "$nfc_full" "$nfc_file" || warn "回滚失败：$nfc_file"
+            drop_tmp "$nfc_orig"
+            return 1
+        fi
+    fi
+    drop_tmp "$nfc_orig"
+    log "fixed: $nfc_file（圆角 12 + clip）"
+    return 0
+}
+
+# 键盘布局补丁：老配置生成时 xkb 块里只有注释示例（`// layout "us,ru"`），
+# 没有活动行，布局随系统 locale 走，部分镜像上 Mod 键位置会不对。seed 里有
+# `layout "us"`，升级路径也要补上。只在已有 xkb 块内插入：xkb 是单例节点，
+# 另起一块会让 niri 整份配置校验失败。
+niri_fix_xkb_layout() {
+    nfx_file=$1
+    nfx_full=$ROOT$nfx_file
+    path_exists "$nfx_file" || return 2
+    if grep -qE '^[[:space:]]*layout[[:space:]]+"us"' "$nfx_full" 2>/dev/null; then
+        return 0
+    fi
+    # 没有 xkb 块就不新建：缺块说明这份配置本来就不想管键盘映射。
+    # 单行 `xkb {}` 不算块（在它后面插入会落到块外），按无块处理。
+    if ! grep -qE '^[[:space:]]*xkb[[:space:]]*\{[[:space:]]*$' "$nfx_full" 2>/dev/null; then
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would add xkb layout \"us\" to $nfx_file"
+        return 0
+    fi
+    backup_file "$nfx_file" || return 1
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nfx_tmp=$nt_path
+    # 插在第一个 xkb { 行之后，12 空格缩进与 seed 一致。
+    awk '
+        {
+            print
+            if (!done && $0 ~ /^[[:space:]]*xkb[[:space:]]*\{[[:space:]]*$/) {
+                print "            layout \"us\""
+                done = 1
+            }
+        }
+    ' "$nfx_full" >"$nfx_tmp" || {
+        drop_tmp "$nfx_tmp"
+        fail_step "改写失败：$nfx_file"
+        return 1
+    }
+    if same_content "$nfx_tmp" "$nfx_full"; then
+        drop_tmp "$nfx_tmp"
+        return 0
+    fi
+    if ! rollback_snapshot "$nfx_full"; then
+        drop_tmp "$nfx_tmp"
+        fail_step "回滚基线创建失败：$nfx_file"
+        return 1
+    fi
+    nfx_orig=$rb_path
+    cat "$nfx_tmp" >"$nfx_full"
+    drop_tmp "$nfx_tmp"
+    # 自检：活动行必须真的落盘（awk 未命中 xkb 行时能兜住）。
+    if ! grep -qE '^[[:space:]]*layout[[:space:]]+"us"' "$nfx_full" 2>/dev/null; then
+        warn "$nfx_file 的 xkb layout 未写入，已回滚"
+        restore_snapshot "$nfx_orig" "$nfx_full" "$nfx_file" || warn "回滚失败：$nfx_file"
+        drop_tmp "$nfx_orig"
+        return 1
+    fi
+    nfx_validator=
+    if have_bin niri-anland; then
+        nfx_validator=niri-anland
+    elif have_bin niri; then
+        nfx_validator=niri
+    fi
+    if [ -n "$nfx_validator" ]; then
+        if ! nfx_err=$("$nfx_validator" validate -c "$nfx_full" 2>&1); then
+            warn "$nfx_file 校验失败，已回滚：$(printf '%s' "$nfx_err" | tr '\n' ' ' | cut -c1-300)"
+            restore_snapshot "$nfx_orig" "$nfx_full" "$nfx_file" || warn "回滚失败：$nfx_file"
+            drop_tmp "$nfx_orig"
+            return 1
+        fi
+    fi
+    drop_tmp "$nfx_orig"
+    log "fixed: $nfx_file（xkb layout us）"
+    return 0
+}
+
+# 是否存在某个按键的「活动」绑定行（忽略 // 与 /- 注释）。
+# 只比较键名本身，避免 Mod+S 误判成 Mod+Shift+...。
+niri_bind_line() {
+    nbl_file=$1
+    nbl_key=$2
+    nbl_need=${3:-}
+    awk -v k="$nbl_key" -v need="$nbl_need" '
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            if (line ~ /^\/\// || line ~ /^\/-/) next
+            if (index(line, k) != 1) next
+            if (substr(line, length(k) + 1) !~ /^[[:space:]]/) next
+            if (need != "" && index(line, need) == 0) next
+            found = 1
+            exit
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$nbl_file" 2>/dev/null
+}
+
+# Noctalia 面板键位：只注入已存在的 binds 块内。binds 是单例节点，
+# 再追加一个 binds 块会让 niri 整份配置校验失败。
+# 同时把旧绑定就地换掉：Mod+D 的 fuzzel（包已删除）、Mod+Comma 的
+# consume-window-into-column（改为设置面板）。
+niri_inject_binds() {
+    nib_file=$1
+    nib_full=$ROOT$nib_file
+    path_exists "$nib_file" || return 2
+    if ! grep -qE '^[[:space:]]*binds[[:space:]]*\{' "$nib_full" 2>/dev/null; then
+        warn "$nib_file 没有 binds 块，跳过 Noctalia 键位注入"
+        return 2
+    fi
+    nib_need_space=true
+    nib_need_control=true
+    nib_need_e=true
+    nib_fix_comma=false
+    nib_fix_d=false
+    if niri_bind_line "$nib_full" 'Mod+Space'; then nib_need_space=false; fi
+    if niri_bind_line "$nib_full" 'Mod+S'; then nib_need_control=false; fi
+    # Mod+E 打开文件管理器。niri_bind_line 按键名整词比较，
+    # 不会把 Mod+Escape 当成 Mod+E。
+    if niri_bind_line "$nib_full" 'Mod+E'; then nib_need_e=false; fi
+    if niri_bind_line "$nib_full" 'Mod+Comma' 'consume-window-into-column'; then
+        nib_fix_comma=true
+    fi
+    # fuzzel 已不在安装清单，老配置里的 Mod+D 会 spawn 一个不存在的程序。
+    if niri_bind_line "$nib_full" 'Mod+D' 'fuzzel'; then
+        nib_fix_d=true
+    fi
+    if [ "$nib_need_space" = false ] && [ "$nib_need_control" = false ] && \
+        [ "$nib_need_e" = false ] && \
+        [ "$nib_fix_comma" = false ] && [ "$nib_fix_d" = false ]; then
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        log "dry-run: would inject Noctalia keybinds into $nib_file"
+        return 0
+    fi
+    if ! new_tmp; then
+        fail_step "mktemp 失败"
+        return 1
+    fi
+    nib_tmp=$nt_path
+    awk -v need_space="$nib_need_space" -v need_control="$nib_need_control" \
+        -v need_e="$nib_need_e" \
+        -v fix_comma="$nib_fix_comma" -v fix_d="$nib_fix_d" '
+        function inject(ind) {
+            if (need_e == "true" && !done_e) {
+                print ind "Mod+E hotkey-overlay-title=\"Open Files: nemo\" { spawn \"nemo\"; }"
+                done_e = 1
+            }
+            if (need_space == "true" && !done_space) {
+                print ind "Mod+Space hotkey-overlay-title=\"Toggle Launcher: noctalia\" { spawn-sh \"noctalia msg panel-toggle launcher\"; }"
+                done_space = 1
+            }
+            if (need_control == "true" && !done_control) {
+                print ind "Mod+S hotkey-overlay-title=\"Open Control Center: noctalia\" { spawn-sh \"noctalia msg panel-open control-center\"; }"
+                done_control = 1
+            }
+        }
+        {
+            line = $0
+            probe = line
+            sub(/^[[:space:]]+/, "", probe)
+            is_cmt = (probe ~ /^\/\// || probe ~ /^\/-/)
+
+            if (!in_binds && !is_cmt && probe ~ /^binds[[:space:]]*\{/) in_binds = 1
+
+            # Mod+D 原来 spawn fuzzel；fuzzel 已从安装清单删除（D11），改走 Noctalia。
+            if (in_binds && fix_d == "true" && !done_d && !is_cmt && \
+                index(probe, "Mod+D") == 1 && index(line, "fuzzel") > 0) {
+                ind = substr(line, 1, length(line) - length(probe))
+                print ind "Mod+D hotkey-overlay-title=\"Toggle Launcher: noctalia\" { spawn-sh \"noctalia msg panel-toggle launcher\"; }"
+                done_d = 1
+                next
+            }
+            # Mod+Comma 原绑定换成 Noctalia 设置开关。
+            if (in_binds && fix_comma == "true" && !done_comma && !is_cmt && \
+                index(probe, "Mod+Comma") == 1 && index(line, "consume-window-into-column") > 0) {
+                ind = substr(line, 1, length(line) - length(probe))
+                print ind "Mod+Comma hotkey-overlay-title=\"Toggle Settings: noctalia\" { spawn-sh \"noctalia msg settings-toggle\"; }"
+                done_comma = 1
+                next
+            }
+            if (in_binds && !is_cmt) {
+                tmp = line
+                opens = gsub(/{/, "{", tmp)
+                tmp = line
+                closes = gsub(/}/, "}", tmp)
+                depth += opens - closes
+                # binds 块收尾：在闭合括号前补缺失的键位。
+                if (depth == 0) {
+                    inject("    ")
+                    in_binds = 0
+                }
+            }
+            print
+        }
+    ' "$nib_full" >"$nib_tmp" || {
+        drop_tmp "$nib_tmp"
+        fail_step "改写失败：$nib_file"
+        return 1
+    }
+    if same_content "$nib_tmp" "$nib_full"; then
+        drop_tmp "$nib_tmp"
+        return 0
+    fi
+    if ! rollback_snapshot "$nib_full"; then
+        drop_tmp "$nib_tmp"
+        fail_step "回滚基线创建失败：$nib_file"
+        return 1
+    fi
+    nib_orig=$rb_path
+    cat "$nib_tmp" >"$nib_full"
+    drop_tmp "$nib_tmp"
+    # 自检：该补的键位必须真的落进 binds 块内（awk 找不到闭合括号时能兜住）。
+    nib_ok=true
+    if [ "$nib_need_space" = true ] && ! niri_bind_line "$nib_full" 'Mod+Space'; then
+        nib_ok=false
+    fi
+    if [ "$nib_need_control" = true ] && ! niri_bind_line "$nib_full" 'Mod+S'; then
+        nib_ok=false
+    fi
+    if [ "$nib_need_e" = true ] && ! niri_bind_line "$nib_full" 'Mod+E'; then
+        nib_ok=false
+    fi
+    if [ "$nib_fix_comma" = true ] && \
+        niri_bind_line "$nib_full" 'Mod+Comma' 'consume-window-into-column'; then
+        nib_ok=false
+    fi
+    if [ "$nib_fix_d" = true ] && niri_bind_line "$nib_full" 'Mod+D' 'fuzzel'; then
+        nib_ok=false
+    fi
+    if [ "$nib_ok" = false ]; then
+        warn "$nib_file 键位注入未生效，已回滚"
+        restore_snapshot "$nib_orig" "$nib_full" "$nib_file" || warn "回滚失败：$nib_file"
+        drop_tmp "$nib_orig"
+        return 1
+    fi
+    nib_validator=
+    if have_bin niri-anland; then
+        nib_validator=niri-anland
+    elif have_bin niri; then
+        nib_validator=niri
+    fi
+    if [ -n "$nib_validator" ]; then
+        if ! nib_err=$("$nib_validator" validate -c "$nib_full" 2>&1); then
+            warn "$nib_file 校验失败，已回滚：$(printf '%s' "$nib_err" | tr '\n' ' ' | cut -c1-300)"
+            restore_snapshot "$nib_orig" "$nib_full" "$nib_file" || warn "回滚失败：$nib_file"
+            drop_tmp "$nib_orig"
+            return 1
+        fi
+    fi
+    drop_tmp "$nib_orig"
+    log "fixed: $nib_file（Noctalia 键位）"
     return 0
 }
 
@@ -1510,11 +2709,25 @@ step_niri_extra() {
         skip_step "未找到普通用户"
         return 2
     fi
-    niri_fix_launchers "$USER_HOME/.config/niri/config.kdl" || true
-    niri_fix_launchers /usr/local/share/droidspaces/niri-default-config.kdl || true
-    niri_fix_launchers /etc/skel/.config/niri/config.kdl || true
+    # 顺序很重要：先把老配置里的非法/过期写法就地修好，最后才跑
+    # niri_apply_extras 追加受管块并做整份 validate。旧版脚本留下的单行内联
+    # window-rule（background-effect 内联）会让 apply_extras 校验失败并回滚，
+    # 所以 terminal_blur 的修复必须排在它前面。
+    for niri_cfg in "$USER_HOME/.config/niri/config.kdl"         /usr/local/share/droidspaces/niri-default-config.kdl         /etc/skel/.config/niri/config.kdl; do
+        niri_fix_launchers "$niri_cfg" || true
+        niri_fix_xkb_layout "$niri_cfg" || true
+        niri_fix_layout_noctalia "$niri_cfg" || true
+        niri_fix_shadow "$niri_cfg" || true
+        niri_fix_terminal_blur "$niri_cfg" || true
+        niri_fix_corner_radius "$niri_cfg" || true
+        niri_inject_binds "$niri_cfg" || true
+    done
+    # 外观块最后加：它的 validate 覆盖整份文件，前面必须已经没有坏写法。
     niri_apply_extras "$USER_HOME/.config/niri/config.kdl" || return $?
     niri_apply_extras /usr/local/share/droidspaces/niri-default-config.kdl || true
+    # /etc/skel 也要拿到同一套外观块，否则新建用户没有透明背景/圆角/模糊。
+    niri_apply_extras /etc/skel/.config/niri/config.kdl || true
+    kitty_drop_background_blur || true
     return 0
 }
 
@@ -1546,6 +2759,89 @@ step_user_dirs() {
             chown "$USER_UID:$USER_GID" "$ud_full" 2>/dev/null || warn "chown 失败：$USER_HOME/$dir_name"
         fi
     done
+    return 0
+}
+
+# 13b) /etc/skel：把用户侧同名配置再铺一份，新建用户直接可用。
+# 只复制配置文本，不复制 Rime 数据本体（build/ 与 userdb 由首次部署生成）。
+# skel 文件保持 root:root 0644，install_content 不会对其 chown。
+step_skel() {
+    sk_dir=/etc/skel
+    sk_copied=false
+    for sk_item in \
+        "fcitx5/config|.config/fcitx5/config" \
+        "fcitx5/profile|.config/fcitx5/profile" \
+        "fcitx5/conf/classicui.conf|.config/fcitx5/conf/classicui.conf" \
+        "fcitx5/rime/default.custom.yaml|.config/fcitx5/rime/default.custom.yaml" \
+        "gtk-3.0/settings.ini|.config/gtk-3.0/settings.ini" \
+        "gtk-3.0/gtk.css|.config/gtk-3.0/gtk.css" \
+        "gtk-4.0/settings.ini|.config/gtk-4.0/settings.ini" \
+        "gtk-4.0/gtk.css|.config/gtk-4.0/gtk.css" \
+        "kitty/themes/frappe.conf|.config/kitty/themes/frappe.conf" \
+        "fastfetch/config.jsonc|.config/fastfetch/config.jsonc" \
+        "fontconfig/fonts.conf|.config/fontconfig/fonts.conf" \
+        "environment.d/gtk.conf|.config/environment.d/gtk.conf" \
+        "environment.d/input.conf|.config/environment.d/input.conf" \
+        "noctalia/config.toml|.config/noctalia/config.toml" \
+        "xdg-terminal-exec/terminal-exec|.config/xdg-terminal-exec/xdg-terminals.list" \
+        "xdg-user-dirs/user-dirs.dirs|.config/user-dirs.dirs" \
+        "nvim/init.lua|.config/nvim/init.lua"; do
+        sk_rel=${sk_item%%|*}
+        sk_dst=${sk_item#*|}
+        if [ ! -r "$ASSETS_DIR/$sk_rel" ]; then
+            log "skel: 跳过缺失资产 $sk_rel"
+            continue
+        fi
+        install_asset "$sk_dir/$sk_dst" "$sk_rel" 0644 || return 1
+        sk_copied=true
+    done
+
+    # kitty.conf 含 @FONT_SIZE@，与用户侧同样渲染后再落盘。
+    if [ -r "$ASSETS_DIR/kitty/kitty.conf" ]; then
+        install_asset "$sk_dir/.config/kitty/kitty.conf" kitty/kitty.conf 0644 \
+            "s/@FONT_SIZE@/$FONT_SIZE/g" || return 1
+        sk_copied=true
+    else
+        log "skel: 跳过缺失资产 kitty/kitty.conf"
+    fi
+
+    # fish/**：配置与插件胶水脚本（不含任何数据/缓存）。
+    for sk_src in "$ASSETS_DIR"/fish/config.fish "$ASSETS_DIR"/fish/conf.d/*.fish \
+        "$ASSETS_DIR"/fish/tide-apply.fish; do
+        [ -f "$sk_src" ] || continue
+        sk_rel=${sk_src#"$ASSETS_DIR"/}
+        install_asset "$sk_dir/.config/$sk_rel" "$sk_rel" 0644 || return 1
+        sk_copied=true
+    done
+
+    merge_mimeapps_into "$sk_dir/.config/mimeapps.list" || return 1
+    sk_copied=true
+
+    sk_unit=systemd/user/fcitx5-session.service
+    if [ -r "$ASSETS_DIR/$sk_unit" ]; then
+        install_asset "$sk_dir/.config/systemd/user/fcitx5-session.service" "$sk_unit" 0644 || return 1
+        sk_want=$sk_dir/.config/systemd/user/default.target.wants
+        if [ "$DRY_RUN" = true ]; then
+            log "dry-run: would link $sk_want/fcitx5-session.service -> ../fcitx5-session.service"
+        else
+            if ! mkdir -p "$ROOT$sk_want"; then
+                fail_step "无法创建 $sk_want"
+                return 1
+            fi
+            if ! ln -sfn ../fcitx5-session.service "$ROOT$sk_want/fcitx5-session.service"; then
+                fail_step "无法创建 skel wants 链接"
+                return 1
+            fi
+        fi
+        sk_copied=true
+    else
+        log "skel: 跳过缺失资产 $sk_unit"
+    fi
+
+    if [ "$sk_copied" = false ]; then
+        skip_step "没有可同步到 /etc/skel 的资产"
+        return 2
+    fi
     return 0
 }
 
@@ -1682,7 +2978,7 @@ else
     warn "未找到 uid>=1000 的普通用户，用户级步骤将被跳过"
 fi
 
-STEPS="pacman_mirrors archlinuxcn packages maple_font rime_ice locale environment fontconfig gtk_settings kitty fish fcitx5 nemo noctalia niri_ime_autostart niri_extra user_dirs services"
+STEPS="pacman_mirrors archlinuxcn packages maple_font rime_ice locale environment fontconfig gtk_settings nvim kitty fish fcitx5 nemo noctalia niri_ime_autostart niri_extra user_dirs skel services"
 
 for step in $STEPS; do
     STEP_NAME=$step

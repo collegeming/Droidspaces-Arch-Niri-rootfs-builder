@@ -162,7 +162,7 @@ install_pacman_dependencies() {
     local state_file="${1:-$SYSTEMD257_STATE}"
     local -a packages=(
         python python-pyqt5 qt5-wayland qt5-svg util-linux sudo
-        android-tools ntfs-3g exfatprogs desktop-file-utils gvfs gvfs-mtp kio-extras
+        android-tools ntfs-3g exfatprogs desktop-file-utils gvfs gvfs-mtp
         xdg-utils ca-certificates curl wget tar
     )
 
@@ -176,6 +176,15 @@ install_pacman_dependencies() {
     fi
 
     pacman -Syu --noconfirm --needed "${packages[@]}"
+
+    # kio-extras 只对 KDE（dolphin 的 samba/mtp 协议后端）有意义；本镜像交付
+    # niri，无条件安装会把整套 KDE Frameworks 拖进来。
+    if pacman -Q plasma-desktop >/dev/null 2>&1 || pacman -Q plasma-workspace >/dev/null 2>&1; then
+        pacman -S --noconfirm --needed kio-extras
+    else
+        log "未检测到 KDE 桌面，跳过 kio-extras。" \
+            "No KDE desktop detected, skipping kio-extras."
+    fi
 }
 
 install_dependencies() {

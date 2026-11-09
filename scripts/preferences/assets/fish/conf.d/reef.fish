@@ -1,6 +1,12 @@
 # ~/.config/fish/conf.d/reef.fish —— 启用 reef bash 兼容层
-# reef 装好后默认未启用，需手动 reef on。未安装时不要调用：fish 的
-# “未知的命令” 打在自己的 stderr 上，2>/dev/null 盖不住，登录就会刷一串报错。
-if status is-interactive; and type -q reef
-    reef on
+# fish 按 basename 去重 conf.d：本文件会遮蔽包的
+# /usr/share/fish/vendor_conf.d/reef.fish，所以必须自己 source 再调用
+# 初始化函数；直接 `reef on` 会报 unknown command 'on'。
+if status is-interactive
+    if test -r /usr/share/fish/vendor_conf.d/reef.fish
+        source /usr/share/fish/vendor_conf.d/reef.fish
+        functions -q __reef_setup; and __reef_setup
+    else
+        echo "reef: 未安装（缺少 /usr/share/fish/vendor_conf.d/reef.fish）" >&2
+    end
 end

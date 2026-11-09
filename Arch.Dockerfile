@@ -25,7 +25,8 @@ ARG ANLAND_PACKAGE_REVISION=unknown
 ARG XRING_O3_KIT_REPO=https://github.com/collegeming/xring-o3-droidspaces-package.git
 ARG XRING_O3_KIT_REF=c71d58e598a3a38d399f583da1a3cc1aebbbc691
 # 最终阶段：桌面偏好设置开关（与 scripts/preferences/apply-preferences.sh 对应）
-ARG APPLY_PREFERENCES=false
+# 默认开启：文档 01/02 要求开箱可用，关闭会产出“有 niri 但没有终端/输入法”的镜像。
+ARG APPLY_PREFERENCES=true
 ARG PREFERENCES_PROFILE=arch-niri-noctalia
 ARG PREFERENCES_STRICT=false
 # niri 默认配置中的 anland-0 输出块：缩放与模式由构建参数决定（mode=native 表示不写 mode）。
@@ -42,6 +43,14 @@ RUN if [ "$DESKTOP" != "niri" ] || [ "$DISPLAY_BACKEND" != "anland-wayland" ]; t
     fi && \
     if [ "$ENABLE_mesa_ARG" != "true" ]; then \
         echo "错误：本分支只交付带 XRING-O3 Mali stack 的镜像，ENABLE_mesa_ARG 必须为 true。" >&2; \
+        exit 1; \
+    fi
+
+# 设备是 arm64（Mali/G2-Ultra）。buildx 下 TARGETPLATFORM 一定有值；普通
+# docker build 没有该变量时不拦，避免误伤本地单架构构建。
+ARG TARGETPLATFORM
+RUN if [ -n "$TARGETPLATFORM" ] && [ "$TARGETPLATFORM" != "linux/arm64" ]; then \
+        echo "错误：本镜像只支持 linux/arm64，当前 TARGETPLATFORM=$TARGETPLATFORM。" >&2; \
         exit 1; \
     fi
 
@@ -63,6 +72,8 @@ COPY scripts/tui/droidspaces-gpu.sh /usr/local/bin/droidspaces-gpu
 COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
+COPY scripts/configure-mark-shot.sh /usr/local/sbin/configure-mark-shot
+COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 COPY scripts/etc/niri-default-config.kdl /usr/local/share/droidspaces/niri-default-config.kdl
@@ -72,7 +83,8 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
+    chmod 0644 /etc/profile.d/ds-aliases.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
     sed -i '/^#ParallelDownloads/s/^#//' /etc/pacman.conf && \
@@ -136,6 +148,13 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
         echo "--> [enabled] Anland $DESKTOP support installed"; \
     fi
 
+# 本镜像的合成器二进制名是 niri-anland；大量工具（mark-shot 的窗口识别、
+# 用户脚本里的 `niri msg`）按 `niri` 探测。别名必须在这里创建：
+# install-desktop 阶段 niri-anland 尚未安装，那时创建会静默跳过。
+RUN if [ -x /usr/bin/niri-anland ] && [ ! -e /usr/local/bin/niri ]; then \
+        ln -s /usr/bin/niri-anland /usr/local/bin/niri; \
+    fi
+
 # 配置 Locale 与 SSH
 # 只写 LANG，不写 LC_ALL：LC_ALL 会压掉单项分类（如 LC_TIME），与文档 02 的约定冲突。
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
@@ -157,6 +176,12 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
     (userdel -r alarm 2>/dev/null || true) && \
     useradd -m -s /bin/bash ${USERNAME} && echo "${USERNAME}:1234" | chpasswd && \
     systemctl enable sshd
+
+# desktop-session.service 硬编码 User=1000：用户名可配，但 uid 必须是 1000。
+RUN [ "$(id -u "${USERNAME}")" = "1000" ] || { \
+        echo "ERROR: ${USERNAME} 的 uid 不是 1000，desktop-session.service 将无法启动" >&2; \
+        exit 1; \
+    }
 
 # 为所有 Arch RootFS 安装 Droidspaces USB Manager
 RUN /usr/local/sbin/install-droidspaces-usb-manager --user "${USERNAME}"
@@ -218,12 +243,94 @@ RUN if [ "$ENABLE_mesa_ARG" = "true" ]; then \
         echo "--> [跳过] 未开启 XRING-O3 Mali stack 安装"; \
     fi
 
+# 零拷贝兼容层（bundle 侧修好后可删）：
+# 1) libgbm 垫片的 init_real 把真实库路径写死为 /opt/mesa-kopper-retire-42194036783/...，
+#    bundle 只带垫片本身、不带 Mesa 的 libgbm，于是 gbm_create_device 返回 NULL，
+#    Chromium 报 "Failed to initialize gbm device" 并退回 wl_shm。这里用系统 Mesa 的
+#    libgbm 补上该路径（实测可建 device，且能触发 zink→MaliBridge）。
+# 2) zc-run 默认从 /opt/zc/current/conf/zc-env.conf 读配置；镜像里只有
+#    /opt/mali-stack/current，配置读不到时会回落到硬编码旧路径导致 EGL 全挂。
+RUN mkdir -p /opt/gbm-spike /opt/mesa-kopper-retire-42194036783/candidate/usr/lib && \
+    if [ ! -e /opt/mesa-kopper-retire-42194036783/candidate/usr/lib/libgbm.so.1.0.0 ]; then \
+        ln -sf /usr/lib/libgbm.so.1.0.0 \
+            /opt/mesa-kopper-retire-42194036783/candidate/usr/lib/libgbm.so.1.0.0; \
+    fi && \
+    { [ -e /opt/zc/current ] || ln -sfn /opt/mali-stack/current /opt/zc/current; } && \
+    touch /opt/gbm-spike/shim.log && chmod 666 /opt/gbm-spike/shim.log
+
+# chromium 类（Chrome / Electron / CEF）的会话隔离层。
+# zc-run 只 prepend LD_LIBRARY_PATH、不清继承值，而 niri 会话全局带着 kopper 的
+# mesa 路径；从桌面启动时 libEGL 会命中 kopper 26.3 并在 dri2_setup_screen 空指针
+# 崩溃（GPU exit 11）。这里在入口处把 chromium 类收敛到发行版 Mesa + LINEAR shim
+# + DRM_RENDER，其余 class 原样透传给真正的 zc-run。
+#
+# 注意 zc-run 在镜像里是软链（/usr/local/bin/zc-run -> /opt/mali-stack/current/bin/zc-run）。
+# 直接 `cat > /usr/local/bin/zc-run` 会顺着软链覆盖真正的二进制，包装器再 exec
+# 自己形成无限递归。这里把真身复制成 .real、再替换软链为包装器；真身保持原位，
+# 这样 mali-stack 升级重新生成软链时也不会指向不存在的文件。
+RUN <<'EOF_ZCRUN'
+set -eu
+link=/usr/local/bin/zc-run
+if [ -L "$link" ]; then
+    target=$(readlink -f "$link")
+    [ -e "$target.real" ] || cp -a "$target" "$target.real"
+    rm -f "$link"
+elif [ -f "$link" ]; then
+    [ -e "$link.real" ] || cp -a "$link" "$link.real"
+fi
+cat > "$link" <<'EOF'
+#!/bin/sh
+# 由镜像生成（详见 Arch.Dockerfile）：chromium 类的 Mesa/EGL 收敛。
+# 真身优先 .real（构建时改名而来）；Mali stack 升级后新版本没有 .real，
+# 就退回 current/bin/zc-run，包装器行为自动降级为透传而不报错。
+REAL=
+for candidate in /usr/local/bin/zc-run.real \
+                 /opt/mali-stack/current/bin/zc-run.real \
+                 /opt/mali-stack/current/bin/zc-run; do
+    if [ -x "$candidate" ]; then REAL=$candidate; break; fi
+done
+[ -n "$REAL" ] || { echo "zc-run: 找不到底层实现" >&2; exit 127; }
+cls=${ZC_RUN_CLASS:-}
+prev=
+for a in "$@"; do
+    [ "$prev" = "--class" ] && cls=$a
+    case "$a" in --class=*) cls=${a#--class=} ;; esac
+    prev=$a
+done
+# 没显式 --class 时按 zc-classify 的判定走同一收敛：Electron/CEF 这类应用
+# 通常由分类器识别为 chromium，用户不会也不该手动补 --class。
+if [ -z "$cls" ]; then
+    classifier=${ZC_CLASSIFY:-/opt/mali-stack/current/lib/zc-run/zc-classify}
+    [ -x "$classifier" ] && cls=$("$classifier" "$@" 2>/dev/null) || cls=
+fi
+if [ "$cls" = chromium ]; then
+    ZC_MESA_DIR=/usr
+    ZC_EGL_VENDOR_JSON=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+    VKBRIDGE_DRM_RENDER=226:0
+    LD_LIBRARY_PATH=/usr/lib
+    export ZC_MESA_DIR ZC_EGL_VENDOR_JSON VKBRIDGE_DRM_RENDER LD_LIBRARY_PATH
+    # niri 会给每个 spawn 的应用注入 DISPLAY，但容器里的 Xwayland 可能挂死：
+    # socket 能 connect、邮件永不响应，Chrome 卡在 xdg_surface.configure 之后
+    # 不 ack、不 attach，最终没有窗口也没有 dmabuf。Chrome/Electron 走 Wayland
+    # 时不需要 DISPLAY，清掉可稳定恢复零拷贝（实测 create_immed=3）。
+    unset DISPLAY
+fi
+exec "$REAL" "$@"
+EOF
+chmod 0755 "$link"
+EOF_ZCRUN
+
 # 设备节点与 Anland socket 的容器侧准备；构建阶段只安装 unit，不创建设备节点。
 RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
     /usr/local/lib/droidspaces/device/xring-o3/anland.sh --install
 
 # 安装并配置原生 ARM64 Google Chrome。
 RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"
+
+# 从 AUR 源码构建 mark-shot（Qt6 Wayland 截图标注）。AUR 的预编译包
+# mark-shot-bin 依赖 FFmpeg 6 的 soname（libavcodec.so=60-64），而 Arch Linux ARM
+# 仓库是 FFmpeg 9（=63-64），pacman -U 无法解析，因此只能本地编译。
+RUN /usr/local/sbin/configure-mark-shot "$DESKTOP" "$DISPLAY_BACKEND"
 
 # 修复容器内的 DHCP 网络服务配置
 RUN mkdir -p /etc/systemd/network && \
@@ -389,6 +496,7 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
 # 打包前删除仅用于构建的一次性脚本；TUI 和运行时脚本保留。
 RUN rm -f \
         /usr/local/sbin/configure-chrome \
+        /usr/local/sbin/configure-mark-shot \
         /usr/local/sbin/configure-desktop \
         /usr/local/sbin/install-desktop \
         /usr/local/sbin/install-anland-desktop \

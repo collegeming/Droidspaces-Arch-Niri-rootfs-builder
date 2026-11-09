@@ -14,6 +14,10 @@ EnvironmentFile=-/etc/environment
 # cannot create the DRM node. Chromium/WebKit open it through
 # --render-node-override / MOZ_DRM_DEVICE and fall back to wl_shm when it is
 # missing. The "+" prefix runs this step as root.
+#
+# 只建 card0：实测（2026-11-09）当前 kopper/Mesa 组合下 niri 不依赖额外
+# renderD128 也能建立 dmabuf feedback（wayland-info 为 v5），而手工 mknod 一个
+# 与 card0 同号(226:0)的假 renderD128 反而会让客户端走 DRM/GBM 路径。
 ExecStartPre=+/usr/bin/sh -c 'mkdir -p /dev/dri; [ -e /dev/dri/card0 ] || mknod /dev/dri/card0 c 226 0; chmod 666 /dev/dri/card0'
 # The host MaliBridge server must listen first: a session that starts early finds
 # no renderer, dies with VK_ERROR_DEVICE_LOST and leaves Noctalia unspawned. The

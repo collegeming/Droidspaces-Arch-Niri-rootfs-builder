@@ -1,0 +1,11 @@
+[Unit]
+Description=Fcitx5 (Droidspaces Wayland session)
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/fcitx5-dbus
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

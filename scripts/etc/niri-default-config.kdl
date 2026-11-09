@@ -19,6 +19,9 @@ input {
             // If this section is empty, niri will fetch xkb settings
             // from org.freedesktop.locale1. You can control these using
             // localectl set-x11-keymap.
+            // 容器内 localectl 可能未设 X11 布局，空 xkb 段会让 Mod 修饰键不生效；
+            // 显式写 us 布局（与 main 分支一致）。
+            layout "us"
         }
 
         // Enable numlock on startup, omitting this setting disables it.
@@ -111,7 +114,8 @@ input {
 // https://niri-wm.github.io/niri/Configuration:-Layout
 layout {
     // Set gaps around windows in logical pixels.
-    gaps 16
+    // 对应文档 01:59：默认间距取 8，保持窗口内容利用率。
+    gaps 8
 
     // When to center a column when changing focus, options are:
     // - "never", default behavior, focusing an off-screen column will keep at the left
@@ -213,9 +217,10 @@ layout {
     }
 
     // You can enable drop shadows for windows.
+    // 对应 Nyxuri §4（光晕方案）：启用阴影，柔化半径 28、扩散 6。
     shadow {
         // Uncomment the next line to enable shadows.
-        // on
+        on
 
         // By default, the shadow draws only around its window, and not behind it.
         // Uncomment this setting to make the shadow draw behind its window.
@@ -232,21 +237,24 @@ layout {
         // draws any.
         //
         // draw-behind-window true
+        // 对应 Nyxuri §4：阴影不画在窗口背后，避免 CSD 圆角内的阴影残影。
+        draw-behind-window false
 
         // You can change how shadows look. The values below are in logical
         // pixels and match the CSS box-shadow properties.
 
         // Softness controls the shadow blur radius.
-        softness 30
+        softness 28
 
         // Spread expands the shadow.
-        spread 5
+        spread 6
 
         // Offset moves the shadow relative to the window.
-        offset x=0 y=5
+        offset x=0 y=0
 
         // You can also change the shadow color and opacity.
-        color "#0007"
+        color "#b6c7e795"
+        inactive-color "#00000045"
     }
 
     // Struts shrink the area occupied by windows, similarly to layer-shell panels.
@@ -304,6 +312,12 @@ animations {
     // slowdown 3.0
 }
 
+// 对应文档 01:69：合盖时锁定会话并进入休眠。
+// switch-events 段在 niri 配置中只能出现一次。
+switch-events {
+    lid-close { spawn "noctalia" "msg" "session" "lock-and-suspend"; }
+}
+
 // Window rules let you adjust behavior for individual windows.
 // Find more information on the wiki:
 // https://niri-wm.github.io/niri/Configuration:-Window-Rules
@@ -339,9 +353,9 @@ window-rule {
     // block-out-from "screencast"
 }
 
-// Example: enable rounded corners for all windows.
-// (This example rule is commented out with a "/-" in front.)
-/-window-rule {
+// 全窗口圆角 12 并裁剪到圆角几何（外观默认值）。
+// 没有 match 的 window-rule 对全部窗口生效。
+window-rule {
     geometry-corner-radius 12
     clip-to-geometry true
 }
@@ -364,7 +378,15 @@ binds {
     // Suggested binds for running programs: terminal, app launcher, screen locker.
     // 终端用 kitty（镜像里实际安装的终端；alacritty 不在安装清单内）。
     Mod+T hotkey-overlay-title="Open a Terminal: kitty" { spawn "kitty"; }
-    Mod+D hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
+    // 文件管理器绑定：nemo 已随 preferences 安装，补一个与终端对称的入口。
+    Mod+E hotkey-overlay-title="Open Files: nemo" { spawn "nemo"; }
+    Mod+D hotkey-overlay-title="Toggle Launcher: noctalia" { spawn-sh "noctalia msg panel-toggle launcher"; }
+    // Noctalia 面板入口：Mod+Space 与 Mod+D 同为启动器开关（fuzzel 已从安装清单移除）。
+    // 注意：Mod+Space 已占用，下方 switch-layout 示例要换别的键。
+    Mod+Space hotkey-overlay-title="Toggle Launcher: noctalia" { spawn-sh "noctalia msg panel-toggle launcher"; }
+    Mod+S hotkey-overlay-title="Open Control Center: noctalia" { spawn-sh "noctalia msg panel-open control-center"; }
+    // Alt+Tab：当前版本不可实现。noctalia msg 没有窗口切换动词，niri 也没有
+    // switch-window 类动作，绑定无效动作会让整份配置校验失败，故不绑定。
     Super+Alt+L hotkey-overlay-title="Lock the Screen: swaylock" { spawn "swaylock"; }
 
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
@@ -384,6 +406,7 @@ binds {
     // Example media keys mapping using playerctl.
     // This will work with any MPRIS-enabled media player.
     XF86AudioPlay        allow-when-locked=true { spawn-sh "playerctl play-pause"; }
+    XF86AudioPause       allow-when-locked=true { spawn-sh "playerctl play-pause"; }
     XF86AudioStop        allow-when-locked=true { spawn-sh "playerctl stop"; }
     XF86AudioPrev        allow-when-locked=true { spawn-sh "playerctl previous"; }
     XF86AudioNext        allow-when-locked=true { spawn-sh "playerctl next"; }
@@ -533,6 +556,16 @@ binds {
     Mod+Ctrl+7 { move-column-to-workspace 7; }
     Mod+Ctrl+8 { move-column-to-workspace 8; }
     Mod+Ctrl+9 { move-column-to-workspace 9; }
+    // 对应文档 01:82：Mod+Shift+1..9 把整列移到对应工作区。
+    Mod+Shift+1 { move-column-to-workspace 1; }
+    Mod+Shift+2 { move-column-to-workspace 2; }
+    Mod+Shift+3 { move-column-to-workspace 3; }
+    Mod+Shift+4 { move-column-to-workspace 4; }
+    Mod+Shift+5 { move-column-to-workspace 5; }
+    Mod+Shift+6 { move-column-to-workspace 6; }
+    Mod+Shift+7 { move-column-to-workspace 7; }
+    Mod+Shift+8 { move-column-to-workspace 8; }
+    Mod+Shift+9 { move-column-to-workspace 9; }
 
     // Alternatively, there are commands to move just a single window:
     // Mod+Ctrl+1 { move-window-to-workspace 1; }
@@ -546,8 +579,9 @@ binds {
     Mod+BracketLeft  { consume-or-expel-window-left; }
     Mod+BracketRight { consume-or-expel-window-right; }
 
-    // Consume one window from the right to the bottom of the focused column.
-    Mod+Comma  { consume-window-into-column; }
+    // Mod+Comma 改为切换 Noctalia 设置面板；原先的 consume-window-into-column
+    // 已由上面的 Mod+BracketLeft/Right 覆盖同类操作。
+    Mod+Comma hotkey-overlay-title="Toggle Settings: noctalia" { spawn-sh "noctalia msg settings-toggle"; }
     // Expel the bottom window from the focused column to the right.
     Mod+Period { expel-window-from-column; }
 
@@ -606,6 +640,7 @@ binds {
     // a matching layout switch hotkey configured in xkb options above.
     // Having both at once on the same hotkey will break the switching,
     // since it will switch twice upon pressing the hotkey (once by xkb, once by niri).
+    // 另外 Mod+Space 已被上面的 Noctalia 启动器绑定占用，不要直接启用下面这行。
     // Mod+Space       { switch-layout "next"; }
     // Mod+Shift+Space { switch-layout "prev"; }
 

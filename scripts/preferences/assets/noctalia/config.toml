@@ -1,6 +1,21 @@
 [shell]
-font_family = "Maple Mono NF CN"
+# Noctalia 外壳用无衬线 CJK，终端/编辑器用 Maple。
+font_family = "Noto Sans CJK SC"
 
 [bar.default]
-# Noctalia 默认浮空顶栏两端各内缩 100px；置 0 让顶栏铺满屏幕
+# 对应 Nyxuri §5，P1 试验项：胶囊顶栏。顶栏本体完全透明，只画胶囊。
+background_opacity = 0.0
+capsule = true
+capsule_radius = 80
+capsule_opacity = 0.79
+capsule_padding = 6.0
+# Noctalia 默认浮空顶栏两端各内缩 100px；置 0 让顶栏铺满屏幕。
 margin_ends = 0
+margin_edge = 4
+thickness = 32
+scale = 1.0
+panel_overlap = 8
+widget_spacing = 4
+item_spacing = 2
+
+# P3 动态取色未启用：需要模板引擎与壁纸联动，风险高，暂不做。

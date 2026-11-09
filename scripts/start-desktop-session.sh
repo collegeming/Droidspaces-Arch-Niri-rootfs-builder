@@ -60,4 +60,11 @@ pkill -9 -u "$(id -u)" -x fcitx5 2>/dev/null || true
 # 直接失败并以 "Failed to create socket directory" 退出，表现为双击图标没反应。
 export TMPDIR=/tmp
 
+# 会话总线地址不一定由 pam_systemd 传进来。缺了它，niri spawn 的 fcitx5 无法
+# 注册 org.fcitx.Fcitx5（实测表现为 fcitx5-remote 无回复、D-Bus 激活又起第二个
+# 实例），所有需要会话总线的服务都会退化成“各自为政”。缺失时按标准路径补上。
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -S "/run/user/$(id -u)/bus" ]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+fi
+
 exec /bin/bash -lc "$command_line"

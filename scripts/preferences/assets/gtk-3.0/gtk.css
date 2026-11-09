@@ -12,3 +12,106 @@
 @define-color warning_color #e5c890;
 @define-color error_color #e78284;
 @define-color success_color #a6d189;
+
+/* 对应 Nyxuri §3，P1：最小可见的控件覆写。颜色取自 Catppuccin Frappé：
+ * base #292c3c、mantle #232634、surface0 #414559、blue #8caaee、
+ * text #c6d0f5、subtext0 #a5adce、green #a6d189。语义色不动。 */
+
+/* 按钮：surface0 底 + text 前景；悬停/按下切到 blue，禁用退回 base。 */
+button {
+    background-image: none;
+    background-color: #414559;
+    color: #c6d0f5;
+    border: 1px solid #414559;
+    border-radius: 6px;
+    padding: 4px 10px;
+}
+
+button:hover {
+    background-color: #8caaee;
+    border-color: #8caaee;
+    color: #232634;
+}
+
+button:active,
+button:checked {
+    background-color: #8caaee;
+    border-color: #8caaee;
+    color: #232634;
+}
+
+button:disabled {
+    background-color: #292c3c;
+    border-color: #292c3c;
+    color: #737994;
+}
+
+/* 输入框：base 底 + surface0 边框；聚焦改 blue 边框，选中区用 blue。 */
+entry {
+    background-color: #292c3c;
+    color: #c6d0f5;
+    border: 1px solid #414559;
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+entry:focus {
+    border-color: #8caaee;
+    box-shadow: inset 0 0 0 1px #8caaee;
+}
+
+entry selection,
+entry:focus selection {
+    background-color: #8caaee;
+    color: #232634;
+}
+
+/* 勾选/单选：选中用 blue，未选中用 subtext0。 */
+checkbutton check:checked,
+radiobutton radio:checked {
+    background-color: #8caaee;
+    border-color: #8caaee;
+    color: #232634;
+}
+
+checkbutton check:not(:checked),
+radiobutton radio:not(:checked) {
+    background-color: #292c3c;
+    border-color: #414559;
+    color: #a5adce;
+}
+
+/* 开关：打开时 blue 底、mantle 滑块。 */
+switch:checked {
+    background-color: #8caaee;
+    border-color: #8caaee;
+}
+
+switch:checked slider {
+    background-color: #232634;
+}
+
+/* 进度条与滑杆：已完成/高亮部分用 blue。 */
+progressbar > trough > progress {
+    background-color: #8caaee;
+}
+
+scale highlight {
+    background-color: #8caaee;
+}
+
+scale slider {
+    background-color: #c6d0f5;
+    border-color: #8caaee;
+}
+
+/* 菜单：base 底 + surface0 边框；悬停项用 blue 反色。 */
+menu {
+    background-color: #292c3c;
+    border: 1px solid #414559;
+}
+
+menuitem:hover {
+    background-color: #8caaee;
+    color: #232634;
+}

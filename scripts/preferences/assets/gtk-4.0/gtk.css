@@ -1,0 +1,2 @@
+/* GTK4 没有 GTK_THEME 的等价物，用 color-scheme 声明暗色。 */
+:root { color-scheme: dark; }
