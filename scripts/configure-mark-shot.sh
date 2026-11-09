@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # 在 Arch rootfs 中从 AUR 构建并安装 mark-shot（Qt6 Wayland 截图标注工具）。
 #
-# 为什么不用官方预编译包（mark-shot-bin，Release 有 aarch64 产物）：
-#   1) 该产物在 Ubuntu/FFmpeg 6 上编译，录像插件链 libavcodec.so.60 等 soname，
-#      而 Arch Linux ARM 是 FFmpeg 9（.so.63），pacman 依赖无法满足；
-#   2) 更关键的是它没有 grim/wlr-screencopy 后端（构建环境里没有 grim），在
-#      niri 下连选区截屏都失败：QScreen::grabWindow returned null pixmap。
-#      源码构建在 Arch 环境检测到 grim，走 `route=grim`，截图/标注正常。
+# 为什么用源码包而不是官方 aarch64 预编译包（mark-shot-bin）：
+#   预编译包在 Ubuntu/FFmpeg 6 上编译，录像插件链 libavcodec.so.60 等 soname，
+#   而 Arch Linux ARM 是 FFmpeg 9（.so.63）：pacman 需要 --assume-installed
+#   旁路依赖，且「Record GIF / Record video」运行时必然失败。截图/标注本身
+#   在两种包里都正常（前提是会话环境带 XDG_SESSION_TYPE=wayland，否则会退回
+#   Qt 的 grabWindow 并报 null pixmap）。源码构建能让录像也按 Arch 的 FFmpeg 9
+#   链接，功能完整；若只在意构建速度，可改用 mark-shot-bin + --assume-installed。
 # 构建在无特权用户下完成，避免 makepkg 拒绝 root；依赖从 .SRCINFO 读取，
 # 构建完成后仅卸载本次新装、且未被其他包依赖的 makedepends。
 set -euo pipefail
