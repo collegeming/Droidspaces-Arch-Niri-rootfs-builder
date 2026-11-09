@@ -767,6 +767,112 @@ EOF
     return 0
 }
 
+# 用 makepkg 构建 AUR 包再以 root 安装。paru 拒绝 root 运行（镜像构建和
+# 设备上重跑都是 root），所以这里用一次性构建用户完成编译，避免为此开放
+# 免密 pacman 权限。返回 0 表示已安装或已存在。
+aur_build_install() {
+    abi_pkg=$1
+    if pacman -Qq "$abi_pkg" >/dev/null 2>&1; then
+        log "AUR 包已安装：$abi_pkg"
+        return 0
+    fi
+    abi_user=droidspaces-aurbuild
+    abi_home=/var/tmp/$abi_user
+    abi_work=$(mktemp -d "/tmp/aur-$abi_pkg.XXXXXX") || return 1
+    if ! id "$abi_user" >/dev/null 2>&1; then
+        useradd --system --create-home --home-dir "$abi_home" --shell /bin/bash \
+            "$abi_user" 2>/dev/null || { rm -rf "$abi_work"; return 1; }
+    fi
+    chown -R "$abi_user:$abi_user" "$abi_work"
+
+    abi_cloned=false
+    for _ in 1 2 3; do
+        if runuser -u "$abi_user" -- env HOME="$abi_home" \
+            git clone --depth=1 "https://aur.archlinux.org/$abi_pkg.git" \
+            "$abi_work/$abi_pkg" >/dev/null 2>&1; then
+            abi_cloned=true
+            break
+        fi
+        rm -rf "$abi_work/$abi_pkg"
+        sleep 3
+    done
+    if [ "$abi_cloned" != true ] || [ ! -f "$abi_work/$abi_pkg/.SRCINFO" ]; then
+        warn "AUR 克隆失败：$abi_pkg"
+        rm -rf "$abi_work"
+        return 1
+    fi
+
+    abi_srcinfo=$abi_work/$abi_pkg/.SRCINFO
+    abi_deps=$(
+        {
+            sed -n 's/^[[:space:]]*depends = //p' "$abi_srcinfo"
+            sed -n 's/^[[:space:]]*makedepends = //p' "$abi_srcinfo"
+            sed -n 's/^[[:space:]]*\(depends\|makedepends\)_aarch64 = //p' "$abi_srcinfo"
+        } | sed 's/[<>=].*$//' | sort -u
+    )
+    abi_need_ffmpeg=false
+    abi_missing=
+    for abi_dep in $abi_deps; do
+        case "$abi_dep" in
+            *.so) abi_need_ffmpeg=true; continue ;;
+        esac
+        pacman -Qq "$abi_dep" >/dev/null 2>&1 || abi_missing="$abi_missing $abi_dep"
+    done
+    if [ "$abi_need_ffmpeg" = true ]; then
+        pacman -Qq ffmpeg >/dev/null 2>&1 || abi_missing="$abi_missing ffmpeg"
+    fi
+    if [ -n "$abi_missing" ]; then
+        # shellcheck disable=SC2086
+        pacman -S --needed --noconfirm --asdeps $abi_missing >/dev/null 2>&1 || {
+            warn "AUR 依赖安装失败：$abi_missing"
+            rm -rf "$abi_work"
+            return 1
+        }
+    fi
+
+    # makepkg 会 clone GitHub 源码；直连不通时按仓库约定走镜像前缀。
+    abi_env="HOME=$abi_home"
+    if ! timeout 15 git ls-remote --exit-code https://github.com \
+            >/dev/null 2>&1; then
+        abi_env="$abi_env GIT_CONFIG_COUNT=1"
+        abi_env="$abi_env GIT_CONFIG_KEY_0=url.${GH_MIRROR_PREFIX%/}/https://github.com/.insteadOf"
+        abi_env="$abi_env GIT_CONFIG_VALUE_0=https://github.com/"
+    fi
+    # shellcheck disable=SC2086
+    if ! runuser -u "$abi_user" -- env $abi_env bash -c \
+        'cd "$1" && makepkg --cleanbuild --clean --noconfirm' _ "$abi_work/$abi_pkg"; then
+        warn "AUR 构建失败：$abi_pkg"
+        rm -rf "$abi_work"
+        return 1
+    fi
+
+    # 一个 AUR 配方可能产出多个包（reef 的配方同时给 reef 和 reef-tools），
+    # 必须全部安装，只取第一个会漏掉本体。
+    abi_files=$(find "$abi_work/$abi_pkg" -maxdepth 1 -type f \
+        -name '*.pkg.tar.*' ! -name '*.sig' -print)
+    if [ -z "$abi_files" ]; then
+        warn "AUR 构建没有产出包：$abi_pkg"
+        rm -rf "$abi_work"
+        return 1
+    fi
+    abi_conf=/tmp/pacman-aur-$abi_pkg.conf
+    sed -e '/^[[:space:]]*LocalFileSigLevel[[:space:]]*=/d' \
+        -e '/^\[options\][[:space:]]*$/a LocalFileSigLevel = Optional' \
+        /etc/pacman.conf > "$abi_conf"
+    # shellcheck disable=SC2086
+    if pacman --config "$abi_conf" -U --noconfirm $abi_files >/dev/null 2>&1; then
+        log "已从 AUR 构建并安装：$abi_pkg"
+    else
+        warn "AUR 包安装失败：$abi_pkg"
+        rm -f "$abi_conf"
+        rm -rf "$abi_work"
+        return 1
+    fi
+    rm -f "$abi_conf"
+    rm -rf "$abi_work"
+    return 0
+}
+
 # 2b) archlinuxcn 的 AUR 助手：paru（Maple 字体与雾凇拼音的可选安装通道）。
 step_archlinuxcn() {
     if ! is_arch || ! have_bin pacman; then
@@ -791,17 +897,20 @@ step_archlinuxcn() {
 
     # reef/reef-tools 只在 AUR，失败不影响构建（登录时 conf.d 会打印未安装提示）。
     if [ "$DRY_RUN" = true ] || [ -n "$ROOT" ]; then
-        log "dry-run: would install reef/reef-tools with paru (AUR)"
+        log "dry-run: would build reef/reef-tools from AUR"
         return 0
     fi
     # paru 用 makepkg 构建 AUR 包，需要 base-devel。缺了它 reef 只会 warn 后跳过，
     # 镜像会静默没有 reef；这里显式兜底（已安装时 pacman 立即返回）。
     pacman -S --needed --noconfirm --asdeps base-devel >/dev/null 2>&1 || \
         warn "base-devel 安装失败，AUR 包（reef/reef-tools）可能无法构建"
-    if paru -S --needed --noconfirm --ignore mesa reef reef-tools >/dev/null 2>&1; then
-        log "已安装 reef / reef-tools"
+    # paru 在 root 下直接拒绝（"can't install AUR package as root"），构建期和
+    # 设备重跑都是 root，所以走 makepkg + pacman -U。
+    if aur_build_install reef; then
+        aur_build_install reef-tools || \
+            warn "reef-tools 安装失败（reef 本体已安装），已跳过"
     else
-        warn "reef/reef-tools 安装失败（AUR 不可用？），已跳过"
+        warn "reef 安装失败（AUR/网络不可用？），已跳过"
     fi
     return 0
 }

@@ -21,3 +21,8 @@ tide configure --auto \
     --prompt_spacing=Sparse \
     --icons='Many icons' \
     --transient=No
+
+# configure --auto 在非交互环境只写基础变量，_tide_left_items/_tide_right_items
+# 这两份派生缓存不会生成；新用户首次登录时提示符会缺右侧状态段和 os 图标。
+# 直接调用 tide 自己的派生函数，保持和交互式 configure 相同的过滤规则。
+_tide_remove_unusable_items 2>/dev/null || true
