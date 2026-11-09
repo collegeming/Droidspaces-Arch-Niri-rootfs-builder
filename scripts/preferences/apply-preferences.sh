@@ -1220,10 +1220,15 @@ step_environment() {
         install_asset "$USER_HOME/.config/environment.d/input.conf" environment.d/input.conf 0644 || return 1
         set_etc_environment XMODIFIERS "@im=fcitx" || return 1
         set_etc_environment INPUT_METHOD "fcitx" || return 1
-        # 历史镜像写死过 GTK_IM_MODULE/QT_IM_MODULE，会让 GTK4/Qt6 走旧的
-        # XIM 兼容路径；fcitx5 在 Wayland 下靠 XMODIFIERS 自动探测，删掉更稳。
-        unset_etc_environment GTK_IM_MODULE || return 1
-        unset_etc_environment QT_IM_MODULE || return 1
+        # 2026-11-10 archniri13 实测：缺 GTK/QT/SDL/GLFW_IM_MODULE 时，从
+        # 启动器拉起的应用默认不走 fcitx（要手动从状态栏切输入法）；补齐后
+        # 默认即中文。与长期稳定的主容器 archniri 实际配置一致。
+        # 此前"删掉这两项"的理由（GTK4/Qt6 会走旧 XIM 兼容路径）不成立：
+        # GTK4 在 Wayland 下不使用 IM module，忽略该变量。
+        set_etc_environment GTK_IM_MODULE "fcitx5" || return 1
+        set_etc_environment QT_IM_MODULE "fcitx5" || return 1
+        set_etc_environment SDL_IM_MODULE "fcitx5" || return 1
+        set_etc_environment GLFW_IM_MODULE "fcitx" || return 1
         installed_any=true
     else
         warn "未检测到 fcitx5，跳过输入法环境变量"
