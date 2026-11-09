@@ -1351,6 +1351,12 @@ step_kitty() {
     fi
     install_asset "$USER_HOME/.config/kitty/themes/frappe.conf" kitty/themes/frappe.conf 0644 || return 1
     install_asset "$USER_HOME/.config/kitty/kitty.conf" kitty/kitty.conf 0644 "$kitty_expr" || return 1
+    # 桌面入口（gio launch / xdg-terminal-exec）不带会话的 GPU 环境，kitty 的
+    # GLFW 会 EGL 初始化失败直接退出（表现为“点图标打不开 nvim”）。用 wrapper
+    # 固定最小可用环境，键位启动与启动器启动都能渲染。
+    if [ "$DRY_RUN" != true ] && [ -z "$ROOT" ]; then
+        install_asset /usr/local/bin/kitty bin/kitty 0755 || return 1
+    fi
     return 0
 }
 
@@ -1801,7 +1807,30 @@ step_noctalia() {
     # 用 install_asset 覆盖而不是 install_if_absent：胶囊/间距等偏好会随版本
     # 调整，保留旧文件会让升级后的镜像看不到新值。覆盖前按统一机制备份。
     install_asset "$USER_HOME/.config/noctalia/config.toml" noctalia/config.toml 0644
-    return $?
+
+    # noctalia-dt 的环境配置由 Mali stack 安装时生成，默认指向
+    # mesa/candidate（无 kopper 补丁的 26.3）。在只有 card0 的容器里 zink 选不到
+    # pdev：Noctalia 自身渲染异常，而且它 spawn 出的应用（从启动器打开 kitty/
+    # nemo）会继承错误的 LD_LIBRARY_PATH 与缺失的 EGL/Vulkan 变量，表现为
+    # “程序打不开”。这里对齐到 niri/zc-run 用的 kopper 那一套。
+    noct_conf=/opt/mali-stack/current/conf/noctalia-env.conf
+    if path_exists "$noct_conf"; then
+        install_content "$noct_conf" 0644 <<'EOF' || return 1
+# 由 droidspaces-preferences 生成：Noctalia 必须与 niri 会话用同一套
+# Mesa/EGL/Vulkan，否则 zink 选不到 pdev（容器只有 card0），自己渲染异常，
+# 且它 spawn 的应用会继承错误环境（从启动器打开的应用 EGL 失败）。
+NOCTALIA_MESA_DIR=/opt/mali-stack/current/mesa/kopper
+NOCTALIA_EGL_VENDOR_JSON=/opt/mali-stack/current/mesa/kopper/default-egl-vendor.json
+NOCTALIA_ICD=/opt/mali-stack/current/share/vulkan/icd.d/droidbridge-format.json
+NOCTALIA_LD_PRELOAD=
+NOCTALIA_BRIDGE_SOCKET=/opt/mb-sock/mali.sock
+NOCTALIA_BRIDGE_LOG_LEVEL=1
+NOCTALIA_XDG_RUNTIME_DIR=/run/user/1000
+NOCTALIA_WAYLAND_DISPLAY=wayland-1
+NOCTALIA_DBUS_ADDRESS=unix:path=/run/user/1000/bus
+EOF
+    fi
+    return 0
 }
 
 # 12) niri 不读 XDG autostart：追加标记块保证 fcitx5 自启动。

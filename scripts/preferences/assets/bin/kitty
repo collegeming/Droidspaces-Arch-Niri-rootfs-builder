@@ -1,0 +1,15 @@
+#!/bin/sh
+# 由 droidspaces-preferences 生成。
+#
+# kitty 从 niri 键位启动时继承会话环境（含 kopper Mesa 路径）能正常工作；但从
+# 启动器（gio launch → xdg-terminal-exec）启动时环境不完整，GLFW 报
+#   [glfw error 65542] EGL: Failed to initialize EGL
+# 然后直接退出，用户看到的是“点图标没反应、nvim 打不开”。
+# 这里固定到发行版 Mesa + MaliBridge，两种启动方式都能渲染。
+export LD_LIBRARY_PATH=/usr/lib
+export VKBRIDGE_SOCKET="${VKBRIDGE_SOCKET:-/opt/mb-sock/mali.sock}"
+export VK_DRIVER_FILES="${VK_DRIVER_FILES:-/opt/mali-stack/current/share/vulkan/icd.d/droidbridge-format.json}"
+export GALLIUM_DRIVER=zink
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+exec /usr/bin/kitty "$@"
