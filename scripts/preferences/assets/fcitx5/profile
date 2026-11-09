@@ -7,10 +7,10 @@ Default Layout=us
 DefaultIM=rime
 
 [Groups/0/Items/0]
-# Name
-Name=keyboard-us
-
-[Groups/0/Items/1]
+# 只保留 rime，不能带 keyboard-us：带英文键盘时，按 Shift 会被 fcitx5 当作
+# 切换输入法（切到 keyboard-us），切走 Rime 会把当前候选直接提交（中文），
+# 表现为"按 Shift 出中文"；删掉后 Shift 由 Rime 的 ascii_composer 处理，
+# 在输入法内部切中英文。
 # Name
 Name=rime
 
