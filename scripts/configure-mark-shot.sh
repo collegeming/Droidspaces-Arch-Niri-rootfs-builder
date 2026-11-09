@@ -111,7 +111,15 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     pacman -S --noconfirm --needed --asdeps "${missing[@]}"
 fi
 
-pacman -U --noconfirm --needed "${assume[@]}" "$package_file"
+# CI 的基础镜像把 LocalFileSigLevel 设成 Required，未签名的 AUR -bin 包会被
+# 拒绝（`package missing required signature`）。用临时 pacman 配置只放宽本
+# 次安装，不改系统策略。
+pacman_conf=/tmp/pacman-mark-shot.conf
+sed -e '/^[[:space:]]*LocalFileSigLevel[[:space:]]*=/d' \
+    -e '/^\[options\][[:space:]]*$/a LocalFileSigLevel = Optional' \
+    /etc/pacman.conf > "$pacman_conf"
+pacman --config "$pacman_conf" -U --noconfirm --needed "${assume[@]}" "$package_file"
+rm -f "$pacman_conf"
 
 [[ -x "$binary" ]] || { echo "mark-shot 安装后未找到：$binary" >&2; exit 1; }
 [[ -f /usr/share/applications/mark-shot.desktop ]] || {
