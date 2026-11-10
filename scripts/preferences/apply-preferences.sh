@@ -1218,16 +1218,16 @@ step_environment() {
 
     if have_bin fcitx5; then
         install_asset "$USER_HOME/.config/environment.d/input.conf" environment.d/input.conf 0644 || return 1
-        set_etc_environment XMODIFIERS "@im=fcitx" || return 1
+        # 与长期稳定运行的目标机（archniri 主容器）一致：保留 IM 前端变量。
+        # archniri14 实测：缺 GTK/QT/SDL_IM_MODULE 时 Wayland 应用不把输入
+        # 交给 fcitx，表现为“默认无法中文输入”；补齐后默认即中文。
+        # （fcitx5 的 Wayland 诊断通知风险以实机为准，目前未复现。）
+        set_etc_environment XMODIFIERS "@im=fcitx5" || return 1
         set_etc_environment INPUT_METHOD "fcitx" || return 1
-        # 只保留 XMODIFIERS/INPUT_METHOD，删掉 GTK/QT/SDL/GLFW_IM_MODULE：
-        # fcitx5 在 Wayland 会话里检测到这些变量会反复弹“Wayland 诊断”通知
-        # （问题记录 I2）。默认激活由 ~/.config/fcitx5/config 的
-        # ActiveByDefault=True 负责（I1），不依赖 IM module。
-        unset_etc_environment GTK_IM_MODULE || return 1
-        unset_etc_environment QT_IM_MODULE || return 1
-        unset_etc_environment SDL_IM_MODULE || return 1
-        unset_etc_environment GLFW_IM_MODULE || return 1
+        set_etc_environment GTK_IM_MODULE "fcitx5" || return 1
+        set_etc_environment QT_IM_MODULE "fcitx5" || return 1
+        set_etc_environment SDL_IM_MODULE "fcitx5" || return 1
+        set_etc_environment GLFW_IM_MODULE "fcitx" || return 1
         installed_any=true
     else
         warn "未检测到 fcitx5，跳过输入法环境变量"
@@ -1612,6 +1612,10 @@ fi
 # xcb_connect，导致输入法根本没初始化：没有候选窗、classicui 主题也不加载。
 # fcitx5 走 Wayland 不需要 X11，启动前清掉 DISPLAY。
 unset DISPLAY
+# GTK/QT/SDL/GLFW_IM_MODULE 必须保留给应用（否则 Wayland 应用不走 fcitx，
+# 表现为“默认无法中文输入”）；但 fcitx5 自身看到这些变量会弹“Wayland 诊断”
+# 通知。启动 fcitx5 前剥离，通知不再出现，应用侧不受影响。
+unset GTK_IM_MODULE QT_IM_MODULE SDL_IM_MODULE GLFW_IM_MODULE
 exec /usr/bin/fcitx5 "$@"
 EOF_DBUS
     # 放在 /usr/local/share 而不是用户目录：会话总线不保证把
