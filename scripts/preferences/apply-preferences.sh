@@ -1566,7 +1566,18 @@ if command -v busctl >/dev/null 2>&1; then
     i=0
     # 1 秒足够覆盖“D-Bus 激活正在起”的窗口；再久只会拖慢登录。
     while [ "$i" -lt 5 ]; do
-        if busctl --user status org.fcitx.Fcitx5 >/dev/null 2>&1; then
+        owner_pid=$(busctl --user status org.fcitx.Fcitx5 2>/dev/null | sed -n 's/^PID=//p')
+        if [ -n "${owner_pid:-}" ]; then
+            # 已有一个实例。若它启动过早、环境里没有 WAYLAND_DISPLAY，
+            # 而如今 Wayland socket 已就绪，则结束它并由本实例接管；
+            # 否则交给已经在跑的那份。
+            if [ -n "${XDG_RUNTIME_DIR:-}" ] && \
+               ! { tr '\0' '\n' < "/proc/$owner_pid/environ" 2>/dev/null | grep -q '^WAYLAND_DISPLAY='; } && \
+               ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1; then
+                kill "$owner_pid" 2>/dev/null || true
+                sleep 0.3
+                break
+            fi
             exit 0
         fi
         sleep 0.2
@@ -1594,6 +1605,12 @@ if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
         export WAYLAND_DISPLAY
         break
     done
+fi
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    # 仍没有 Wayland 连接时不要启动 fcitx5：没有显示前端的实例收不到
+    # text-input，界面也画不出来，表现为“输入法完全无效”。退出让
+    # systemd（RestartSec=2）或稍后的 niri spawn 在 socket 就绪后重试。
+    exit 1
 fi
 if command -v busctl >/dev/null 2>&1; then
     # 等满仍无 owner：会话启动的那份没有注册到总线（缺 DBUS_SESSION_BUS_ADDRESS
