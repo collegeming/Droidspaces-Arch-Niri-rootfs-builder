@@ -1,14 +1,14 @@
 patch:
   __include: rime_ice_suggestion:/
   menu/page_size: 7
-  # 与目标机（192.168.110.16）完全一致：左 Shift 把已输入的拼音原样作为
-  # 英文上屏 (inline_ascii)，右 Shift 提交当前候选中文 (commit_text)。
-  # rime_ice_suggestion 会把 default.yaml 的默认值覆盖成
-  # Shift_L=commit_code / Shift_R=noop，这里显式覆盖回目标机行为。
+  # 实测（2026-11-11，archniri16）：librime 1.17.0 的 inline_ascii 只是进入临时
+  # 内联西文态，已输入的拼音要再按 Enter 才上屏，按空格仍走候选；commit_code
+  # 才是“按左 Shift 立即把已输入拼音作为英文提交”。右 Shift 用 commit_text
+  # 提交当前候选中文。
   ascii_composer:
     good_old_caps_lock: true
     switch_key:
-      Shift_L: inline_ascii
+      Shift_L: commit_code
       Shift_R: commit_text
       Control_L: noop
       Control_R: noop
