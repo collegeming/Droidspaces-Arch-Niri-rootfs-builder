@@ -23,7 +23,7 @@ ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
 ARG ANLAND_PACKAGE_REVISION=unknown
 # XRING-O3 设备脚本从复刻包按固定 commit 拉取，builder 不再保存副本。
 ARG XRING_O3_KIT_REPO=https://github.com/collegeming/xring-o3-droidspaces-package.git
-ARG XRING_O3_KIT_REF=7fbc3910c1b64fd946b2511c7e354aefc651c123
+ARG XRING_O3_KIT_REF=223be820127a3a85cd5ae4cbe5cb52f4c14706e7
 # 最终阶段：桌面偏好设置开关（与 scripts/preferences/apply-preferences.sh 对应）
 # 默认开启：文档 01/02 要求开箱可用，关闭会产出“有 niri 但没有终端/输入法”的镜像。
 ARG APPLY_PREFERENCES=true
