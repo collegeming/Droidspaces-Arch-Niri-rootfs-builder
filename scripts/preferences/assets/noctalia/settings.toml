@@ -1,7 +1,12 @@
 config_version = 16
 
 [location]
-auto_locate = true
+# 设备出口 IP 的城市是福州；Noctalia 的 IP 定位接口对这条运营商 NAT 只返回
+# 国家质心（河南），所以固定为地址定位，避免天气跟着错误坐标走。
+auto_locate = false
+address = "福州"
+latitude = 26.06139
+longitude = 119.30611
 
 [lockscreen_widgets]
 enabled = false
