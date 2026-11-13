@@ -134,6 +134,8 @@ flowchart LR
 
 - WebKit/Gecko：xring 设备档案的 `profile.sh` 写入 `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1`、`QTWEBENGINE_DISABLE_SANDBOX=1`、`MOZ_DISABLE_*_SANDBOX=1`；镜像构建时安装该档案。
 - Electron/Chromium：镜像安装 `fix-chrome-sandbox.sh` 与 `/etc/pacman.d/hooks/90-chrome-sandbox.hook`，任何包安装/升级 `chrome-sandbox` 后自动设为 `root:root 4755`；构建末尾再执行一次，覆盖构建阶段安装的应用。
+- btop：Arch 包带 `cap_dac_read_search,cap_perfmon` 文件能力；容器 capability bounding set 不含 `cap_dac_read_search`，execve 返回 EPERM（root 也一样）。`99-btop-filecaps.hook` 在安装/升级后剥离这两个能力，btop 仍可正常显示 CPU/内存/磁盘/网络。
+- 会话工作目录：`desktop-session.service` 设置 `WorkingDirectory=~`。systemd 默认以 `/` 启动服务，niri 及其派生的 kitty 等应用会继承 `/`；加上后新开终端直接落在 `/home/<user>`。
 - wl-gone shim：由 `noctalia-dt` 注入，shim 在构造时把自身从 `LD_PRELOAD` 移除，Noctalia 的子孙进程拿到干净环境；JBR 在 `WLToolkit.initIDs` 中不会因 shim 崩溃。
 
 **适用场景**：VSCode/Discord 等 Electron；Tauri/WebKitGTK；IntelliJ/PyCharm 等 JBR；所有没有 userns 的容器。
@@ -271,6 +273,7 @@ journalctl -b -u desktop-session | grep -i 'anland\|egl\|gl'
 10. **功耗不可排名**：设备充电时传感器数据不能用于整机功耗排名。
 11. **Fedora KDE 是新增路径**：patched KWin 来自本仓库 `anland-kde-packages` 固定滚动 Release，升级 KWin 必须重建镜像；`ANLAND_DISABLE_AUDIO=1`，KDE 音频未验收；`mark-shot`/Rime 等 Arch 专属偏好不随 Fedora 镜像提供。
 12. **KWin 6.9 未适配**：Anland 后端目前只覆盖到 `ANLAND_KWIN_68`；Fedora 升级到 KWin 6.9 前要先更新 Anland producer。
+13. **Mission Center 信息不完整**：GPU 页只支持 Intel/AMD/NVIDIA（通过 nvtop），Mali 没有对应后端，所以看不到 GPU；网络页依赖 NetworkManager 的 D-Bus 对象，镜像没有安装 NM，因此没有网络项；容器内没有 `hwmon`，风扇/温度页也不出现。CPU、内存、磁盘、进程、服务页正常；驱动器列表来自宿主共享的 sysfs（sda–sdd），不代表容器自己的磁盘。
 
 ## 8. 关联项目
 

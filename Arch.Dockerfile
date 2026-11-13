@@ -76,6 +76,8 @@ COPY scripts/configure-mark-shot.sh /usr/local/sbin/configure-mark-shot
 COPY scripts/configure-mb-tray.sh /usr/local/sbin/configure-mb-tray
 COPY scripts/fix-chrome-sandbox.sh /usr/local/bin/fix-chrome-sandbox
 COPY scripts/etc/pacman.d/hooks/90-chrome-sandbox.hook /etc/pacman.d/hooks/90-chrome-sandbox.hook
+COPY scripts/fix-btop-filecaps.sh /usr/local/bin/fix-btop-filecaps
+COPY scripts/etc/pacman.d/hooks/99-btop-filecaps.hook /etc/pacman.d/hooks/99-btop-filecaps.hook
 COPY scripts/vendor/mb-tray/ /usr/local/share/droidspaces/mb-tray/
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
@@ -89,7 +91,7 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/sbin/configure-mb-tray /usr/local/bin/fix-chrome-sandbox /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/bin/xwayland-satellite-soft /usr/local/bin/noctalia-location-sync /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/sbin/configure-mb-tray /usr/local/bin/fix-chrome-sandbox /usr/local/bin/fix-btop-filecaps /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/bin/xwayland-satellite-soft /usr/local/bin/noctalia-location-sync /usr/local/lib/droidspaces/desktops/*.sh && \
     chmod 0644 /etc/profile.d/ds-aliases.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \

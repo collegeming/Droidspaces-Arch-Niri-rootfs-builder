@@ -9,6 +9,9 @@ StartLimitBurst=5
 Type=simple
 User=1000
 PAMName=login
+# systemd 默认工作目录是 /，niri 及其派生的终端/文件管理器会继承它，
+# 表现为新开 kitty 落在根目录。~ 按 User= 解析到该用户家目录。
+WorkingDirectory=~
 EnvironmentFile=-/etc/environment
 # /dev is a per-boot tmpfs and this unit runs as user 1000, so the session script
 # cannot create the DRM node. Chromium/WebKit open it through
