@@ -8,7 +8,19 @@ source "$config"
 case "${DESKTOP:-}:${DISPLAY_BACKEND:-}" in
     none:x11) command_line='exit 0' ;;
     kde:x11) command_line='export DISPLAY="${DISPLAY:-:5}"; exec startplasma-x11' ;;
-    kde:anland-wayland) command_line='exec startplasma-wayland' ;;
+    # KDE 走 Anland 的 patched KWin：KWin 6.8 需要 RenderDevice，容器只有
+    # /dev/dri/card0，因此会话环境必须提供 KWIN_RENDER_NODES。GPU 侧使用发行版
+    # Mesa（zink）+ MaliBridge format ICD，不能带 niri 的 kopper Mesa：
+    # kopper 26.3 的 EGL 不接受发行版 libgbm 创建的 gbm_device（实测 eglInitialize
+    # 段错误）。环境脚本由镜像安装，缺失时退回 /etc/environment。
+    kde:anland-wayland)
+        kde_gpu_env="${DROIDSPACES_KDE_GPU_ENV:-/usr/local/lib/droidspaces/kde-session-env.sh}"
+        if [[ -r "$kde_gpu_env" ]]; then
+            # shellcheck source=kde-session-env.sh
+            source "$kde_gpu_env"
+        fi
+        command_line='exec startplasma-wayland'
+        ;;
     kde-mobile:anland-wayland) command_line='exec startplasmamobile' ;;
     gnome:anland-wayland) command_line='exec gnome-session --session=gnome' ;;
     # Anland Next 的会话本体就是包内的 anland-session（会话 D-Bus + wayland
@@ -46,6 +58,11 @@ fi
 # 不出来”。进入新会话前清掉本用户的旧 wl-copy：旧进程连接的是上一个
 # compositor，已经无法为新会话服务，清理不会丢失当前会话的剪贴板。
 pkill -u "$(id -u)" -x wl-copy 2>/dev/null || true
+
+# mb-tray 是 Noctalia GPU 插件的托盘兜底：插件运行时它收到心跳会撤下自己的
+# SNI 项，但进程仍然常驻。上一次会话遗留的实例会继续占用 SNI 名字，新会话
+# 自启动又拉起一个，表现为托盘里多个 MaliBridge 图标；进入新会话前清掉。
+pkill -u "$(id -u)" -x mb-tray 2>/dev/null || true
 
 # 上一次会话的 fcitx5 可能由 D-Bus/systemd 用户实例拉起（没有 WAYLAND_DISPLAY，
 # 报 "Failed to open wayland connection"），并占着 org.fcitx.Fcitx5 总线名。
