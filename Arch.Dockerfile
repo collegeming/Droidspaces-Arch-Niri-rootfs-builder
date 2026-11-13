@@ -344,9 +344,8 @@ RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
 # 安装并配置原生 ARM64 Google Chrome。
 RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"
 
-# 从 AUR 源码构建 mark-shot（Qt6 Wayland 截图标注）。AUR 的预编译包
-# mark-shot-bin 依赖 FFmpeg 6 的 soname（libavcodec.so=60-64），而 Arch Linux ARM
-# 仓库是 FFmpeg 9（=63-64），pacman -U 无法解析，因此只能本地编译。
+# 安装 AUR mark-shot-arch-bin（Arch/ALARM 双架构预编译包）：依赖对齐 FFmpeg 9，
+# 自带 libmark-shot-layer-shell.so，无需本地编译或 soname 旁路。
 RUN /usr/local/sbin/configure-mark-shot "$DESKTOP" "$DISPLAY_BACKEND"
 
 # 修复容器内的 DHCP 网络服务配置
