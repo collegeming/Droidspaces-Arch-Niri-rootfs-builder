@@ -59,6 +59,11 @@ fi
 # compositor，已经无法为新会话服务，清理不会丢失当前会话的剪贴板。
 pkill -u "$(id -u)" -x wl-copy 2>/dev/null || true
 
+# mb-tray 是 Noctalia GPU 插件的托盘兜底：插件运行时它收到心跳会撤下自己的
+# SNI 项，但进程仍然常驻。上一次会话遗留的实例会继续占用 SNI 名字，新会话
+# 自启动又拉起一个，表现为托盘里多个 MaliBridge 图标；进入新会话前清掉。
+pkill -u "$(id -u)" -x mb-tray 2>/dev/null || true
+
 # 上一次会话的 fcitx5 可能由 D-Bus/systemd 用户实例拉起（没有 WAYLAND_DISPLAY，
 # 报 "Failed to open wayland connection"），并占着 org.fcitx.Fcitx5 总线名。
 # 新会话由 niri spawn 启动带正确环境的实例，所以先清掉旧进程。fcitx5 收到
