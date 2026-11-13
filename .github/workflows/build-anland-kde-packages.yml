@@ -1,0 +1,163 @@
+name: 构建 Anland KDE 补丁包（Fedora 45）
+
+# 在 fedora:45 容器里从 Fedora 的 KWin SRPM 构建带 Anland backend 的 KWin RPM，
+# 发布为固定 Release `anland-kde-packages`。Fedora-45.Dockerfile 通过
+# install-anland-kde.sh 从这个 Release 安装，不需要在镜像构建时编译 KWin。
+#
+# 上游 producer 脚本按 KWin 版本自动选择 ANLAND_KWIN_6x 编译分支；Fedora 45
+# 的 KWin 是 6.8.x，走 ANLAND_KWIN_68。
+
+on:
+  workflow_dispatch:
+    inputs:
+      anland_ref:
+        description: 'Anland 上游 ref（分支/标签/提交）'
+        required: true
+        type: string
+        default: legacy
+      publish:
+        description: '发布到 Release anland-kde-packages'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  ANLAND_REPO: https://github.com/SuperTurtleDev/anland.git
+  RELEASE_TAG: anland-kde-packages
+  ARCHIVE_TARGET: fedora45
+  ASSET_PREFIX: anland-kde-fedora45-kwin-
+  FEDORA_IMAGE: fedora:45
+
+jobs:
+  build:
+    name: 在 fedora:45 中构建 patched KWin
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v5
+
+      - name: 解析 Anland 源码提交
+        id: resolve
+        env:
+          ANLAND_REF: ${{ inputs.anland_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$ANLAND_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._+~/-]*$ ]] || \
+             [[ "$ANLAND_REF" == *..* ]] || [[ "$ANLAND_REF" == *'@{'* ]]; then
+            echo "不支持的 anland_ref：$ANLAND_REF" >&2
+            exit 1
+          fi
+          git init --quiet /tmp/anland-resolve
+          git -C /tmp/anland-resolve remote add origin "$ANLAND_REPO"
+          git -C /tmp/anland-resolve fetch --quiet --depth=1 origin "$ANLAND_REF"
+          commit="$(git -C /tmp/anland-resolve rev-parse FETCH_HEAD)"
+          echo "anland_commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "已解析 $ANLAND_REPO @ $ANLAND_REF -> $commit"
+
+      - name: 在 fedora:45 中构建 KWin RPM
+        env:
+          ANLAND_COMMIT: ${{ steps.resolve.outputs.anland_commit }}
+        run: |
+          set -euo pipefail
+          rm -rf .kde-out
+          mkdir -p .kde-out
+          docker run --rm --platform linux/arm64 \
+            -e ANLAND_REPO \
+            -e ANLAND_COMMIT \
+            -v "$PWD/.kde-out:/out" \
+            "$FEDORA_IMAGE" bash -c '
+              set -euo pipefail
+              # Git 是唯一需要预装的工具；build.sh 自己安装 rpmbuild 与 builddep。
+              dnf install -y --setopt=install_weak_deps=False git tar xz
+              git init --quiet /tmp/anland
+              git -C /tmp/anland remote add origin "$ANLAND_REPO"
+              git -C /tmp/anland fetch --quiet --depth=1 origin "$ANLAND_COMMIT"
+              git -C /tmp/anland checkout --quiet --detach FETCH_HEAD
+              cd /tmp/anland/producers/kde/Fedora43_v5
+              chmod +x build.sh
+              WORKDIR=/root/kde-packages JOBS="$(nproc)" ./build.sh
+              test -d /root/kde-packages/kwin
+              find /root/kde-packages/kwin -maxdepth 1 -type f -name "kwin-*.rpm" -exec cp -v {} /out/ \;
+              rpm -qp --queryformat "%{VERSION}\n" /root/kde-packages/kwin/kwin-*.rpm | head -n1 > /out/.kwin-version
+            '
+          test -s .kde-out/.kwin-version
+          ls -l .kde-out
+
+      - name: 打包资产与清单
+        id: package
+        run: |
+          set -euo pipefail
+          kwin_version="$(tr -d '[:space:]' < .kde-out/.kwin-version)"
+          case "$kwin_version" in
+            ''|*[!A-Za-z0-9.+~_-]*) echo "KWin 版本不可用于文件名：$kwin_version" >&2; exit 1 ;;
+          esac
+          asset="${ASSET_PREFIX}${kwin_version}-aarch64.tar.gz"
+          build_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          staging="$(mktemp -d)"
+          package_dir="$staging/anland-kde-packages/${ARCHIVE_TARGET}"
+          mkdir -p "$package_dir" dist
+          cp .kde-out/kwin-*.rpm "$package_dir/"
+          printf 'target=%s\nkwin_version=%s\nbuild_time=%s\n' \
+            "$ARCHIVE_TARGET" "$kwin_version" "$build_time" > "$package_dir/.anland-kde-build-info"
+          tar -C "$staging" -czf "dist/$asset" "anland-kde-packages/${ARCHIVE_TARGET}"
+
+          checksum="$(sha256sum "dist/$asset" | awk '{print $1}')"
+          {
+            printf 'format=1\n'
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'revision=run-%s-1\n' "$GITHUB_RUN_ID"
+            printf 'generated_at=%s\n' "$build_time"
+            printf '%s=%s\n' "$ARCHIVE_TARGET" "$asset"
+            printf '%s_sha256=%s\n' "$ARCHIVE_TARGET" "$checksum"
+          } > dist/anland-kde-manifest
+
+          cp scripts/tui/install-anland-kde.sh dist/install-anland-kde.sh
+          chmod +x dist/install-anland-kde.sh
+
+          {
+            echo "asset=$asset"
+            echo "checksum=$checksum"
+            echo "kwin_version=$kwin_version"
+          } >> "$GITHUB_OUTPUT"
+          echo "资产：$asset ($checksum)"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v6
+        with:
+          name: anland-kde-fedora45-${{ steps.package.outputs.kwin_version }}
+          path: |
+            dist/*
+          if-no-files-found: error
+
+      - name: 发布 Release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANLAND_COMMIT: ${{ steps.resolve.outputs.anland_commit }}
+          ASSET: ${{ steps.package.outputs.asset }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+          KWIN_VERSION: ${{ steps.package.outputs.kwin_version }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/notes.md <<EOF
+          Fedora 45 的 KWin ${KWIN_VERSION} + Anland backend，由本仓库 workflow 在 \`fedora:45\` 中从 Fedora SRPM 构建。
+
+          - Anland 源码：${ANLAND_REPO:-https://github.com/SuperTurtleDev/anland.git} @ \`${ANLAND_COMMIT}\`
+          - 构建方式：\`producers/kde/Fedora43_v5/build.sh\`（按 KWin 版本自动选择 ANLAND_KWIN_68）
+          - 资产：\`${ASSET}\`，SHA-256 \`${CHECKSUM}\`
+          - 安装方式：Fedora-45 镜像构建时由 \`install-anland-kde.sh\` 下载并安装；运行期不要用 dnf 升级 kwin
+
+          这是一个固定滚动 Release：同 tag 下的资产会被新构建覆盖，镜像侧请以 sha256 为准。
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title 'Anland patched KWin (Fedora 45)' --notes-file /tmp/notes.md
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* \
+              --title 'Anland patched KWin (Fedora 45)' \
+              --notes-file /tmp/notes.md
+          fi
