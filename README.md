@@ -134,7 +134,7 @@ flowchart LR
 
 - WebKit/Gecko：xring 设备档案的 `profile.sh` 写入 `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1`、`QTWEBENGINE_DISABLE_SANDBOX=1`、`MOZ_DISABLE_*_SANDBOX=1`；镜像构建时安装该档案。
 - Electron/Chromium：镜像安装 `fix-chrome-sandbox.sh` 与 `/etc/pacman.d/hooks/90-chrome-sandbox.hook`，任何包安装/升级 `chrome-sandbox` 后自动设为 `root:root 4755`；构建末尾再执行一次，覆盖构建阶段安装的应用。
-- btop：Arch 包带 `cap_dac_read_search,cap_perfmon` 文件能力；容器 capability bounding set 不含 `cap_dac_read_search`，execve 返回 EPERM（root 也一样）。`99-btop-filecaps.hook` 在安装/升级后剥离这两个能力，btop 仍可正常显示 CPU/内存/磁盘/网络。
+- btop：Arch 包带 `cap_dac_read_search,cap_perfmon` 文件能力；容器 capability bounding set 不含 `cap_dac_read_search`，execve 返回 EPERM（root 也一样）。这是通用问题，不止 btop：任何包的文件能力只要超出 bounding set 都会这样失败。`98-unsupported-filecaps.hook` 在每次 pacman 事务后扫描 `/usr/bin`、`/usr/sbin`、`/usr/lib`、`/usr/lib64`、`/opt`，剥离 bounding set 之外的文件能力并保留受支持的；`99-btop-filecaps.hook` 是 btop 的定点兜底。
 - 会话工作目录：`desktop-session.service` 设置 `WorkingDirectory=~`。systemd 默认以 `/` 启动服务，niri 及其派生的 kitty 等应用会继承 `/`；加上后新开终端直接落在 `/home/<user>`。
 - wl-gone shim：由 `noctalia-dt` 注入，shim 在构造时把自身从 `LD_PRELOAD` 移除，Noctalia 的子孙进程拿到干净环境；JBR 在 `WLToolkit.initIDs` 中不会因 shim 崩溃。
 
