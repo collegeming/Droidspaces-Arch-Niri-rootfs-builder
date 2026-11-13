@@ -21,19 +21,28 @@ supported=$(capsh --decode="$bnd" 2>/dev/null | sed 's/^[^=]*=//' | tr ',' '\n')
 getcap -r /usr/bin /usr/sbin /usr/lib /usr/lib64 /opt 2>/dev/null | while read -r path caps; do
     [ -n "$path" ] || continue
     [ -e "$path" ] || continue
-    # getcap prints "cap_a,cap_b=ep"; flags are not part of the name.
-    caps=${caps%%=*}
+    # getcap prints "cap_a,cap_b=ep"; keep the flag suffix when rebuilding.
+    names=${caps%%=*}
+    flags=${caps#*=}
+    keep=
     missing=0
     oldifs=$IFS
     IFS=,
-    for c in $caps; do
-        printf '%s\n' "$supported" | grep -qx "$c" || missing=1
+    for c in $names; do
+        if printf '%s\n' "$supported" | grep -qx "$c"; then
+            keep=${keep:+$keep,}$c
+        else
+            missing=1
+        fi
     done
     IFS=$oldifs
-    if [ "$missing" = 1 ]; then
-        if setcap -r "$path" 2>/dev/null; then
+    [ "$missing" = 1 ] || continue
+    if [ -n "$keep" ]; then
+        setcap "$keep=$flags" "$path" 2>/dev/null && \
+            echo "trimmed unsupported file capabilities: $path ($caps -> $keep=$flags)"
+    else
+        setcap -r "$path" 2>/dev/null && \
             echo "stripped unsupported file capabilities: $path ($caps)"
-        fi
     fi
 done
 exit 0
