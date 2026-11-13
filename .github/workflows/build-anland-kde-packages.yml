@@ -87,7 +87,9 @@ jobs:
               WORKDIR=/root/kde-packages JOBS="$(nproc)" ./build.sh
               test -d /root/kde-packages/kwin
               find /root/kde-packages/kwin -maxdepth 1 -type f -name "kwin-*.rpm" -exec cp -v {} /out/ \;
-              rpm -qp --queryformat "%{VERSION}\n" /root/kde-packages/kwin/kwin-*.rpm | head -n1 > /out/.kwin-version
+              # head -n1 会提前关闭管道，在 set -o pipefail 下让 rpm 收到
+              # SIGPIPE（exit 141）；sed 会读完整个输入，不会触发。
+              rpm -qp --queryformat "%{VERSION}\n" /root/kde-packages/kwin/kwin-*.rpm 2>/dev/null | sed -n '1p' > /out/.kwin-version
             '
           test -s .kde-out/.kwin-version
           ls -l .kde-out
