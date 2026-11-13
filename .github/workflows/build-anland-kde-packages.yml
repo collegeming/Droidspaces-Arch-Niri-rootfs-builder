@@ -80,6 +80,10 @@ jobs:
               git -C /tmp/anland checkout --quiet --detach FETCH_HEAD
               cd /tmp/anland/producers/kde/Fedora43_v5
               chmod +x build.sh
+              # build.sh 用 `rpm -K` 校验刚编出来的 RPM；rpmbuild 不签名，
+              # 默认校验会以 "digests SIGNATURES NOT OK" 失败。这里只跳过
+              # 签名检查，摘要校验仍然生效；安装侧本来就用 dnf --nogpgcheck。
+              sed -i "s/rpm -K /rpm -K --nosignature /g" build.sh
               WORKDIR=/root/kde-packages JOBS="$(nproc)" ./build.sh
               test -d /root/kde-packages/kwin
               find /root/kde-packages/kwin -maxdepth 1 -type f -name "kwin-*.rpm" -exec cp -v {} /out/ \;

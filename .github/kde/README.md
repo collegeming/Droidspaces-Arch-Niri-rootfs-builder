@@ -22,3 +22,8 @@ sync fast path) are required and unchanged from upstream.
 The workflow passes this file through `KWIN_PATCH`, which `build.sh` honours in
 `find_patch kwin.patch "${KWIN_PATCH:-}"`. Rebase it when Anland updates the
 producer for KWin 6.9.
+
+The workflow also runs `sed -i "s/rpm -K /rpm -K --nosignature /g" build.sh`
+before building: `rpmbuild` does not sign the packages, so the producer's
+`rpm -K` verification aborts with `digests SIGNATURES NOT OK`. Digest checks
+still run, and the image installer uses `dnf --nogpgcheck` for these local RPMs.
