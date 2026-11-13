@@ -1,0 +1,13 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/*/chrome-sandbox
+Target = usr/lib/*/chrome-sandbox
+Target = usr/lib64/*/chrome-sandbox
+Target = opt/*/chrome-sandbox
+
+[Action]
+Description = Fixing chrome-sandbox ownership and setuid bit...
+When = PostTransaction
+Exec = /usr/local/bin/fix-chrome-sandbox
