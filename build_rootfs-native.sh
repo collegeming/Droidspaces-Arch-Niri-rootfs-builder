@@ -108,6 +108,12 @@ if [[ "$DISPLAY_BACKEND" == anland-wayland ]]; then
   PulseAudio="none"
 fi
 ANLAND_PACKAGE_FAMILY="$(anland_package_family "$DESKTOP" "$DISPLAY_BACKEND" || true)"
+# Fedora 的 patched KWin 由 Fedora-45.Dockerfile 从 builder 自己的
+# anland-kde-packages Release 安装，不走 wayland_package_repository 的
+# anland-kde-packages 清单；否则这里会先 404 并中止构建。
+if [ "$DESKTOP" = "kde" ] && [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then
+  ANLAND_PACKAGE_FAMILY=""
+fi
 
 # ENABLE_mesa 未显式指定时的默认值：xring-o3 设备分支的 niri 桌面默认开启 GPU 栈，
 # 其余桌面/发行版保持原有 false 行为；-c 显式传参始终优先。
