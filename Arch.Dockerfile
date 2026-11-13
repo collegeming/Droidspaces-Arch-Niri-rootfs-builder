@@ -74,6 +74,8 @@ COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/configure-mark-shot.sh /usr/local/sbin/configure-mark-shot
 COPY scripts/configure-mb-tray.sh /usr/local/sbin/configure-mb-tray
+COPY scripts/fix-chrome-sandbox.sh /usr/local/bin/fix-chrome-sandbox
+COPY scripts/etc/pacman.d/hooks/90-chrome-sandbox.hook /etc/pacman.d/hooks/90-chrome-sandbox.hook
 COPY scripts/vendor/mb-tray/ /usr/local/share/droidspaces/mb-tray/
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
@@ -86,7 +88,7 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/sbin/configure-mb-tray /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/bin/xwayland-satellite-soft /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/sbin/configure-mb-tray /usr/local/bin/fix-chrome-sandbox /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/bin/xwayland-satellite-soft /usr/local/lib/droidspaces/desktops/*.sh && \
     chmod 0644 /etc/profile.d/ds-aliases.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
@@ -347,6 +349,10 @@ RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"
 # 安装 AUR mark-shot-arch-bin（Arch/ALARM 双架构预编译包）：依赖对齐 FFmpeg 9，
 # 自带 libmark-shot-layer-shell.so，无需本地编译或 soname 旁路。
 RUN /usr/local/sbin/configure-mark-shot "$DESKTOP" "$DISPLAY_BACKEND"
+
+# 修正构建阶段已安装的 Chromium/Electron sandbox helper 权限；用户后续安装
+# 由 pacman PostTransaction 钩子（90-chrome-sandbox.hook）自动处理。
+RUN /usr/local/bin/fix-chrome-sandbox
 
 # 修复容器内的 DHCP 网络服务配置
 RUN mkdir -p /etc/systemd/network && \
