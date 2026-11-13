@@ -180,6 +180,18 @@ flowchart LR
 
 **适用场景**：Fedora 45 + KDE 镜像；KWin 包升级；排查 KDE 黑屏/软件渲染。
 
+### 3.8 Noctalia Mali GPU 插件
+
+**问题**：btop、Mission Center 和 Noctalia 自带的 sysmon 只支持 NVIDIA/AMD/Intel，Mali 没有后端；Mali kbase 也没有可用的 GPU busy 计数（debugfs `dvfs_utilization` 冻结/下溢）。
+
+**改造**：
+
+- 插件源码在 xring 仓库 `src/noctalia-mali-gpu/`（与 `mbctl`/`mb-tray` 同层），镜像构建时从固定 commit 的 xring kit 复制到 `/usr/local/share/droidspaces/noctalia-plugins/mali-gpu`，再由 `apply-preferences.sh` 安装到 `~/.local/share/noctalia/plugins/mali-gpu`。
+- 顶栏显示 `GPU <频率>M <温度>°`；悬浮显示型号、频率区间、温度、MaliBridge 预算/占用、每应用 FPS（`malibridge-report.json` 的 `fps_p50`）。
+- 不伪造“GPU 占用率”：数据源没有可信的 busy 计数，只展示频率、温度、显存和 FPS。
+
+**适用场景**：日常观察 GPU 频率/温度/桥接显存；定位 MaliBridge 内存预算与应用 FPS。
+
 ## 4. 仓库结构
 
 | 路径 | 内容 | 对应改造 |

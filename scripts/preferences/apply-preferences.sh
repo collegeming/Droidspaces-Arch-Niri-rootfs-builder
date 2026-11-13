@@ -1834,6 +1834,24 @@ step_noctalia() {
     # 习惯调好，镜像沿用同一份，避免每次重建后重新点设置。
     install_asset "$USER_HOME/.local/state/noctalia/settings.toml" noctalia/settings.toml 0644
 
+    # Mali GPU 监控插件（源码在 xring 仓库 src/noctalia-mali-gpu，构建时由
+    # xring kit 安装到 /usr/local/share/droidspaces/noctalia-plugins）。插件
+    # 必须是完整目录，install_asset 只处理单文件，这里单独复制。
+    noct_plugin_src=/usr/local/share/droidspaces/noctalia-plugins/mali-gpu
+    noct_plugin_dst=$USER_HOME/.local/share/noctalia/plugins/mali-gpu
+    if is_dir "$noct_plugin_src"; then
+        if [ "$DRY_RUN" = true ]; then
+            log "dry-run: would install Noctalia plugin to $noct_plugin_dst"
+        elif mkdir -p "$ROOT$USER_HOME/.local/share/noctalia/plugins" && \
+            rm -rf "$ROOT$noct_plugin_dst" && \
+            cp -a "$ROOT$noct_plugin_src" "$ROOT$noct_plugin_dst"; then
+            chown -R "$USER_UID:$USER_GID" "$ROOT$noct_plugin_dst" 2>/dev/null || true
+            log "installed Noctalia plugin: $noct_plugin_dst"
+        else
+            warn "无法安装 Noctalia 插件：$noct_plugin_src"
+        fi
+    fi
+
     # noctalia-dt 的环境配置由 Mali stack 安装时生成，默认指向
     # mesa/candidate（无 kopper 补丁的 26.3）。在只有 card0 的容器里 zink 选不到
     # pdev：Noctalia 自身渲染异常，而且它 spawn 出的应用（从启动器打开 kitty/
