@@ -50,6 +50,9 @@ path = "/usr/share/noctalia/assets/noctalia-wallpaper.png"
 [wallpaper.last]
 path = "/usr/share/noctalia/assets/noctalia-wallpaper.png"
 
+[widget.clock]
+format = "{:%H:%M:%S}"
+
 [widget.media]
 hide_when_no_media = true
 show_progress = true
