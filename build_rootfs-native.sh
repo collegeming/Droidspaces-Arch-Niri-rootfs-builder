@@ -113,7 +113,7 @@ ANLAND_PACKAGE_FAMILY="$(anland_package_family "$DESKTOP" "$DISPLAY_BACKEND" || 
 # 其余桌面/发行版保持原有 false 行为；-c 显式传参始终优先。
 if [ -z "$ENABLE_mesa" ]; then
   case "$DESKTOP" in
-    niri) ENABLE_mesa="true" ;;
+    niri|kde) ENABLE_mesa="true" ;;
     *) ENABLE_mesa="false" ;;
   esac
 fi
@@ -136,17 +136,17 @@ fi
 # 提取发行版目标名称（例如：Debian-13.Dockerfile -> Debian-13）
 PREFIX="$(basename "${DOCKERFILE%.Dockerfile}")"
 
-# 设备构建校验：xring-o3 只支持 Arch + niri，且必须提供 Mali 栈离线包；
-# 否则构建会成功但产出缺少 GPU 栈的镜像，因此在入口直接失败。
+# 设备构建校验：xring-o3 支持 Arch+niri 与 Fedora-45+kde，且必须提供 Mali
+# 栈离线包；否则构建会成功但产出缺少 GPU 栈的镜像，因此在入口直接失败。
 if [ -n "$DROIDSPACES_DEVICE_PROFILE" ]; then
   if [ "$DROIDSPACES_DEVICE_PROFILE" != "xring-o3" ]; then
     echo "错误：DROIDSPACES_DEVICE_PROFILE 只支持 xring-o3（当前：$DROIDSPACES_DEVICE_PROFILE）。" >&2
     exit 1
   fi
   case "$PREFIX:$DESKTOP" in
-    Arch:niri) ;;
+    Arch:niri|Fedora-45:kde) ;;
     *)
-      echo "错误：xring-o3 设备构建仅支持 Arch + niri（当前：$PREFIX + $DESKTOP）。" >&2
+      echo "错误：xring-o3 设备构建仅支持 Arch+niri 或 Fedora-45+kde（当前：$PREFIX + $DESKTOP）。" >&2
       exit 1
       ;;
   esac
