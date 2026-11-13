@@ -27,7 +27,7 @@ ARG ANLAND_KDE_RELEASE_TAG=anland-kde-packages
 ARG ANLAND_PACKAGE_REVISION=unknown
 # XRING-O3 设备脚本从复刻包按固定 commit 拉取，builder 不再保存副本。
 ARG XRING_O3_KIT_REPO=https://github.com/collegeming/xring-o3-droidspaces-package.git
-ARG XRING_O3_KIT_REF=71bac4cb613d0a882ccf5de1e798b052544b519b
+ARG XRING_O3_KIT_REF=b75fa6690131abaa6662e4107ed49fa2379fe5e4
 ARG APPLY_PREFERENCES=true
 ARG PREFERENCES_PROFILE=fedora-kde-mali
 ARG PREFERENCES_STRICT=false
