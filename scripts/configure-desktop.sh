@@ -183,19 +183,29 @@ configure_niri_tray_autostart() {
             } >> "$target"
             echo "--> 已写入 mb-tray 自启动：$target"
         fi
-        if grep -q 'droidspaces: Noctalia shell autostart' "$target"; then
-            continue
+        if ! grep -q 'droidspaces: Noctalia shell autostart' "$target"; then
+            # Noctalia 由 Mali stack 安装的 noctalia-dt 包装器启动；缺少 wrapper 时
+            # 只记录一条 spawn 失败，不阻断 niri 会话。当前 Noctalia CLI 不接受
+            # `noctalia` 子命令（会报 unknown command），包装器后不能再带参数。
+            {
+                printf '\n'
+                printf '%s\n' '// >>> droidspaces: Noctalia shell autostart'
+                printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/noctalia-dt ] && exec /usr/local/bin/noctalia-dt"'
+                printf '%s\n' '// <<< droidspaces: Noctalia shell autostart'
+            } >> "$target"
+            echo "--> 已写入 Noctalia 自启动：$target"
         fi
-        # Noctalia 由 Mali stack 安装的 noctalia-dt 包装器启动；缺少 wrapper 时
-        # 只记录一条 spawn 失败，不阻断 niri 会话。当前 Noctalia CLI 不接受
-        # `noctalia` 子命令（会报 unknown command），包装器后不能再带参数。
-        {
-            printf '\n'
-            printf '%s\n' '// >>> droidspaces: Noctalia shell autostart'
-            printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/noctalia-dt ] && exec /usr/local/bin/noctalia-dt"'
-            printf '%s\n' '// <<< droidspaces: Noctalia shell autostart'
-        } >> "$target"
-        echo "--> 已写入 Noctalia 自启动：$target"
+        if ! grep -q 'droidspaces: Noctalia IP location sync' "$target"; then
+            # 按公网 IP 的城市写 Noctalia [location]，避免内置 IP 定位返回国家
+            # 质心；脚本自己每 30 分钟刷新，不阻塞 niri 启动。
+            {
+                printf '\n'
+                printf '%s\n' '// >>> droidspaces: Noctalia IP location sync'
+                printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/noctalia-location-sync ] && setsid /usr/local/bin/noctalia-location-sync >/dev/null 2>&1 &"'
+                printf '%s\n' '// <<< droidspaces: Noctalia IP location sync'
+            } >> "$target"
+            echo "--> 已写入 Noctalia IP 定位同步：$target"
+        fi
     done
 }
 

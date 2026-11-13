@@ -1,12 +1,11 @@
 config_version = 16
 
 [location]
-# 设备出口 IP 的城市是福州；Noctalia 的 IP 定位接口对这条运营商 NAT 只返回
-# 国家质心（河南），所以固定为地址定位，避免天气跟着错误坐标走。
+# 不写死城市：会话启动时 /usr/local/bin/noctalia-location-sync 按公网 IP 的
+# 城市写入 address/latitude/longitude。在脚本完成前保持无地址，避免先显示
+# Noctalia 内置 IP 定位返回的国家质心天气。
 auto_locate = false
-address = "福州"
-latitude = 26.06139
-longitude = 119.30611
+address = ""
 
 [lockscreen_widgets]
 enabled = false
