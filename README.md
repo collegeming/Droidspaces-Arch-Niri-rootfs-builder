@@ -1,6 +1,13 @@
-# Droidspaces Arch + niri + Noctalia RootFS 构建（XRING-O3）
+# Droidspaces Arch + niri / Fedora + KDE RootFS 构建（XRING-O3）
 
-为 **小米平板 9 Pro Max（M367FC / XRing O3 / Android 17 / Mali-G2-Ultra-NX）** 构建可直接导入 Droidspaces 的 Arch Linux ARM64 rootfs：niri-anland + Noctalia 桌面、MaliBridge GPU 栈、fcitx5/Rime 输入法、按应用分类的零拷贝启动环境。
+为 **小米平板 9 Pro Max（M367FC / XRing O3 / Android 17 / Mali-G2-Ultra-NX）** 构建可直接导入 Droidspaces 的 ARM64 rootfs。当前有两条设备路径：
+
+| 目标 | 桌面 | 状态 |
+| --- | --- | --- |
+| **Arch Linux** | niri-anland + Noctalia | 长期验证路径 |
+| **Fedora 45** | KDE Plasma 6.8（Anland patched KWin） | 新增适配，用于验证 Fedora 新系统与 MaliBridge 零拷贝 |
+
+两条路径共用同一套 MaliBridge GPU 栈（Mesa + `libvulkan_droidbridge` ICD + `libgbm` 垫片）、xring-o3 设备档案和 desktop-session 编排。
 
 本仓库 fork 自 [Goldzxcbug/Droidspaces-rootfs-Desktop-builder](https://github.com/Goldzxcbug/Droidspaces-rootfs-Desktop-builder)，默认分支 **`xring-o3-mali`**，在保留通用多发行版构建的同时增加 `xring-o3` 设备档案。宿主脚本、KSU 模块、Mali 栈 bundle 与补丁在配套仓库 [collegeming/xring-o3-droidspaces-package](https://github.com/collegeming/xring-o3-droidspaces-package)。
 
@@ -10,68 +17,70 @@
 
 ```
 Arch-niri-Wayland-Droidspaces-rootfs-aarch64-<build_id>.tar.xz
+Fedora-kde-Wayland-Droidspaces-rootfs-aarch64-<build_id>.tar.xz
 ```
 
 归档内包含：
 
-| 层 | 内容 |
-| --- | --- |
-| 基础系统 | Arch Linux ARM64，用户 `colle`（uid 1000），中文 locale + 上海时区 |
-| 桌面 | niri-anland（Touch seat / Smithay AFBC 补丁，来自 xring 仓库的软件包）、Noctalia、desktop-session systemd 单元 |
-| GPU | Mali 栈 bundle：Mesa（kopper 与 dt-retire）、MaliBridge ICD（format-capacity 与 hook2）、wl-gone shim、`libgbm` 垫片、`libdrmfake`、zc-run、mbctl、mb-tray、budget.conf |
-| 输入法 | fcitx5 + Rime（rime-ice），默认中文，`Shift_L` 在 Rime 内切中英文 |
-| 应用与工具 | kitty、nemo、neovim、fish + tide/reef、mark-shot-arch-bin、Chrome 支持等 |
-| 运行时配置 | niri 输出块与 F1/F3 绑定、Noctalia 包装、WebKit/Gecko 沙箱开关、pacman 钩子 |
-| 容器配置模板 | `container.config`：`enable_anland=1`、`enable_gpu_mode=1` 的推荐值 |
+| 层 | Arch + niri | Fedora 45 + KDE |
+| --- | --- | --- |
+| 基础系统 | Arch Linux ARM64，用户 `colle`（uid 1000），中文 locale + 上海时区 | Fedora 45 ARM64，同一用户/locale/时区 |
+| 桌面 | niri-anland（Touch seat / Smithay AFBC 补丁）、Noctalia、desktop-session | Plasma 6.8.1（`startplasma-wayland`）、Anland patched KWin 6.8.1、desktop-session |
+| GPU | Mali 栈 bundle：kopper/dt-retire Mesa、format/hook2 ICD、wl-gone shim、`libgbm` 垫片、`libdrmfake`、zc-run、mbctl、mb-tray | 同一 bundle；KDE 使用发行版 Mesa（zink）+ format ICD + `libgbm` 垫片 |
+| 输入法 | fcitx5 + Rime（rime-ice），`Shift_L` 切中英文 | fcitx5 + 中文输入（`fcitx5-chinese-addons`） |
+| 应用与工具 | kitty、nemo、neovim、fish、mark-shot-arch-bin、Chrome | Konsole、Dolphin、Kate、Spectacle 等 Plasma 应用 |
+| 运行时配置 | niri 输出块与 F1/F3 绑定、Noctalia 包装、WebKit/Gecko 沙箱开关、pacman 钩子 | KWin 合成配置、`KWIN_RENDER_NODES`、KDE 会话 GPU 环境、dnf 的 kwin 版本排除 |
 
 目标：
 
-1. 设备档案只支持 Arch + niri + anland-wayland，构建参数与设备实际使用一致。
+1. 设备档案只接受 `Arch+niri` 与 `Fedora-45+kde` 两种组合，其他组合在构建入口直接失败。
 2. GPU 栈版本通过 URL + sha256 固定，缺失时构建直接失败，不产出无 GPU 的镜像。
-3. 应用安装后不需要手工补环境：桌面条目由 pacman 钩子包装，Chromium 的 sandbox helper 由钩子修正。
-4. 镜像内的偏好（输入法、Noctalia、镜像源、niri 配置）与设备验收口径一致。
+3. 应用安装后不需要手工补环境：Arch 上桌面条目由 pacman 钩子包装、Chromium 的 sandbox helper 由钩子修正；Fedora 上 KWin 会话由 `kde-session-env.sh` 注入 GPU 环境。
+4. 镜像内的偏好与设备验收口径一致：Arch 保留 niri/Noctalia/Rime；Fedora 保留 Plasma 默认外观和 fcitx5。
 
 ## 2. 构建流水线
 
 ```mermaid
 flowchart LR
     A[workflow_dispatch<br/>输入镜像参数] --> B[build-rootfs-core<br/>准备构建矩阵]
-    B --> C[基础镜像<br/>ogarcia/archlinux]
-    C --> D[基础包与工具<br/>用户/locale/时区]
-    D --> E[桌面安装<br/>niri-anland + Noctalia]
-    E --> F[应用<br/>Chrome/mark-shot/mb-tray]
-    F --> G[设备档案<br/>xring-o3 profile + Mali 栈]
-    G --> H[会话单元<br/>desktop-session/card0/anland]
-    H --> I[apply-preferences<br/>镜像源/IM/Noctalia/niri]
-    I --> J[清理缓存<br/>导出 rootfs tar.xz]
-    J --> K[发布 Release]
+    B --> C1[Arch.Dockerfile]
+    B --> C2[Fedora-45.Dockerfile]
+    C1 --> D[基础包与工具<br/>用户/locale/时区]
+    C2 --> D
+    D --> E1[桌面安装<br/>niri-anland + Noctalia]
+    D --> E2[桌面安装<br/>Plasma 6.8 + patched KWin]
+    E1 --> F[设备档案<br/>xring-o3 profile + Mali 栈]
+    E2 --> F
+    F --> G[会话单元<br/>desktop-session/card0/anland]
+    G --> H[桌面偏好 / 清理缓存<br/>导出 rootfs tar.xz]
+    H --> I[发布 Release]
 ```
 
 入口 workflow 是 `build-rootfs-releases.yml`，它调用可复用的 `build-rootfs-core.yml`。`setup` 生成构建矩阵与 `build_id`，`build` 按发行版/桌面组合构建，`release` 在 `publish_release=true` 时创建 release 并上传 `.tar.xz`。
 
 ### 2.1 设备档案参数
 
-| 输入 | 值 | 说明 |
-| --- | --- | --- |
-| `build_target` | `Arch` | 设备档案只支持 Arch |
-| `desktop` | `Niri` | 固定 |
-| `display_backend` | `anland-wayland` | 固定 |
-| `custom_username` | `colle` | uid 1000 桌面用户 |
-| `device_profile` | `xring-o3` | 安装设备档案与 Mali 栈；缺少 bundle 参数时硬失败 |
-| `apply_preferences` | `true` | 构建末尾应用桌面偏好 |
-| `wayland_package_repository` | `collegeming/xring-o3-droidspaces-package` | niri/niri-anland 包来源 |
-| `output_scale` | `2` | 只对 `anland-0` 写输出块 |
-| `output_mode` | `native` | 不写 mode，用 Anland 首选模式 |
-| `mali_stack_bundle_url` | xring Releases 的 bundle URL | 与 sha256 必须成对提供 |
-| `mali_stack_bundle_sha256` | 对应 sha256 | 固定 GPU 栈内容 |
-| `mali_stack_version` | 版本标识 | 安装目录名 |
+| 输入 | Arch 路径 | Fedora 路径 | 说明 |
+| --- | --- | --- | --- |
+| `build_target` | `Arch` | `Fedora-45` | 只接受这两个值 |
+| `desktop` | `Niri` | `KDE` | 与目标绑定 |
+| `display_backend` | `anland-wayland` | `anland-wayland` | 固定 |
+| `custom_username` | `colle` | `colle` | uid 必须为 1000 |
+| `device_profile` | `xring-o3` | `xring-o3` | 安装设备档案与 Mali 栈；缺少 bundle 参数时硬失败 |
+| `apply_preferences` | `true` | 无效果 | Fedora 镜像跳过 Arch 专属偏好脚本 |
+| `wayland_package_repository` | `collegeming/xring-o3-droidspaces-package` | 同左 | niri/niri-anland 包来源 |
+| `output_scale` / `output_mode` | `2` / `native` | 无效果 | 只对 niri 的 `anland-0` 输出块生效 |
+| `mali_stack_bundle_url` | xring Releases 的 bundle URL | 同左 | 与 sha256 必须成对提供 |
+| `mali_stack_bundle_sha256` | 对应 sha256 | 同左 | 固定 GPU 栈内容 |
+| `mali_stack_version` | 版本标识 | 同左 | 安装目录名 |
 
 ### 2.2 构建阶段的固定点
 
-- 基础镜像：`ogarcia/archlinux`，多阶段 Dockerfile 的 `customizer` 阶段完成安装，`export` 阶段只导出 rootfs。
-- xring kit：`Arch.Dockerfile` 的 `XRING_O3_KIT_REF` 固定 xring 仓库 commit，构建时浅克隆并安装 `rootfs/device/xring-o3`。
+- 基础镜像：Arch 用 `ogarcia/archlinux`，Fedora 用 `fedora:45`；多阶段 Dockerfile 的 `customizer` 阶段完成安装，`export` 阶段只导出 rootfs。
+- xring kit：`Arch.Dockerfile` / `Fedora-45.Dockerfile` 的 `XRING_O3_KIT_REF` 固定 xring 仓库 commit，构建时浅克隆并安装 `rootfs/device/xring-o3`。
 - Mali 栈：`MALI_STACK_BUNDLE_URL`、`MALI_STACK_BUNDLE_SHA256`、`MALI_STACK_VERSION` 作为 build args 传入；安装器校验布局、ELF 架构与 SHA256SUMS。
 - niri/niri-anland：通过 `wayland_package_repository` 指向 xring 的 `anland-niri-packages` release，避免在镜像里本地编译。
+- Fedora KWin：`build-anland-kde-packages.yml` 在 `fedora:45` 容器里从 Fedora KWin SRPM 构建 Anland patched KWin，发布到本仓库 `anland-kde-packages` Release；`Fedora-45.Dockerfile` 通过 `install-anland-kde.sh` 安装，运行期由 dnf `excludepkgs=kwin*` 锁定，避免升级覆盖 Anland backend。
 
 ## 3. 镜像内改造
 
@@ -154,26 +163,46 @@ flowchart LR
 | `niri-default-config.kdl` | 输出、截图路径、Print 与 F1/F3 绑定 | niri 会话 |
 | `bashrc.sh` | shell 别名与环境 | 终端 |
 
+### 3.7 Fedora 45 + KDE 适配
+
+**问题**：Fedora 45 的 Plasma 是 6.8.1，KWin 只有 DRM/virtual 后端，不能直接连 Anland；KWin 6.8 需要 `RenderDevice`，而容器只有 `/dev/dri/card0`、没有 `renderD`；把 niri 用的 kopper Mesa 直接给 KWin 会在 `eglInitialize` 段错误（kopper 26.3 与发行版 `libgbm` 的 `gbm_device` ABI 不一致）。
+
+**改造**：
+
+- **patched KWin**：`build-anland-kde-packages.yml` 在 `fedora:45` 容器里用 Anland 的 `producers/kde/Fedora43_v5/build.sh` 从 Fedora KWin SRPM 构建，后端按 `ANLAND_KWIN_68` 编译，发布到本仓库 `anland-kde-packages` Release；`install-anland-kde.sh` 增加 `fedora:45` → `fedora45` 资产映射，安装后把 `kwin*` 写入 dnf 排除，防止升级覆盖。
+- **KWin 渲染设备**：`kde-session-env.sh` 设置 `KWIN_RENDER_NODES=/dev/dri/card0` 与 `ANLAND_DRM_DEVICE=/dev/dri/card0`。KWin 6.8 的 `GpuManager` 支持显式 `KWIN_RENDER_NODES`，绕过“只枚举 render node”的限制。
+- **GPU 栈选择**：KDE 使用 Fedora 的 Mesa 26.2（zink）+ MaliBridge `droidbridge-format.json` + bundle 的 `libgbm` 垫片（强制 LINEAR）。`kde-session-env.sh` 只把 `current/lib` 放进 `LD_LIBRARY_PATH`，不引入 kopper，保证 `libgbm` 与 `libEGL_mesa` 来自同一份 Mesa。
+- **合成配置**：`configure-desktop.sh` 为 KDE 写 `kwinrc`：`Enabled=true`、`Backend=OpenGL`；旧的 `Enabled=false` 只适用于无 GPU 的 X11 容器。
+- **音频**：`ANLAND_DISABLE_AUDIO=1`，规避上游记录的 Anland 音频引擎忙循环；KDE 音频不在首轮验收范围。
+- **不安装 `kwin-x11`**：Fedora 45 仓库里它是 6.7.5 的社区包，与 6.8 的 Plasma 不同步；KDE 固定 `startplasma-wayland`。
+
+**适用场景**：Fedora 45 + KDE 镜像；KWin 包升级；排查 KDE 黑屏/软件渲染。
+
 ## 4. 仓库结构
 
 | 路径 | 内容 | 对应改造 |
 | --- | --- | --- |
 | `Arch.Dockerfile` | Arch + niri + xring-o3 设备档案；安装顺序、build args、清理与导出 | 全流程 |
-| `Debian-13.Dockerfile`、`Ubuntu-*.Dockerfile`、`Fedora-*.Dockerfile` | 上游通用多发行版构建 | 非本设备 |
-| `scripts/configure-desktop.sh` | 桌面安装、niri 配置、输出块 | 3.1 |
+| `Fedora-45.Dockerfile` | Fedora 45 + KDE + xring-o3 设备档案；KWin 包安装、Mali 栈、会话环境 | 3.1、3.7 |
+| `Debian-13.Dockerfile`、`Ubuntu-*.Dockerfile`、`Fedora-43/44.Dockerfile` | 上游通用模板（本分支不构建，入口直接失败） | 非本设备 |
+| `scripts/configure-desktop.sh` | 桌面安装、niri 配置与输出块、KDE `kwinrc` | 3.1、3.7 |
+| `scripts/kde-session-env.sh` | KDE 会话 GPU 环境（system Mesa + shim + `KWIN_RENDER_NODES`） | 3.7 |
+| `scripts/desktops/kde.sh` | Fedora 45 Plasma 包安装与 `/etc/environment` 变量 | 3.7 |
+| `scripts/tui/install-anland-kde.sh` | 下载/安装 patched KWin；`fedora:45` 资产映射与 dnf 锁定 | 3.7 |
 | `scripts/configure-chrome.sh` | Chrome 安装与包装 | 3.6 |
 | `scripts/configure-mark-shot.sh` | mark-shot-arch-bin 安装 | 3.6 |
 | `scripts/configure-mb-tray.sh` | mb-tray 本地化构建 | 3.6 |
 | `scripts/fix-chrome-sandbox.sh` | sandbox helper 权限修正 | 3.4 |
 | `scripts/etc/pacman.d/hooks/90-chrome-sandbox.hook` | 安装/升级触发修正 | 3.4 |
 | `scripts/etc/niri-default-config.kdl` | niri 默认配置与快捷键 | 3.1、3.6 |
-| `scripts/start-desktop-session.sh` | 会话清理与启动 | 3.1 |
+| `scripts/start-desktop-session.sh` | 会话清理与启动（niri / KDE 分支） | 3.1、3.7 |
 | `scripts/xwayland-satellite-soft.sh` | 软件 Xwayland 兜底 | 3.1 |
 | `scripts/preferences/apply-preferences.sh` | 镜像源、IM、Noctalia、niri extras、archlinuxcn | 3.5 |
 | `scripts/desktops/` | 各桌面安装脚本 | 上游通用 |
 | `scripts/tui/` | TUI 安装器与 GPU 探测 | 上游通用 |
 | `.github/workflows/build-rootfs-releases.yml` | 手动入口与发布 | 全流程 |
 | `.github/workflows/build-rootfs-core.yml` | 可复用构建矩阵 | 全流程 |
+| `.github/workflows/build-anland-kde-packages.yml` | 在 `fedora:45` 构建 patched KWin 并发布 | 3.7 |
 | `docs/build-image-xring-o3.md` | 本设备构建命令行示例 | 全流程 |
 | `docs/zh/`、`docs/en/` | 上游通用文档 | 非本设备 |
 
@@ -181,39 +210,52 @@ flowchart LR
 
 | 场景 | 步骤 | 注意 |
 | --- | --- | --- |
-| 构建新镜像 | Actions → 编译并发布 RootFS → 按 2.1 填参数 | `device_profile=xring-o3` 时必须提供 bundle URL/sha256 |
+| 构建 Arch 镜像 | Actions → 编译并发布 RootFS → `Arch` + `Niri` | `device_profile=xring-o3` 时必须提供 bundle URL/sha256 |
+| 构建 Fedora KDE 镜像 | Actions → 编译并发布 RootFS → `Fedora-45` + `KDE` | 先确认 `anland-kde-packages` Release 里有 `fedora45` 资产 |
+| 升级 patched KWin | Actions → 构建 Anland KDE 补丁包（Fedora 45） → 发布 | 同 tag 资产被覆盖；重建镜像才会带上新版本 |
 | 升级 Mali 栈 | 在 xring 发布新 bundle → 更新 URL/sha256/version → 重新构建 | 版本目录并存，`current` 原子切换 |
-| 新装 Electron 应用 | `paru -S <pkg>` | pacman 钩子修正 helper；桌面条目由 wrap 钩子包装 |
-| 新装 WebKit/Tauri 应用 | `paru -S <pkg>` | WebKit 沙箱由会话环境关闭；条目包装为 webkit |
+| 新装 Electron 应用（Arch） | `paru -S <pkg>` | pacman 钩子修正 helper；桌面条目由 wrap 钩子包装 |
+| 新装 WebKit/Tauri 应用（Arch） | `paru -S <pkg>` | WebKit 沙箱由会话环境关闭；条目包装为 webkit |
+| 新装 KDE 应用（Fedora） | `dnf install <pkg>` | 应用直接继承 KWin 会话的 Mesa/ICD；不要升级 `kwin*` |
 | 导入设备 | 解压到容器 rootfs，创建容器配置，`droidspaces start` | 需要 `enable_anland=1`、`enable_gpu_mode=1`、绑定 `/dev/dma_heap` |
 | 切换上屏容器 | xring 的 `anland-link.sh` + Anland consumer intent | 同一时间只有一个容器上屏 |
 | 离线复现 | 预先下载 Mali 栈 bundle 与 niri 包 | 构建仍需网络安装 Arch 包 |
 
 ## 6. 验证基线
 
-基线：2026-11-13，builder 当前分支构建的镜像（Mali 栈 2026.11.12-v1）；零拷贝计数来自 archniri21 同栈基线，IDEA 计数来自 archniri23。
+基线：2026-11-13，builder 当前分支构建的 Arch 镜像（Mali 栈 2026.11.12-v1）；零拷贝计数来自 archniri21 同栈基线，IDEA 计数来自 archniri23。Fedora 45 + KDE 的 GPU/零拷贝基线在首个 Fedora 镜像建成后补充。
 
 ```sh
+# Arch
 xz -t Arch-niri-Wayland-Droidspaces-rootfs-aarch64-*.tar.xz
 tar -tf ... | grep -E 'niri-default-config.kdl|90-chrome-sandbox.hook'
-# 容器内
 systemctl status desktop-session
 wayland-info | grep -A2 zwp_linux_dmabuf_v1
 pacman -Q mark-shot-arch-bin
 ls -l /usr/lib/mark-shot/libmark-shot-layer-shell.so
 niri validate -c /home/colle/.config/niri/config.kdl
 ls -l /usr/share/code/chrome-sandbox   # 安装 Electron 应用后应为 4755
+
+# Fedora 45 + KDE
+xz -t Fedora-kde-Wayland-Droidspaces-rootfs-aarch64-*.tar.xz
+tar -tf ... | grep -E 'kde-session-env.sh|kwinrc'
+systemctl status desktop-session
+rpm -q kwin                            # 应带 .anland 发行号
+grep -E '^excludepkgs=.*kwin' /etc/dnf/dnf.conf
+journalctl -b -u desktop-session | grep -i 'anland\|egl\|gl'
 ```
 
 | 检查 | 结果 |
 | --- | --- |
-| rootfs 归档 | `xz -t` 通过；包含 niri 配置、Mali 栈、pacman 钩子 |
-| 桌面会话 | niri-anland + Noctalia + fcitx5 正常 |
+| rootfs 归档 | `xz -t` 通过；Arch 含 niri 配置/Mali 栈/pacman 钩子，Fedora 含 KWin 包/会话环境/`kwinrc` |
+| 桌面会话（Arch） | niri-anland + Noctalia + fcitx5 正常 |
+| 桌面会话（Fedora） | `startplasma-wayland` + patched KWin 起来，输出层连上 Anland daemon |
+| GPU（Fedora） | KWin 日志/`glxinfo -B` 显示 `zink Vulkan ... Mali-G2-Ultra-NX`；`KWIN_RENDER_NODES=/dev/dri/card0` 生效 |
 | dmabuf | `zwp_linux_dmabuf_v1` version 3；`create_immed` 正常 |
-| 零拷贝 | 窗口缓冲为 DMA-BUF；计数见 3.3 |
-| mark-shot | F1 覆盖层、F3 贴图均使用 layer-shell |
+| 零拷贝（Arch） | 窗口缓冲为 DMA-BUF；计数见 3.3 |
+| mark-shot | F1 覆盖层、F3 贴图均使用 layer-shell（Arch） |
 | Electron sandbox | 安装/升级后 pacman 钩子触发，`chrome-sandbox` 为 4755；应用以桌面用户运行（镜像 23 上验证钩子） |
-| 镜像源 | `pacman -Si gstreamer` 与本地版本一致，不触发降级 |
+| 镜像源 | Arch：`pacman -Si gstreamer` 与本地版本一致；Fedora：dnf 不升级 `kwin*` |
 
 ## 7. 已知边界
 
@@ -221,12 +263,14 @@ ls -l /usr/share/code/chrome-sandbox   # 安装 Electron 应用后应为 4755
 2. **dmabuf v3**：没有 v4 feedback/v5 严格校验；不影响零拷贝成立，影响 per-surface/设备偏好与布局优化。
 3. **Xwayland 仅软件渲染**：容器没有 `renderD`。
 4. **容器无 userns**：Electron/Chromium 依赖 SUID helper；非 pacman 安装的应用可能需要手动修正 helper 或 `--no-sandbox`。
-5. **镜像源滞后**：阿里云/官方优先仍可能出现“本地包比仓库新”的警告；安装依赖时确认不会触发降级。
+5. **镜像源滞后**：Arch 的阿里云/官方优先仍可能出现“本地包比仓库新”的警告；安装依赖时确认不会触发降级。
 6. **Chrome WebGL 闪烁未定位**：已排除 ANGLE、syncobj、软件合成与 Chrome 版本差异；问题仍在跟踪。
 7. **120Hz 未达**：Chrome WebGL 约 60 FPS。
 8. **Java2D Vulkan 回退**：宿主可用内存接近预算下限时，`vkCreateDevice` 可能返回 `VK_ERROR_OUT_OF_DEVICE_MEMORY`，JBR 回退路径存在低频崩溃风险。
 9. **临时 root**：设备重启后需重新 root、加载 LKM、启动容器与 bridge。
 10. **功耗不可排名**：设备充电时传感器数据不能用于整机功耗排名。
+11. **Fedora KDE 是新增路径**：patched KWin 来自本仓库 `anland-kde-packages` 固定滚动 Release，升级 KWin 必须重建镜像；`ANLAND_DISABLE_AUDIO=1`，KDE 音频未验收；`mark-shot`/Rime 等 Arch 专属偏好不随 Fedora 镜像提供。
+12. **KWin 6.9 未适配**：Anland 后端目前只覆盖到 `ANLAND_KWIN_68`；Fedora 升级到 KWin 6.9 前要先更新 Anland producer。
 
 ## 8. 关联项目
 

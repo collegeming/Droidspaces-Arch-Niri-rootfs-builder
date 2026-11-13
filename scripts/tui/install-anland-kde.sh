@@ -491,9 +491,19 @@ detect_target() {
                     ARCHIVE_SUFFIX="-aarch64.tar.gz"
                     ARCHIVE_TARGET="fedora44"
                     ;;
+                fedora:45*)
+                    # 本仓库 workflow `build-anland-kde-packages.yml` 在
+                    # fedora:45 上从 Fedora SRPM 构建，发布到同 tag 的
+                    # anland-kde-packages Release（默认仓库可用构建参数覆盖）。
+                    TARGET="Fedora 45"
+                    PACKAGE_TYPE="rpm"
+                    ARCHIVE_PREFIX="anland-kde-fedora45-kwin-"
+                    ARCHIVE_SUFFIX="-aarch64.tar.gz"
+                    ARCHIVE_TARGET="fedora45"
+                    ;;
                 *)
-                    die "不支持当前系统 ${system_name}。仅支持 Debian 13、Ubuntu 26.04、Fedora 43/44、Arch Linux。" \
-                        "Unsupported system: ${system_name}. Supported systems are Debian 13, Ubuntu 26.04, Fedora 43/44, and Arch Linux."
+                    die "不支持当前系统 ${system_name}。仅支持 Debian 13、Ubuntu 26.04、Fedora 43/44/45、Arch Linux。" \
+                        "Unsupported system: ${system_name}. Supported systems are Debian 13, Ubuntu 26.04, Fedora 43/44/45, and Arch Linux."
                     ;;
             esac
             ;;

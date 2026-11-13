@@ -8,7 +8,19 @@ source "$config"
 case "${DESKTOP:-}:${DISPLAY_BACKEND:-}" in
     none:x11) command_line='exit 0' ;;
     kde:x11) command_line='export DISPLAY="${DISPLAY:-:5}"; exec startplasma-x11' ;;
-    kde:anland-wayland) command_line='exec startplasma-wayland' ;;
+    # KDE 走 Anland 的 patched KWin：KWin 6.8 需要 RenderDevice，容器只有
+    # /dev/dri/card0，因此会话环境必须提供 KWIN_RENDER_NODES。GPU 侧使用发行版
+    # Mesa（zink）+ MaliBridge format ICD，不能带 niri 的 kopper Mesa：
+    # kopper 26.3 的 EGL 不接受发行版 libgbm 创建的 gbm_device（实测 eglInitialize
+    # 段错误）。环境脚本由镜像安装，缺失时退回 /etc/environment。
+    kde:anland-wayland)
+        kde_gpu_env="${DROIDSPACES_KDE_GPU_ENV:-/usr/local/lib/droidspaces/kde-session-env.sh}"
+        if [[ -r "$kde_gpu_env" ]]; then
+            # shellcheck source=kde-session-env.sh
+            source "$kde_gpu_env"
+        fi
+        command_line='exec startplasma-wayland'
+        ;;
     kde-mobile:anland-wayland) command_line='exec startplasmamobile' ;;
     gnome:anland-wayland) command_line='exec gnome-session --session=gnome' ;;
     # Anland Next 的会话本体就是包内的 anland-session（会话 D-Bus + wayland

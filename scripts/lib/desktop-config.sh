@@ -48,7 +48,7 @@ display_backend_label() {
 
 target_is_known() {
     case "${1:-}" in
-        Debian-13|Ubuntu-24|Ubuntu-25|Ubuntu-26|Fedora-43|Fedora-44|Arch) return 0 ;;
+        Debian-13|Ubuntu-24|Ubuntu-25|Ubuntu-26|Fedora-43|Fedora-44|Fedora-45|Arch) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -57,9 +57,14 @@ desktop_target_supported() {
     local target="${1:-}"
     local desktop="${2:-}"
 
-    # 本分支只交付 XRING-O3 Mali 设备镜像：Arch + niri。
+    # 本分支交付 XRING-O3 Mali 设备镜像：
+    #   Arch      + niri  长期验证路径
+    #   Fedora-45 + KDE   Fedora 新系统适配（Anland KWin + MaliBridge）
     target_is_known "$target" || return 1
-    [[ "$target" == Arch && "$desktop" == niri ]]
+    case "$target/$desktop" in
+        Arch/niri|Fedora-45/kde) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 desktop_backend_supported() {
@@ -75,6 +80,9 @@ desktop_wayland_targets_json() {
     case "${1:-}" in
         niri)
             printf '%s\n' '["Arch"]'
+            ;;
+        kde)
+            printf '%s\n' '["Fedora-45"]'
             ;;
         *) return 1 ;;
     esac

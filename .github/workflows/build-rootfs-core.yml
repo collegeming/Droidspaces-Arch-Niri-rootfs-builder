@@ -83,7 +83,7 @@ on:
       mali_stack_version:
         required: false
         type: string
-        default: '2026.11.08'
+        default: '2026.11.12-v1'
       output_scale:
         required: false
         type: string
@@ -204,12 +204,14 @@ jobs:
             [ "$DEVICE_PROFILE_INPUT" = "xring-o3" ] || fail \
               "device_profile 仅支持 xring-o3（当前：$DEVICE_PROFILE_INPUT）。" \
               "device_profile only supports xring-o3 (got: $DEVICE_PROFILE_INPUT)."
-            [ "$TARGET" = "Arch" ] || fail \
-              "xring-o3 设备构建只支持 Arch 目标（当前：$TARGET）。" \
-              "xring-o3 device builds only support the Arch target (got: $TARGET)."
-            [ "$(desktop_normalize "$DESKTOP_INPUT")" = "niri" ] || fail \
-              "xring-o3 设备构建只支持 Niri 桌面（当前：$DESKTOP_INPUT）。" \
-              "xring-o3 device builds only support the Niri desktop (got: $DESKTOP_INPUT)."
+            dev_desktop="$(desktop_normalize "$DESKTOP_INPUT")" || dev_desktop="$DESKTOP_INPUT"
+            case "$TARGET/$dev_desktop" in
+              Arch/niri|Fedora-45/kde) ;;
+              *)
+                fail "xring-o3 设备构建只支持 Arch+Niri 或 Fedora-45+KDE（当前：$TARGET/$DESKTOP_INPUT）。" \
+                  "xring-o3 device builds only support Arch+Niri or Fedora-45+KDE (got: $TARGET/$DESKTOP_INPUT)."
+                ;;
+            esac
             if [ -z "$MALI_STACK_BUNDLE_URL_INPUT" ] || [ -z "$MALI_STACK_BUNDLE_SHA256_INPUT" ]; then
               fail "xring-o3 设备构建必须提供 mali_stack_bundle_url 与 mali_stack_bundle_sha256，否则会产出无 GPU 栈的镜像。" \
                 "xring-o3 device builds require mali_stack_bundle_url and mali_stack_bundle_sha256; otherwise the image has no GPU stack."
@@ -569,64 +571,134 @@ jobs:
           DEVICE_PROFILE: ${{ inputs.device_profile }}
         run: |
           set -euo pipefail
+          archive="$(basename "$(find release_assets -maxdepth 1 -name '*.tar.xz' -print -quit)")"
+          checksum="$(sha256sum "release_assets/$archive" | awk '{print $1}')"
           if [ "$UI_LANGUAGE" = zh ]; then
-            cat > release-notes.md <<EOF
-          Droidspaces 根文件系统自动构建
+            if [ "$DEVICE_PROFILE" = "xring-o3" ]; then
+              cat > release-notes.md <<EOF
+          ## 适用设备
+
+          小米平板 9 Pro Max（M367FC / XRING O3 / Android 17 / Mali-G2-Ultra-NX MC16）。镜像只包含 MaliBridge 路径，不含 Adreno/KGSL 回退。
+
+          ## 镜像内容
+
+          - **基础系统**：$BUILD_TARGET，用户 \`$CUSTOM_USERNAME\`（uid 1000），中文 locale + 上海时区
+          - **桌面**：$DESKTOP（Anland Wayland，$DISPLAY_BACKEND）
+          - **GPU**：XRING-O3 Mali 栈 \`$MALI_STACK_VERSION\`（Mesa + MaliBridge ICD + libgbm 垫片）
+          - **输入法**：fcitx5$([ "$ENABLE_FCITX5" = "true" ] && echo ' + 中文输入' || echo '（未启用）')
+          - **构建时间**：$BUILD_TIME
+          - **构建 ID**：$BUILD_ID
+          - **构建 commit**：\`${GITHUB_SHA}\`
+
+          ## 使用方式
+
+          1. 下载 \`.tar.xz\`，用 \`xz -t\` 校验。
+          2. 解压到 Droidspaces 容器 rootfs 目录。
+          3. 容器配置：\`enable_anland=1\`、\`enable_gpu_mode=1\`；启动参数包含 \`--anland --gpu -B /dev/dma_heap:/dev/dma_heap\`。
+          4. 宿主先运行 MaliBridge \`vkbridge-server\`，在 \`/opt/mb-sock\` 提供 \`mali.sock\` / \`control.sock\`；镜像的 desktop-session 会等待 bridge 就绪。
+
+          ## 归档
+
+          - 文件：\`$archive\`
+          - SHA-256：\`$checksum\`
+
+          ## 边界
+
+          - 零拷贝证据为应用/桥接侧窗口缓冲（DMA-BUF、dmabuf v3）；合成器导入与直接 scanout 未验证。
+          - 容器内没有 \`renderD\`，Xwayland 只有 llvmpipe。
+          - 设备重启后需要重新获取临时 root、加载 LKM、启动容器与 bridge。
+          EOF
+            else
+              cat > release-notes.md <<EOF
+          Droidspaces 根文件系统构建
           构建时间：$BUILD_TIME
           构建目标：$BUILD_TARGET
           构建 ID：$BUILD_ID
+          构建 commit：\`${GITHUB_SHA}\`
 
           构建选项：
-          - **自定义用户名**：$CUSTOM_USERNAME
-          - **桌面环境**：$DESKTOP
-          - **桌面开机自启动**：$DESKTOP_AUTOSTART
-          - **显示后端**：$DISPLAY_BACKEND
+          - 自定义用户名：$CUSTOM_USERNAME
+          - 桌面环境：$DESKTOP
+          - 桌面开机自启动：$DESKTOP_AUTOSTART
+          - 显示后端：$DISPLAY_BACKEND
           - Wayland 软件包仓库：$WAYLAND_PACKAGE_REPOSITORY
-          - PulseAudio 音频转发：$PULSE_AUDIO
-          - Anland 音频说明：Wayland 模式使用 Anland 应用内置音频，无需 PulseAudio
-          - 移除 Ubuntu Snap：$ENABLE_NOSNAP
-          - systemd 257 旧内核兼容：$ENABLE_SYSTEMD257
-          - 使用中文并设置上海时区：$ENABLE_ZH_TZ
-          - 高通骁龙 GPU 支持：$ENABLE_MESA
-          - Fcitx 5 输入法支持：$ENABLE_FCITX5
-          - 跨架构支持：$ENABLE_BINFMT
-          - 容器硬件和网络识别：$ENABLE_HARDWARE
+          - PulseAudio：$PULSE_AUDIO
+          - 中文与上海时区：$ENABLE_ZH_TZ
+          - GPU/Mesa：$ENABLE_MESA
+          - Fcitx5：$ENABLE_FCITX5
+          - 跨架构：$ENABLE_BINFMT
+          - 硬件与网络识别：$ENABLE_HARDWARE
           - 开发工具：$ENABLE_DEV_TOOLS
           - 压缩工具：$ENABLE_COMPRESSION
           - Docker：$ENABLE_DOCKER
-          - 应用桌面偏好设置：$APPLY_PREFERENCES
-          - Mali 栈版本：$MALI_STACK_VERSION
-          - 设备构建配置：$DEVICE_PROFILE
-          EOF
-          else
-            cat > release-notes.md <<EOF
-          Droidspaces RootFS Automated Build
-          Build Time: $BUILD_TIME
-          Build Target (User Specified): $BUILD_TARGET
-          Build ID: $BUILD_ID
+          - 桌面偏好：$APPLY_PREFERENCES
 
-          Build Options:
-          - **Custom Username**: $CUSTOM_USERNAME
-          - **Desktop**: $DESKTOP
-          - **Desktop auto-start**: $DESKTOP_AUTOSTART
-          - **Display backend**: $DISPLAY_BACKEND
-          - Wayland package repository: $WAYLAND_PACKAGE_REPOSITORY
-          - PulseAudio Audio Forwarding: $PULSE_AUDIO
-          - Anland audio note: Wayland mode uses the built-in Anland app audio, so PulseAudio is not needed
-          - nosnap: $ENABLE_NOSNAP
-          - systemd 257 old-kernel compatibility: $ENABLE_SYSTEMD257
-          - Use Chinese as Primary Language: $ENABLE_ZH_TZ
-          - Qualcomm Snapdragon GPU Support: $ENABLE_MESA
-          - Input Method Fcitx 5 Support: $ENABLE_FCITX5
-          - Cross-architecture Support: $ENABLE_BINFMT
-          - Container Hardware and Network Recognition Support: $ENABLE_HARDWARE
-          - Development Tools Integration: $ENABLE_DEV_TOOLS
-          - Compression Tools Integration: $ENABLE_COMPRESSION
-          - Docker Integration: $ENABLE_DOCKER
-          - Apply desktop preferences: $APPLY_PREFERENCES
-          - Mali stack version: $MALI_STACK_VERSION
-          - Device build profile: $DEVICE_PROFILE
+          归档：\`$archive\`
+          SHA-256：\`$checksum\`
           EOF
+            fi
+          else
+            if [ "$DEVICE_PROFILE" = "xring-o3" ]; then
+              cat > release-notes.md <<EOF
+          ## Target device
+
+          Xiaomi Pad 9 Pro Max (M367FC / XRING O3 / Android 17 / Mali-G2-Ultra-NX MC16). MaliBridge only; there is no Adreno/KGSL fallback.
+
+          ## Contents
+
+          - **Base**: $BUILD_TARGET, user \`$CUSTOM_USERNAME\` (uid 1000), zh_CN locale and Asia/Shanghai
+          - **Desktop**: $DESKTOP (Anland Wayland, $DISPLAY_BACKEND)
+          - **GPU**: XRING-O3 Mali stack \`$MALI_STACK_VERSION\` (Mesa + MaliBridge ICD + libgbm shim)
+          - **Build time**: $BUILD_TIME
+          - **Build ID**: $BUILD_ID
+          - **Commit**: \`${GITHUB_SHA}\`
+
+          ## Use
+
+          1. Download the \`.tar.xz\` and verify it with \`xz -t\`.
+          2. Extract it into the Droidspaces container rootfs.
+          3. Container config: \`enable_anland=1\`, \`enable_gpu_mode=1\`; start with \`--anland --gpu -B /dev/dma_heap:/dev/dma_heap\`.
+          4. Start MaliBridge \`vkbridge-server\` on the host and expose \`mali.sock\` / \`control.sock\` in \`/opt/mb-sock\`; desktop-session waits for the bridge.
+
+          ## Archive
+
+          - File: \`$archive\`
+          - SHA-256: \`$checksum\`
+
+          ## Limits
+
+          - Zero-copy evidence covers application/bridge window buffers (DMA-BUF, dmabuf v3); compositor import and direct scanout are not verified.
+          - There is no \`renderD\` node in the container; Xwayland is llvmpipe only.
+          EOF
+            else
+              cat > release-notes.md <<EOF
+          Droidspaces RootFS build
+          Build time: $BUILD_TIME
+          Target: $BUILD_TARGET
+          Build ID: $BUILD_ID
+          Commit: \`${GITHUB_SHA}\`
+
+          Options:
+          - Username: $CUSTOM_USERNAME
+          - Desktop: $DESKTOP
+          - Desktop auto-start: $DESKTOP_AUTOSTART
+          - Display backend: $DISPLAY_BACKEND
+          - Wayland package repository: $WAYLAND_PACKAGE_REPOSITORY
+          - PulseAudio: $PULSE_AUDIO
+          - zh_CN and Asia/Shanghai: $ENABLE_ZH_TZ
+          - GPU/Mesa: $ENABLE_MESA
+          - Fcitx5: $ENABLE_FCITX5
+          - Cross-architecture: $ENABLE_BINFMT
+          - Hardware/network detection: $ENABLE_HARDWARE
+          - Development tools: $ENABLE_DEV_TOOLS
+          - Compression tools: $ENABLE_COMPRESSION
+          - Docker: $ENABLE_DOCKER
+          - Desktop preferences: $APPLY_PREFERENCES
+
+          Archive: \`$archive\`
+          SHA-256: \`$checksum\`
+          EOF
+            fi
           fi
 
       - name: ${{ inputs.ui_language == 'zh' && '创建草稿 Release 并上传文件' || 'Stage draft Release and upload assets' }}

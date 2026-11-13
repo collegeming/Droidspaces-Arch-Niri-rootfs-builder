@@ -253,10 +253,20 @@ fi
 
 if [[ "$desktop" == kde ]]; then
     install -d -m 0755 "$rootfs/home/$username/.config"
+    # XRING-O3：KDE 走 Anland 的 patched KWin，合成必须保持开启。之前为了
+    # 无 GPU 的 X11 容器写 Enabled=false，会把 Anland backend 的输出层变成
+    # 纯 CPU 合成；这里固定 OpenGL（zink -> MaliBridge）并关闭会阻塞首帧的
+    # 启动检测。
     cat > "$rootfs/home/$username/.config/kwinrc" <<'EOF'
 [Compositing]
-Enabled=false
+Enabled=true
+Backend=OpenGL
+OpenGLIsUnsafe=false
+LatencyPolicy=Low
 EOF
+    if [[ -n "$rootfs" ]]; then
+        chmod 0644 "$rootfs/home/$username/.config/kwinrc"
+    fi
 fi
 
 if [[ -z "$rootfs" ]]; then
