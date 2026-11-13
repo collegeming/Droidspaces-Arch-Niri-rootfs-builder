@@ -240,4 +240,4 @@ ls -l /usr/share/code/chrome-sandbox   # 安装 Electron 应用后应为 4755
 | [YaLTeR/niri](https://github.com/YaLTeR/niri) / [Noctalia](https://github.com/noctalia-dev/noctalia) | 合成器与桌面 shell |
 | [iDvel/rime-ice](https://github.com/iDvel/rime-ice) | Rime 雾凇拼音 |
 
-本仓库只保存镜像构建脚本、桌面偏好与设备档案；上游源码、宿主脚本、MaliBridge/Anland 补丁分别在对应仓库与 xring 仓库维护。
+本仓库只保存镜像构建脚本、桌面偏好与设备档案；上游源码、宿主脚本、MaliBridge/Anland 补丁分别在对应仓库与 xring 仓库维护。设备运行日志与完整验证记录不在本仓库。
