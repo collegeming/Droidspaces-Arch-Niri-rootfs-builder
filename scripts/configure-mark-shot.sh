@@ -72,6 +72,8 @@ if ! grep -Eq '^[[:space:]]*arch = .*aarch64' "$srcinfo"; then
 fi
 
 asset_url=$(sed -n 's/^[[:space:]]*source_aarch64 = //p' "$srcinfo" | head -n1)
+# AUR 的 source 允许 "文件名::URL" 形式，下载只取 URL 部分。
+asset_url=${asset_url#*::}
 asset_sha=$(sed -n 's/^[[:space:]]*sha256sums_aarch64 = //p' "$srcinfo" | head -n1)
 [[ -n "$asset_url" && -n "$asset_sha" ]] || {
     echo "AUR 配方缺少 aarch64 产物 URL 或校验和" >&2
