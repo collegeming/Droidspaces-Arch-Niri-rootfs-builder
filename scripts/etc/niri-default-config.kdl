@@ -654,6 +654,11 @@ binds {
     Ctrl+Print { screenshot-screen; }
     Alt+Print { screenshot-window; }
 
+    // mark-shot：F1 区域截图，F3 把剪贴板里的图片贴到屏幕上。
+    // 用绝对路径，避免 niri 由 systemd 拉起时 PATH 不含 /usr/bin 的极端情况。
+    F1 { spawn "/usr/bin/mark-shot"; }
+    F3 { spawn "/usr/bin/mark-shot" "--pin-clipboard"; }
+
     // Applications such as remote-desktop clients and software KVM switches may
     // request that niri stops processing the keyboard shortcuts defined here
     // so they may, for example, forward the key presses as-is to a remote machine.
