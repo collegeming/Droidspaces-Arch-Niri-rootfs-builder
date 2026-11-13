@@ -1,7 +1,7 @@
 config_version = 16
 
 [bar.default]
-center = [ "workspaces", "taskbar" ]
+center = [ "workspaces", "taskbar", "gpu" ]
 end = [
     "media",
     "tray",
@@ -88,3 +88,9 @@ show_label = false
 
 [widget.workspaces]
 labels_only_when_occupied = true
+
+[plugins]
+enabled = [ "collegeming/mali-gpu" ]
+
+[widget.gpu]
+type = "collegeming/mali-gpu:status"
