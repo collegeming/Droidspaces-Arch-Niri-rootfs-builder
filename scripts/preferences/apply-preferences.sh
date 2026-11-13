@@ -1829,6 +1829,10 @@ step_noctalia() {
     # 用 install_asset 覆盖而不是 install_if_absent：胶囊/间距等偏好会随版本
     # 调整，保留旧文件会让升级后的镜像看不到新值。覆盖前按统一机制备份。
     install_asset "$USER_HOME/.config/noctalia/config.toml" noctalia/config.toml 0644
+    # 状态栏/小组件设置（音量标签、网络 VPN 标签、媒体进度、主题、锁屏布局）
+    # 保存在 state 目录的 settings.toml，不在 config.toml 里。设备上已按使用
+    # 习惯调好，镜像沿用同一份，避免每次重建后重新点设置。
+    install_asset "$USER_HOME/.local/state/noctalia/settings.toml" noctalia/settings.toml 0644
 
     # noctalia-dt 的环境配置由 Mali stack 安装时生成，默认指向
     # mesa/candidate（无 kopper 补丁的 26.3）。在只有 card0 的容器里 zink 选不到

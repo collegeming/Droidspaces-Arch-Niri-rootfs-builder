@@ -16,6 +16,5 @@ thickness = 32
 scale = 1.0
 panel_overlap = 8
 widget_spacing = 4
-item_spacing = 2
 
 # P3 动态取色未启用：需要模板引擎与壁纸联动，风险高，暂不做。
