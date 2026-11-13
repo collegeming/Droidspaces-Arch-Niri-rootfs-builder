@@ -108,12 +108,18 @@ if [[ "$DISPLAY_BACKEND" == anland-wayland ]]; then
   PulseAudio="none"
 fi
 ANLAND_PACKAGE_FAMILY="$(anland_package_family "$DESKTOP" "$DISPLAY_BACKEND" || true)"
+# Fedora 的 patched KWin 由 Fedora-45.Dockerfile 从 builder 自己的
+# anland-kde-packages Release 安装，不走 wayland_package_repository 的
+# anland-kde-packages 清单；否则这里会先 404 并中止构建。
+if [ "$DESKTOP" = "kde" ] && [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then
+  ANLAND_PACKAGE_FAMILY=""
+fi
 
 # ENABLE_mesa 未显式指定时的默认值：xring-o3 设备分支的 niri 桌面默认开启 GPU 栈，
 # 其余桌面/发行版保持原有 false 行为；-c 显式传参始终优先。
 if [ -z "$ENABLE_mesa" ]; then
   case "$DESKTOP" in
-    niri) ENABLE_mesa="true" ;;
+    niri|kde) ENABLE_mesa="true" ;;
     *) ENABLE_mesa="false" ;;
   esac
 fi
@@ -136,17 +142,17 @@ fi
 # 提取发行版目标名称（例如：Debian-13.Dockerfile -> Debian-13）
 PREFIX="$(basename "${DOCKERFILE%.Dockerfile}")"
 
-# 设备构建校验：xring-o3 只支持 Arch + niri，且必须提供 Mali 栈离线包；
-# 否则构建会成功但产出缺少 GPU 栈的镜像，因此在入口直接失败。
+# 设备构建校验：xring-o3 支持 Arch+niri 与 Fedora-45+kde，且必须提供 Mali
+# 栈离线包；否则构建会成功但产出缺少 GPU 栈的镜像，因此在入口直接失败。
 if [ -n "$DROIDSPACES_DEVICE_PROFILE" ]; then
   if [ "$DROIDSPACES_DEVICE_PROFILE" != "xring-o3" ]; then
     echo "错误：DROIDSPACES_DEVICE_PROFILE 只支持 xring-o3（当前：$DROIDSPACES_DEVICE_PROFILE）。" >&2
     exit 1
   fi
   case "$PREFIX:$DESKTOP" in
-    Arch:niri) ;;
+    Arch:niri|Fedora-45:kde) ;;
     *)
-      echo "错误：xring-o3 设备构建仅支持 Arch + niri（当前：$PREFIX + $DESKTOP）。" >&2
+      echo "错误：xring-o3 设备构建仅支持 Arch+niri 或 Fedora-45+kde（当前：$PREFIX + $DESKTOP）。" >&2
       exit 1
       ;;
   esac
