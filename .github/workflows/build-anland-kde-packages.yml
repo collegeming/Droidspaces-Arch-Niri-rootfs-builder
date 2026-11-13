@@ -67,6 +67,8 @@ jobs:
           docker run --rm --platform linux/arm64 \
             -e ANLAND_REPO \
             -e ANLAND_COMMIT \
+            -e KWIN_PATCH=/kde-src/kwin-fedora45.patch \
+            -v "$PWD/.github/kde:/kde-src:ro" \
             -v "$PWD/.kde-out:/out" \
             "$FEDORA_IMAGE" bash -c '
               set -euo pipefail
