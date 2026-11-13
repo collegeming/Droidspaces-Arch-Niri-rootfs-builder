@@ -235,6 +235,19 @@ DISPLAY_BACKEND=$backend
 EOF
 chmod 0644 "$config"
 
+# upower 在容器里的 systemd 单元默认带 PrivateUsers=yes 和 IPAddressDeny=any：
+# 前者需要 user namespace（Droidspaces 禁止非特权 userns），服务以 217/USER
+# 反复失败；后者需要 BPF attach，容器内被拒绝。两者失败后 UPower 的 D-Bus
+# 名不可用，Noctalia / Plasma 的电池组件就完全不显示电量。
+# 这里写入 drop-in：upower 本身不联网，关闭这两项不影响功能。
+install -d -m 0755 "$rootfs/etc/systemd/system/upower.service.d"
+cat > "$rootfs/etc/systemd/system/upower.service.d/container.conf" <<'EOF'
+[Service]
+PrivateUsers=no
+IPAddressDeny=
+EOF
+chmod 0644 "$rootfs/etc/systemd/system/upower.service.d/container.conf"
+
 # 桌面专属环境必须在 Dockerfile 完成 /etc/environment 后配置。
 if [[ "$desktop" != none ]]; then
     profile="$profile_dir/$desktop.sh"
