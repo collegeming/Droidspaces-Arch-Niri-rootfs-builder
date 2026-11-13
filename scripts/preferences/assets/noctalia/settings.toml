@@ -1,12 +1,27 @@
 config_version = 16
 
+[bar.default]
+center = [ "workspaces", "taskbar" ]
+end = [
+    "media",
+    "tray",
+    "wallpaper",
+    "notifications",
+    "clipboard",
+    "network",
+    "bluetooth",
+    "volume",
+    "brightness",
+    "battery",
+    "session"
+]
+start = [ "control-center", "clock", "launcher" ]
+
 [location]
 # 不写死城市：会话启动时 /usr/local/bin/noctalia-location-sync 按公网 IP 的
-# 城市写入 address/latitude/longitude。在脚本完成前保持无地址，避免先显示
-# Noctalia 内置 IP 定位返回的国家质心天气。
+# 城市写入 address/latitude/longitude。
 auto_locate = false
 address = ""
-
 [lockscreen_widgets]
 enabled = false
 schema_version = 2
@@ -65,5 +80,11 @@ title_scroll = "on_hover"
 [widget.network]
 show_vpn_label = true
 
+[widget.taskbar]
+only_active_workspace = true
+
 [widget.volume]
 show_label = false
+
+[widget.workspaces]
+labels_only_when_occupied = true
