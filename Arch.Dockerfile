@@ -23,7 +23,7 @@ ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
 ARG ANLAND_PACKAGE_REVISION=unknown
 # XRING-O3 设备脚本从复刻包按固定 commit 拉取，builder 不再保存副本。
 ARG XRING_O3_KIT_REPO=https://github.com/collegeming/xring-o3-droidspaces-package.git
-ARG XRING_O3_KIT_REF=b75fa6690131abaa6662e4107ed49fa2379fe5e4
+ARG XRING_O3_KIT_REF=6704d266ae9043f909a4a7aec616d0cf1f18651c
 # 最终阶段：桌面偏好设置开关（与 scripts/preferences/apply-preferences.sh 对应）
 # 默认开启：文档 01/02 要求开箱可用，关闭会产出“有 niri 但没有终端/输入法”的镜像。
 ARG APPLY_PREFERENCES=true
@@ -73,14 +73,12 @@ COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
 COPY scripts/configure-chrome.sh /usr/local/sbin/configure-chrome
 COPY scripts/configure-mark-shot.sh /usr/local/sbin/configure-mark-shot
-COPY scripts/configure-mb-tray.sh /usr/local/sbin/configure-mb-tray
 COPY scripts/fix-chrome-sandbox.sh /usr/local/bin/fix-chrome-sandbox
 COPY scripts/etc/pacman.d/hooks/90-chrome-sandbox.hook /etc/pacman.d/hooks/90-chrome-sandbox.hook
 COPY scripts/fix-btop-filecaps.sh /usr/local/bin/fix-btop-filecaps
 COPY scripts/etc/pacman.d/hooks/99-btop-filecaps.hook /etc/pacman.d/hooks/99-btop-filecaps.hook
 COPY scripts/fix-unsupported-filecaps.sh /usr/local/bin/fix-unsupported-filecaps
 COPY scripts/etc/pacman.d/hooks/98-unsupported-filecaps.hook /etc/pacman.d/hooks/98-unsupported-filecaps.hook
-COPY scripts/vendor/mb-tray/ /usr/local/share/droidspaces/mb-tray/
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/xwayland-satellite-soft.sh /usr/local/bin/xwayland-satellite-soft
@@ -93,7 +91,7 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
     fi && \
     rm -f /tmp/Anland-Audio.conf
 
-RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/sbin/configure-mb-tray /usr/local/bin/fix-chrome-sandbox /usr/local/bin/fix-btop-filecaps /usr/local/bin/fix-unsupported-filecaps /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/bin/xwayland-satellite-soft /usr/local/bin/noctalia-location-sync /usr/local/lib/droidspaces/desktops/*.sh && \
+RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/local/sbin/install-hangover-wine /usr/local/sbin/install-winefonts /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop /usr/local/sbin/configure-chrome /usr/local/sbin/configure-mark-shot /usr/local/bin/fix-chrome-sandbox /usr/local/bin/fix-btop-filecaps /usr/local/bin/fix-unsupported-filecaps /usr/local/bin/droidspaces-tui /usr/local/bin/droidspaces-gpu /usr/local/bin/start-desktop-session /usr/local/bin/xwayland-satellite-soft /usr/local/bin/noctalia-location-sync /usr/local/lib/droidspaces/desktops/*.sh && \
     chmod 0644 /etc/profile.d/ds-aliases.sh && \
     ln -s droidspaces-tui /usr/local/bin/dstui && \
     ln -s droidspaces-tui /usr/local/bin/ds-tui && \
@@ -342,9 +340,9 @@ EOF
 chmod 0755 "$link"
 EOF_ZCRUN
 
-# MaliBridge 离线包只带英文预编译 mb-tray；用 vendored 源码编译本地化版本
-# （zh/en 跟随 LANG），并修正托盘图标内边距。
-RUN /usr/local/sbin/configure-mb-tray "$DESKTOP" "$DISPLAY_BACKEND"
+# mb-tray 已废弃：预算显示和调整由 Noctalia GPU 插件接管，镜像不再安装或
+# 自启动托盘。Mali 栈安装器仍会建立 /usr/local/bin/mb-tray 与桌面项，这里删除。
+RUN rm -f /usr/local/bin/mb-tray /usr/share/applications/mb-tray.desktop /usr/share/icons/hicolor/*/apps/mb-budget.*
 
 # 设备节点与 Anland socket 的容器侧准备；构建阶段只安装 unit，不创建设备节点。
 RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
@@ -526,7 +524,7 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
 RUN rm -f \
         /usr/local/sbin/configure-chrome \
         /usr/local/sbin/configure-mark-shot \
-        /usr/local/sbin/configure-mb-tray \
+        \
         /usr/local/sbin/configure-desktop \
         /usr/local/sbin/install-desktop \
         /usr/local/sbin/install-anland-desktop \

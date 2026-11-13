@@ -1,14 +1,14 @@
 config_version = 16
 
 [bar.default]
-center = [ "workspaces", "taskbar", "gpu" ]
+center = [ "workspaces", "taskbar" ]
 end = [
     "media",
     "tray",
+    "status",
     "wallpaper",
     "notifications",
     "clipboard",
-    "network",
     "bluetooth",
     "volume",
     "brightness",
@@ -60,6 +60,9 @@ widget_order = [ "lockscreen-login-box@anland-0" ]
         show_unlock_hint = true
         show_weather = true
 
+[plugins]
+enabled = [ "collegeming/mali-gpu" ]
+
 [theme]
 builtin = "Catppuccin"
 
@@ -80,6 +83,9 @@ title_scroll = "on_hover"
 [widget.network]
 show_vpn_label = true
 
+[widget.status]
+type = "collegeming/mali-gpu:status"
+
 [widget.taskbar]
 only_active_workspace = true
 
@@ -88,9 +94,3 @@ show_label = false
 
 [widget.workspaces]
 labels_only_when_occupied = true
-
-[plugins]
-enabled = [ "collegeming/mali-gpu" ]
-
-[widget.gpu]
-type = "collegeming/mali-gpu:status"

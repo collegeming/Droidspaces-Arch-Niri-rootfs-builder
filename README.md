@@ -26,7 +26,7 @@ Fedora-kde-Wayland-Droidspaces-rootfs-aarch64-<build_id>.tar.xz
 | --- | --- | --- |
 | 基础系统 | Arch Linux ARM64，用户 `colle`（uid 1000），中文 locale + 上海时区 | Fedora 45 ARM64，同一用户/locale/时区 |
 | 桌面 | niri-anland（Touch seat / Smithay AFBC 补丁）、Noctalia、desktop-session | Plasma 6.8.1（`startplasma-wayland`）、Anland patched KWin 6.8.1、desktop-session |
-| GPU | Mali 栈 bundle：kopper/dt-retire Mesa、format/hook2 ICD、wl-gone shim、`libgbm` 垫片、`libdrmfake`、zc-run、mbctl、mb-tray | 同一 bundle；KDE 使用发行版 Mesa（zink）+ format ICD + `libgbm` 垫片 |
+| GPU | Mali 栈 bundle：kopper/dt-retire Mesa、format/hook2 ICD、wl-gone shim、`libgbm` 垫片、`libdrmfake`、zc-run、mbctl | 同一 bundle；KDE 使用发行版 Mesa（zink）+ format ICD + `libgbm` 垫片 |
 | 输入法 | fcitx5 + Rime（rime-ice），`Shift_L` 切中英文 | fcitx5 + 中文输入（`fcitx5-chinese-addons`） |
 | 应用与工具 | kitty、nemo、neovim、fish、mark-shot-arch-bin、Chrome | Konsole、Dolphin、Kate、Spectacle 等 Plasma 应用 |
 | 运行时配置 | niri 输出块与 F1/F3 绑定、Noctalia 包装、WebKit/Gecko 沙箱开关、pacman 钩子 | KWin 合成配置、`KWIN_RENDER_NODES`、KDE 会话 GPU 环境、dnf 的 kwin 版本排除 |
@@ -147,7 +147,7 @@ flowchart LR
 **改造**：
 
 - `apply-preferences.sh` 写入 IM 环境、配置 fcitx5 profile 只保留 Rime、设置 `Shift_L`/`Shift_R` 行为，生成 Rime `build/default.yaml`，避免 Rime 静默不加载。
-- 桌面外观：GTK 暗色、tide Rainbow、mb-tray 中文。
+- 桌面外观：GTK 暗色、tide Rainbow。
 - 镜像源：ALARM 的 mirrorlist 改为阿里云优先、官方兜底，TUNA 注释；避免 stale DB 让 `pacman -S` 把已安装的新版本降级。
 - archlinuxcn：用于 paru、rime-ice-git 等 ALARM 官方源没有的包；首次引导 keyring 后恢复签名校验。
 
@@ -159,7 +159,6 @@ flowchart LR
 | --- | --- | --- |
 | `configure-chrome.sh` | 安装原生 ARM64 Google Chrome，生成启动包装 | Chrome |
 | `configure-mark-shot.sh` | 安装 AUR `mark-shot-arch-bin`，校验 aarch64 产物、依赖与 layer-shell 插件 | 截图/贴图 |
-| `configure-mb-tray.sh` | 从 vendored 源码构建本地化 mb-tray，修正托盘图标内边距 | GPU 预算托盘 |
 | `fix-chrome-sandbox.sh` + `90-chrome-sandbox.hook` | 安装/升级后把 `chrome-sandbox` 修正为 4755 | Electron/Chromium |
 | `xring-wrap-desktop`（来自 xring kit） | 包装 Web 引擎桌面条目 | 启动器 |
 | `niri-default-config.kdl` | 输出、截图路径、Print 与 F1/F3 绑定 | niri 会话 |
@@ -186,9 +185,10 @@ flowchart LR
 
 **改造**：
 
-- 插件源码在 xring 仓库 `src/noctalia-mali-gpu/`（与 `mbctl`/`mb-tray` 同层），镜像构建时从固定 commit 的 xring kit 复制到 `/usr/local/share/droidspaces/noctalia-plugins/mali-gpu`，再由 `apply-preferences.sh` 安装到 `~/.local/share/noctalia/plugins/mali-gpu`。
+- 插件源码在 xring 仓库 `src/noctalia-mali-gpu/`（与 `mbctl` 同层），镜像构建时从固定 commit 的 xring kit 复制到 `/usr/local/share/droidspaces/noctalia-plugins/mali-gpu`，再由 `apply-preferences.sh` 安装到 `~/.local/share/noctalia/plugins/mali-gpu`。
 - 顶栏显示 `GPU <频率>M <温度>°`；悬浮显示型号、频率区间、温度、MaliBridge 预算/占用、每应用 FPS（`malibridge-report.json` 的 `fps_p50`）。
 - 不伪造“GPU 占用率”：数据源没有可信的 busy 计数，只展示频率、温度、显存和 FPS。
+- 点击图标打开预算面板，复刻原 mb-tray 的预算预设、立即应用、应用并保存、打开报告/日志；`mb-tray` 已从镜像移除，源码只在 xring 仓库保留作历史参考。
 
 **适用场景**：日常观察 GPU 频率/温度/桥接显存；定位 MaliBridge 内存预算与应用 FPS。
 
@@ -205,7 +205,6 @@ flowchart LR
 | `scripts/tui/install-anland-kde.sh` | 下载/安装 patched KWin；`fedora:45` 资产映射与 dnf 锁定 | 3.7 |
 | `scripts/configure-chrome.sh` | Chrome 安装与包装 | 3.6 |
 | `scripts/configure-mark-shot.sh` | mark-shot-arch-bin 安装 | 3.6 |
-| `scripts/configure-mb-tray.sh` | mb-tray 本地化构建 | 3.6 |
 | `scripts/fix-chrome-sandbox.sh` | sandbox helper 权限修正 | 3.4 |
 | `scripts/etc/pacman.d/hooks/90-chrome-sandbox.hook` | 安装/升级触发修正 | 3.4 |
 | `scripts/etc/niri-default-config.kdl` | niri 默认配置与快捷键 | 3.1、3.6 |
