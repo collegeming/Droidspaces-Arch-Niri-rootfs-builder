@@ -162,26 +162,14 @@ configure_niri_tray_autostart() {
     for target in "${targets[@]}"; do
         if [[ ! -e "$target" ]]; then
             if [[ -z "$default_config" ]]; then
-                echo "--> [跳过] 未找到 niri 默认配置，无法写入 mb-tray 自启动：$target" >&2
+                echo "--> [跳过] 未找到 niri 默认配置，无法写入 Noctalia 自启动：$target" >&2
                 continue
             fi
             install -D -m 0644 "$default_config" "$target"
         fi
         if [[ ! -f "$target" ]]; then
-            echo "--> [跳过] niri 配置不是普通文件，未写入 mb-tray 自启动：$target" >&2
+            echo "--> [跳过] niri 配置不是普通文件，未写入 Noctalia 自启动：$target" >&2
             continue
-        fi
-        if grep -q 'droidspaces: mb-tray autostart' "$target"; then
-            :
-        else
-            # spawn-sh 在二进制缺失时只让这条启动命令返回非零，niri 会话继续运行。
-            {
-                printf '\n'
-                printf '%s\n' '// >>> droidspaces: mb-tray autostart (no-op without the Mali stack)'
-                printf '%s\n' 'spawn-sh-at-startup "[ -x /usr/local/bin/mb-tray ] && exec /usr/local/bin/mb-tray"'
-                printf '%s\n' '// <<< droidspaces: mb-tray autostart'
-            } >> "$target"
-            echo "--> 已写入 mb-tray 自启动：$target"
         fi
         if ! grep -q 'droidspaces: Noctalia shell autostart' "$target"; then
             # Noctalia 由 Mali stack 安装的 noctalia-dt 包装器启动；缺少 wrapper 时
