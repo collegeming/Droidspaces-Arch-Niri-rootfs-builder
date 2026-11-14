@@ -708,14 +708,15 @@ step_pacman_mirrors() {
         case "$(uname -m)" in
             aarch64 | arm64)
                 install_content /etc/pacman.d/mirrorlist 0644 <<'EOF' || return 1
-## Droidspaces preferences: 阿里云优先，官方兜底（Arch Linux ARM）
-## 清华 TUNA 的 ALARM 仓库经常滞后数天。若放第一顺位，pacman -Sy 会拿到比
-## 已安装包更旧的数据库，安装依赖时会试图降级并破坏 "=版本" 依赖
-## （2026-11-12 的 gstreamer 1.28.9 -> 1.28.8 冲突即由此而来）。
+## Droidspaces preferences: 国内 ALARM 镜像（2026-11-14 实测）
+## core.db Last-Modified 均为 2026-11-12 01:25:12Z，此前担心的清华
+## 滞后问题当前不存在。extra.db 实测：USTC ≈5.9MB/s、BFSU ≈5.8MB/s、
+## TUNA ≈5.6MB/s，阿里云在部分网络下超时/仅 77KB/s。
+## USTC 优先，TUNA/BFSU 备用，阿里云最后兜底。
+Server = https://mirrors.ustc.edu.cn/archlinuxarm/$arch/$repo
+Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm/$arch/$repo
+Server = https://mirrors.bfsu.edu.cn/archlinuxarm/$arch/$repo
 Server = https://mirrors.aliyun.com/archlinuxarm/$arch/$repo
-# 官方 ALARM 源兜底：镜像同步滞后或 404 时仍能安装
-Server = https://mirror.archlinuxarm.org/$arch/$repo
-# Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm/$arch/$repo
 EOF
                 ;;
             *)
@@ -741,8 +742,8 @@ EOF
             {
                 printf '\n[archlinuxcn]\n'
                 printf 'SigLevel = Never\n'
-                printf 'Server = https://mirrors.ustc.edu.cn/archlinuxcn/$arch\n'
                 printf 'Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/$arch\n'
+                printf 'Server = https://mirrors.ustc.edu.cn/archlinuxcn/$arch\n'
                 printf 'Server = https://repo.archlinuxcn.org/$arch\n'
             } >>"$ROOT/etc/pacman.conf"
             pacman-key --init >/dev/null 2>&1 || warn "pacman-key --init 失败"
