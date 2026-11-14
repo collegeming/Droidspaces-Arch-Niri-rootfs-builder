@@ -164,7 +164,7 @@ tail -5 /opt/mb-sock/server.log | grep 'mem:'
 1. niri 自动 spawn `xwayland-satellite-soft` 的 GPU 路径已于 2026-11-15 r102 会话复验：satellite 启动后 Xwayland `:2`/`:3` 的 `glxinfo -B` 为 zink Vulkan Mali、`Accelerated: yes`。
 2. Arch 镜像未预装 `webkitgtk-6.0`；`zc-run` 对未知 Tauri 应用需强制 `class=webkit`。
 3. Fedora WebKit 仍被 `WEBKIT_DISABLE_DMABUF_RENDERER=1` 强制 SHM；应改为 `0` + `WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/card0` + `DISABLE_GBM=1`。
-4. `vkbridge-server` 预算拒绝路径空指针、supervisor 不自动重启、per-client 2 GB 偏小；在修好前不要跑 WebKit 动画压力测试。
+4. 预算拒绝路径空指针已由 null-guard 候选修复并隔离验证：`vkBindBufferMemory`/`BindBufferMemory2`/`BindImageMemory`/`BindImageMemory2` 四条路径对 null handle 返回 `VK_ERROR_OUT_OF_DEVICE_MEMORY`，旧版同场景在 `libGLES_mali.so` SIGSEGV；live 已部署 `16c464ef…`，supervisor 自动重启已实现，预算 6144/3072 MB。仍不建议在 live 跑整屏 WebKit 动画压力测试（带宽与预算）。
 5. L-C（合成器→Android scanout）未做 fence/trace 取证；不要把 L-B 说成全链路零拷贝。
 6. 已发布的 r102 镜像内 `xwayland-satellite-soft` 仍是旧探测版，首次启动会黑屏；live rootfs 已打补丁（`usr/local/bin/xwayland-satellite-soft.bak-r102` 为旧版备份），重建/重装镜像时必须确认第 4.7 节修复已包含。
 
