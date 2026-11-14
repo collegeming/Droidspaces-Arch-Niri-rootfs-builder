@@ -26,10 +26,10 @@ configure_environment() {
         )
     fi
 
-    # Qt Quick 应用默认走 Vulkan RHI → MaliBridge（dmabuf），这是当前容器里
-    # 已验证的客户端 GPU/零拷贝路径；KWin 与 plasmashell 由各自的 systemd
+    # Qt Quick / GTK4 应用默认走 Vulkan → MaliBridge（dmabuf），这是当前容器
+    # 里已验证的客户端 GPU/零拷贝路径；KWin 与 plasmashell 由各自的 systemd
     # drop-in 覆盖为 opengl/software，避免影响合成器与桌面壳。
-    assignments+=(QSG_RHI_BACKEND=vulkan)
+    assignments+=(QSG_RHI_BACKEND=vulkan GSK_RENDERER=vulkan)
 
     case "$backend" in
         anland-wayland)
