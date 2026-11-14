@@ -37,8 +37,12 @@ configure_environment() {
             # backend 直接连它。KWIN_RENDER_NODES / ANLAND_DRM_DEVICE 指向容器
             # 唯一的 DRM 节点（设备没有 renderD）。GPU 细节（zink/ICD/shim）由
             # kde-session-env.sh 负责，这里只写桌面会话本身的变量。
+            #
+            # 不要写 WAYLAND_DISPLAY：KWin 6.8 的 kwin_wayland_wrapper 固定从
+            # wayland-1 开始给客户端开 socket，并通过 KUpdateLaunchEnvironmentJob
+            # 更新 systemd user 环境；/etc/environment 里硬编码 wayland-0 会让
+            # root shell / droidspaces run 启动的客户端连到 Anland 而不是 KWin。
             assignments+=(
-                WAYLAND_DISPLAY=wayland-0
                 QT_QPA_PLATFORM=wayland
                 ANLAND=1
                 ANLAND_SOCKET=/run/display.sock
