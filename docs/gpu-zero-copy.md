@@ -186,6 +186,13 @@ Anland 音频是独立于 GPU 的链路，不能用 GPU/桥接状态推断：
   杀掉该 utility 后重新播放会重建音频服务（不要杀浏览器主进程）。
 - Chrome wrapper 在启动前最多等 10 s 等默认 sink 出现，并固定 `PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native`，避免浏览器在 Anland 音频引擎就绪前启动后永久缓存“无输出设备”。
 - 不要设置 `ANLAND_DISABLE_AUDIO=1`；它会让 Anland remote speaker/microphone 消失，只剩 `auto_null`。
+- Android 侧 `STREAM_MUSIC` 的 speaker 档位上限现场实测为 **75**（`settings put system volume_music_speaker 100` 会被 AudioService clamp 到 75，对应 AudioFlinger track 约 -20 dB）。若流在跑但几乎听不到，先确认 `dumpsys audio` 的 `Current: 2 (speaker)` 不是 58 这类低档位；可执行：
+  ```sh
+  adb shell settings put system volume_music_speaker 100
+  adb shell settings put system volume_music 100
+  ```
+  等 1–2 秒后 `dumpsys audio` 应显示 speaker:75。`cmd media_session volume --set` 在该设备上可能只打印成功但不改变实际档位。
+- Anland consumer 用 `setVolumeControlStream(STREAM_MUSIC)`；只有 Anland 窗口持有焦点时音量键才稳定调整媒体流。窗口失焦时按音量键可能调的是别的流，不要据此判断“没声音”。
 
 ## 10. Chrome 的 `Vulkan: Disabled` 是预期值
 
