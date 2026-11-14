@@ -204,3 +204,10 @@ Anland 音频是独立于 GPU 的链路，不能用 GPU/桥接状态推断：
 - zc-run 给 Chromium/Electron 选择的是 **ANGLE OpenGL over 系统 Mesa zink**；zink 内部通过 Vulkan 调 MaliBridge，GPU0 显示 `ANGLE (Mesa, zink Vulkan 1.4(Mali-...))`。
 - 真正的验收字段是 `gpu_compositing=enabled`（Compositing: Hardware accelerated）与 `create_immed` 窗口缓冲。
 - Chrome 的原生 Vulkan 后端在 Ozone Wayland 下不兼容（`wayland_surface_factory.cc` 明确拒绝），`--enable-features=Vulkan` 只会触发 surface 创建失败并回退，不要用它来“点亮”该字段。
+
+## 11. 设备部署状态（2026-11-15，r103）
+
+- `Arch-Niri`：r103 rootfs（release `v20261114-182905-r103`，SHA-256 `a93ea892…`），wrapper `1a205d7f…`，panel `92199f45…`；冷启动验证 niri `anland-0 3408x2272@120`、Noctalia、Xwayland `:0` zink Mali、音频 `anland-speaker`。
+- `Arch-Niri-Backup0`：由 r102 运行期 rootfs 整体迁移而来（含 wrapper 修复），配置名/路径/IP/UUID 已改写；用于回滚，不随 Arch 一起启动。
+- bridge：`Arch-Niri/host/start-bridge.sh` 默认优先使用脚本同目录的 `host.env`；`/data/local/tmp/xring-o3-host/host.env` 已改名 `.bak-20261115`，防止再启动第二个指向错误 rootfs 的 server。
+- 安装归档在部署验证后删除；`Arch-Niri/rootfs.old-r101`（13 GB）与 `archniri` 旧目录仍是待清理候选，删除前确认不再需要。
