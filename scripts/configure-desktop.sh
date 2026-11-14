@@ -307,6 +307,56 @@ EOF
         chmod 0644 "$rootfs/home/$username/.config/kwinrc"
     fi
 
+    # Plasma 6.8 / KWin 6.8 的输出缩放持久化在 kwinoutputconfig.json，而不是
+    # KScreen 5 的 ~/.local/share/kscreen。把系统级默认值写进 /etc/xdg，KWin
+    # 首次启动（用户文件尚不存在）会读取它；匹配到 anland-1 后按 200% 应用，
+    # 再把同样的配置写回 ~/.config/kwinoutputconfig.json。
+    # connectorName 由 Anland KWin backend 固定为 "anland-1"（anland_backend.cpp）；
+    # 若后续版本改名，可用 KDE_OUTPUT_CONNECTOR 覆盖。
+    kde_scale="${OUTPUT_SCALE:-2}"
+    case "$kde_scale" in
+        1|1.5|2|2.5) ;;
+        *)
+            echo "无效的 KDE 输出缩放：$kde_scale（只支持 1、1.5、2、2.5）" >&2
+            exit 1
+            ;;
+    esac
+    kde_connector="${KDE_OUTPUT_CONNECTOR:-anland-1}"
+    install -d -m 0755 "$rootfs/etc/xdg"
+    cat > "$rootfs/etc/xdg/kwinoutputconfig.json" <<EOF
+[
+  {
+    "name": "outputs",
+    "data": [
+      {
+        "connectorName": "$kde_connector",
+        "scale": $kde_scale
+      }
+    ]
+  },
+  {
+    "name": "setups",
+    "data": [
+      {
+        "lidClosed": false,
+        "outputs": [
+          {
+            "enabled": true,
+            "outputIndex": 0,
+            "priority": 1,
+            "position": { "x": 0, "y": 0 }
+          }
+        ]
+      }
+    ]
+  }
+]
+EOF
+    chmod 0644 "$rootfs/etc/xdg/kwinoutputconfig.json"
+    # 用户级配置优先于 /etc/xdg；构建时清掉可能遮蔽默认值的旧文件。
+    rm -f "$rootfs/home/$username/.config/kwinoutputconfig.json" \
+          "$rootfs/etc/skel/.config/kwinoutputconfig.json"
+
     # KWin 自己保留 zink（surfaceless EGL + MaliBridge）；客户端会话不能再带
     # GALLIUM_DRIVER=zink，否则 Mesa 在无 renderD 的容器里会走 swrast 平台，
     # zink 无法写回 wl_shm（缺 VK_EXT_external_memory_host），kitty/es2gears
