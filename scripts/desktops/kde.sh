@@ -97,6 +97,7 @@ install_fedora() {
         xdg-terminal-exec wl-clipboard kdotool \
         fcitx5 fcitx5-qt fcitx5-gtk fcitx5-rime fcitx5-configtool \
         librime-lua librime-octagram librime-predict librime-tools \
+        chromium webkit2gtk4.1 webkitgtk6.0 \
         unzip fontconfig
 }
 

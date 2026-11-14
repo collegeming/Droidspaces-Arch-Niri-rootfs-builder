@@ -157,6 +157,88 @@ install_asset fastfetch/config-fedora.jsonc "$home_rel/.config/fastfetch/config.
 install_asset fastfetch/ff-shell-stack /usr/local/bin/ff-shell-stack 0755
 install_asset fastfetch/ff-sdks /usr/local/bin/ff-sdks 0755
 
+# ---------------------------------------------------------------- browsers / WebView
+# Chromium：Fedora 自带 aarch64 包；容器禁用 userns，必须 --no-sandbox。
+# Wayland + Vulkan 参数已在 chrome://gpu 验证：硬件光栅化 + ANGLE/zink，页面可见。
+install -d -m 0755 "$rootfs/usr/local/bin" "$rootfs/usr/local/share/applications"
+cat > "$rootfs/usr/local/bin/chromium" <<'EOF'
+#!/bin/sh
+exec /usr/sbin/chromium-browser \
+    --no-sandbox \
+    --ozone-platform=wayland \
+    --use-vulkan \
+    --enable-features=Vulkan \
+    --disable-dev-shm-usage \
+    "$@"
+EOF
+chmod 0755 "$rootfs/usr/local/bin/chromium"
+cat > "$rootfs/usr/local/share/applications/chromium-browser.desktop" <<'EOF'
+[Desktop Entry]
+Name=Chromium Web Browser
+Comment=Access the Internet
+Exec=/usr/local/bin/chromium %U
+Icon=chromium-browser
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+EOF
+chmod 0644 "$rootfs/usr/local/share/applications/chromium-browser.desktop"
+
+# Zen Browser：上游提供 aarch64 tar.xz；固定版本与 SHA 校验。
+ZEN_VERSION=1.24.2b
+ZEN_URL="https://github.com/zen-browser/desktop/releases/download/${ZEN_VERSION}/zen.linux-aarch64.tar.xz"
+ZEN_SHA256=8591434fcf498a836a32bc7314eb89fbdc4bdc8f03a2d735774b1ae69b6b21d5
+if [[ ! -x "$rootfs/opt/zen/zen" ]]; then
+    zen_tmp="$(mktemp -d /tmp/zen-browser.XXXXXX)"
+    zen_pkg="$zen_tmp/zen.linux-aarch64.tar.xz"
+    zen_ok=false
+    for candidate in "$ZEN_URL" "${GH_MIRROR_PREFIX%/}/$ZEN_URL"; do
+        if curl -fL --retry 2 --retry-delay 2 --max-time 300 -o "$zen_pkg" "$candidate" && \
+            printf '%s  %s\n' "$ZEN_SHA256" "$zen_pkg" | sha256sum -c - >/dev/null 2>&1; then
+            zen_ok=true
+            break
+        fi
+    done
+    if [[ "$zen_ok" == true ]]; then
+        install -d -m 0755 "$rootfs/opt"
+        tar -xJf "$zen_pkg" -C "$rootfs/opt"
+        log "已安装 Zen Browser ${ZEN_VERSION}"
+    else
+        warn "Zen Browser 下载失败（$ZEN_URL），跳过"
+    fi
+    rm -rf "$zen_tmp"
+fi
+if [[ -x "$rootfs/opt/zen/zen" ]]; then
+    cat > "$rootfs/usr/local/bin/zen" <<'EOF'
+#!/bin/sh
+export MOZ_ENABLE_WAYLAND=1
+exec /opt/zen/zen "$@"
+EOF
+    chmod 0755 "$rootfs/usr/local/bin/zen"
+    cat > "$rootfs/usr/local/share/applications/zen-browser.desktop" <<'EOF'
+[Desktop Entry]
+Name=Zen Browser
+Comment=Browse the web with Zen
+Exec=/usr/local/bin/zen %u
+Icon=web-browser
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+EOF
+    chmod 0644 "$rootfs/usr/local/share/applications/zen-browser.desktop"
+fi
+
+# WebKitGTK/Tauri：容器没有可用 GBM/renderD，WebKit 的 DMA-BUF renderer 在
+# GSK Vulkan 下会让 WebProcess 崩溃；关闭 DMA-BUF，保留沙箱禁用变量。
+install -d -m 0755 "$rootfs/etc/environment.d"
+cat > "$rootfs/etc/environment.d/99-fedora-webview.conf" <<'EOF'
+WEBKIT_DISABLE_DMABUF_RENDERER=1
+WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+EOF
+chmod 0644 "$rootfs/etc/environment.d/99-fedora-webview.conf"
+
 # ---------------------------------------------------------------- fcitx5 / GTK / fontconfig
 install_asset fcitx5/config "$home_rel/.config/fcitx5/config"
 install_asset fcitx5/profile "$home_rel/.config/fcitx5/profile"
