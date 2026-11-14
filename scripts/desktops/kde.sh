@@ -15,14 +15,12 @@ configure_environment() {
     local -a assignments=(XCURSOR_SIZE=48 XDG_SESSION_CLASS=user)
 
     # KDE 的 fcitx5 由 KWin 作为 Wayland 输入法进程启动（见 configure-desktop
-    # 写入的 [Wayland] InputMethod）。Qt/GTK 客户端仍通过 immodule 接入 fcitx5，
-    # 这里给整个会话补齐前端变量；Wayland 原生 text-input 客户端（kitty/foot）
-    # 由 KWin 的 input-method-v1 通道处理，不依赖这些变量。
+    # 写入的 [Wayland] InputMethod）。Qt/GTK 的 Wayland 原生 text-input-v3 由
+    # KWin 直接转给 fcitx5，不能设置 QT_IM_MODULE/GTK_IM_MODULE，否则会绕过
+    # Wayland 原生前端并触发 fcitx5 的“Wayland 诊断”提示。只保留 XWayland
+    # 兼容的 XMODIFIERS/INPUT_METHOD。
     if [[ -x "${ROOTFS_DIR:-}/usr/bin/fcitx5" ]]; then
         assignments+=(
-            QT_IM_MODULE=fcitx
-            GTK_IM_MODULE=fcitx
-            SDL_IM_MODULE=fcitx
             XMODIFIERS=@im=fcitx
             INPUT_METHOD=fcitx
         )

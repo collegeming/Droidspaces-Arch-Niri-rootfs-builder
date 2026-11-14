@@ -128,6 +128,22 @@ sed "s/@FONT_SIZE@/$FONT_SIZE/" "$assets/kitty/kitty.conf" \
 install -m 0644 "$rootfs$home_rel/.config/kitty/kitty.conf.tmp" \
     "$rootfs$home_rel/.config/kitty/kitty.conf"
 rm -f "$rootfs$home_rel/.config/kitty/kitty.conf.tmp"
+# Fedora/KDE 使用 KWin 的服务端窗口装饰（关闭/最大化/最小化按钮），
+# 关闭 kitty 自己绘制的内部标题栏；同时把默认窗口放大到 140x38 单元格。
+# Arch+niri 仍保留原来的无按钮紧凑样式，不做这两项覆盖。
+kitty_conf="$rootfs$home_rel/.config/kitty/kitty.conf"
+sed -i \
+    -e 's/^hide_window_decorations yes$/hide_window_decorations no/' \
+    -e 's/^window_title_bar_min_windows 1$/window_title_bar_min_windows 0/' \
+    -e '/^initial_window_width /d' \
+    -e '/^initial_window_height /d' \
+    "$kitty_conf"
+cat >> "$kitty_conf" <<'EOF'
+
+# Fedora KDE: KWin server-side decorations + larger default window
+initial_window_width 140c
+initial_window_height 38c
+EOF
 install_asset kitty/themes/frappe.conf "$home_rel/.config/kitty/themes/frappe.conf"
 install_asset foot/foot.ini "$home_rel/.config/foot/foot.ini"
 install_asset xdg-terminal-exec/terminal-exec "$home_rel/.config/xdg-terminal-exec/xdg-terminals.list"
@@ -152,17 +168,22 @@ install_asset gtk-4.0/settings.ini "$home_rel/.config/gtk-4.0/settings.ini"
 install_asset gtk-4.0/gtk.css "$home_rel/.config/gtk-4.0/gtk.css"
 install_asset environment.d/gtk.conf "$home_rel/.config/environment.d/gtk.conf"
 
-# Qt/GTK 客户端通过 immodule 接入 fcitx5；KWin 的 Wayland input-method 通道
-# 负责 kitty/foot 这类 text-input 客户端。两者都需要会话级变量。
+# 只保留 XWayland 兼容变量，不设置 QT_IM_MODULE/GTK_IM_MODULE：
+# KDE Wayland 下 Qt/GTK 应使用 KWin 的 text-input-v3，再由 KWin 的
+# input-method-v1 转给 fcitx5；设置 immodule 会绕过 Wayland 原生前端，
+# fcitx5 会弹出“Wayland 诊断”提示，并且不同应用的输入状态不一致。
 install -d -m 0755 "$rootfs$home_rel/.config/environment.d"
 cat > "$rootfs$home_rel/.config/environment.d/99-ime.conf" <<'EOF'
-QT_IM_MODULE=fcitx
-GTK_IM_MODULE=fcitx
-SDL_IM_MODULE=fcitx
 XMODIFIERS=@im=fcitx
 INPUT_METHOD=fcitx
 EOF
 chmod 0644 "$rootfs$home_rel/.config/environment.d/99-ime.conf"
+
+# fcitx5 Classic UI 主题：classicui.conf 引用 catppuccin-mocha-mauve，
+# 但 Fedora 包只带 default/default-dark；不装主题会退化成默认样式。
+install -d -m 0755 "$rootfs/usr/share/fcitx5/themes"
+cp -a "$assets/fcitx5/themes/catppuccin-mocha-mauve" "$rootfs/usr/share/fcitx5/themes/"
+chmod -R a+rX "$rootfs/usr/share/fcitx5/themes/catppuccin-mocha-mauve"
 
 # 旧的 fcitx5 autostart（包括被改名成 .disabled 的文件）必须清掉：
 # KWin 启动的实例才是 Wayland 输入法，额外的 systemd autostart 会抢总线名。
