@@ -224,6 +224,7 @@ RUN : > /etc/environment
 # fcitx5，并通过私有 WAYLAND_SOCKET 暴露 input-method-v1；再启动一个
 # systemd autostart 实例会争抢 org.fcitx.Fcitx5 总线名并导致原生输入法失效。
 RUN <<'EOF_RUN'
+set -e
 echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
 OUTPUT_SCALE="${OUTPUT_SCALE:-2}" OUTPUT_MODE="${OUTPUT_MODE:-native}" \
     /usr/local/sbin/configure-desktop "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME"

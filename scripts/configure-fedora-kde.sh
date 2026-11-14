@@ -29,8 +29,8 @@ FONT_SIZE="${PREFERENCES_FONT_SIZE:-12.0}"
 MAPLE_URL="https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF-CN.zip"
 RIME_REPO="https://github.com/iDvel/rime-ice"
 
-log() { printf '--> [fedora-kde] %s\n' "$*"; }
-warn() { printf '--> [fedora-kde][warn] %s\n' "$*" >&2; }
+log() { printf '%s\n' "--> [fedora-kde] $*"; }
+warn() { printf '%s\n' "--> [fedora-kde][warn] $*" >&2; }
 
 install_asset() {
     local rel="$1" dest="$2" mode="${3:-0644}"
