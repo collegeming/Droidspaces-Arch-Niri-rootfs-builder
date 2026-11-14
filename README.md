@@ -9,6 +9,8 @@
 
 两条路径共用同一套 MaliBridge GPU 栈（Mesa + `libvulkan_droidbridge` ICD + `libgbm` 垫片）、xring-o3 设备档案和 desktop-session 编排。
 
+> **GPU / 零拷贝基线（必读）**：niri/KWin 合成器走 zink→MaliBridge；Chrome、Electron、WebKit/Tauri、Zen、Qt/GTK4 的 dmabuf 零拷贝与通用启用方式见 [`docs/gpu-zero-copy.md`](docs/gpu-zero-copy.md)。修改会话环境、`zc-run`、应用 wrapper、Mali 栈或 systemd 会话单元前，先读该文档并复跑验收命令；第 7 节“已知边界”中的旧结论以第 8 节为准。
+
 本仓库 fork 自 [Goldzxcbug/Droidspaces-rootfs-Desktop-builder](https://github.com/Goldzxcbug/Droidspaces-rootfs-Desktop-builder)，默认分支 **`xring-o3-mali`**，在保留通用多发行版构建的同时增加 `xring-o3` 设备档案。宿主脚本、KSU 模块、Mali 栈 bundle 与补丁在配套仓库 [collegeming/xring-o3-droidspaces-package](https://github.com/collegeming/xring-o3-droidspaces-package)。
 
 ## 1. 目标与产物
@@ -174,7 +176,7 @@ flowchart LR
 - **KWin 渲染设备**：`kde-session-env.sh` 设置 `KWIN_RENDER_NODES=/dev/dri/card0` 与 `ANLAND_DRM_DEVICE=/dev/dri/card0`。KWin 6.8 的 `GpuManager` 支持显式 `KWIN_RENDER_NODES`，绕过“只枚举 render node”的限制。
 - **GPU 栈选择**：KDE 使用 Fedora 的 Mesa 26.2（zink）+ MaliBridge `droidbridge-format.json` + bundle 的 `libgbm` 垫片（强制 LINEAR）。`kde-session-env.sh` 只把 `current/lib` 放进 `LD_LIBRARY_PATH`，不引入 kopper，保证 `libgbm` 与 `libEGL_mesa` 来自同一份 Mesa。
 - **合成配置**：`configure-desktop.sh` 为 KDE 写 `kwinrc`：`Enabled=true`、`Backend=OpenGL`；旧的 `Enabled=false` 只适用于无 GPU 的 X11 容器。
-- **音频**：`ANLAND_DISABLE_AUDIO=1`，规避上游记录的 Anland 音频引擎忙循环；KDE 音频不在首轮验收范围。
+- **音频**：Anland 音频保持启用（`ANLAND_DISABLE_AUDIO` 已移除）；`anland-speaker`/`anland-microphone` 由 Anland 音频引擎创建。
 - **不安装 `kwin-x11`**：Fedora 45 仓库里它是 6.7.5 的社区包，与 6.8 的 Plasma 不同步；KDE 固定 `startplasma-wayland`。
 
 **适用场景**：Fedora 45 + KDE 镜像；KWin 包升级；排查 KDE 黑屏/软件渲染。
@@ -272,9 +274,9 @@ journalctl -b -u desktop-session | grep -i 'anland\|egl\|gl'
 
 ## 7. 已知边界
 
-1. **L2 零拷贝未验证**：`create_immed` 只覆盖应用/桥接侧窗口缓冲；合成器导入与直接 scanout 未取得证据。
-2. **dmabuf v3**：没有 v4 feedback/v5 严格校验；不影响零拷贝成立，影响 per-surface/设备偏好与布局优化。
-3. **Xwayland 仅软件渲染**：容器没有 `renderD`。
+1. **L-C scanout 未取证**：L-A/L-B 已实测（create_immed + dma-buf image）；合成器导入到 Android 的 fence/scanout trace 尚未做，不能把 L-B 说成全链路零拷贝。
+2. **dmabuf v3 是当前预期值**：容器无 EGL render node，niri 只能发 v3；v3 仍支持 `create_immed`，不阻断零拷贝。不要创建 `renderD128`（会导致 niri 重启循环）。
+3. **Xwayland 默认 GPU、可回退软件**：`xwayland-satellite-soft` 用 card0 + 发行版 Mesa + zink + format ICD 探测成功后走 GPU，失败才回退 llvmpipe；不要再无条件强制 llvmpipe。
 4. **容器无 userns**：Electron/Chromium 依赖 SUID helper；非 pacman 安装的应用可能需要手动修正 helper 或 `--no-sandbox`。
 5. **镜像源滞后**：Arch 的阿里云/官方优先仍可能出现“本地包比仓库新”的警告；安装依赖时确认不会触发降级。
 6. **Chrome WebGL 闪烁未定位**：已排除 ANGLE、syncobj、软件合成与 Chrome 版本差异；问题仍在跟踪。
@@ -282,11 +284,20 @@ journalctl -b -u desktop-session | grep -i 'anland\|egl\|gl'
 8. **Java2D Vulkan 回退**：宿主可用内存接近预算下限时，`vkCreateDevice` 可能返回 `VK_ERROR_OUT_OF_DEVICE_MEMORY`，JBR 回退路径存在低频崩溃风险。
 9. **临时 root**：设备重启后需重新 root、加载 LKM、启动容器与 bridge。
 10. **功耗不可排名**：设备充电时传感器数据不能用于整机功耗排名。
-11. **Fedora KDE 是新增路径**：patched KWin 来自本仓库 `anland-kde-packages` 固定滚动 Release，升级 KWin 必须重建镜像；`ANLAND_DISABLE_AUDIO=1`，KDE 音频未验收；`mark-shot`/Rime 等 Arch 专属偏好不随 Fedora 镜像提供。
+11. **Fedora KDE 是新增路径**：patched KWin 来自本仓库 `anland-kde-packages` 固定滚动 Release，升级 KWin 必须重建镜像；音频已启用并验证；`mark-shot`/Rime 等 Arch 专属偏好不随 Fedora 镜像提供；WebKit 目前仍被 `WEBKIT_DISABLE_DMABUF_RENDERER=1` 强制 SHM，需按 GPU 文档改为 0。
 12. **KWin 6.9 未适配**：Anland 后端目前只覆盖到 `ANLAND_KWIN_68`；Fedora 升级到 KWin 6.9 前要先更新 Anland producer。
 13. **Mission Center 信息不完整**：GPU 页只支持 Intel/AMD/NVIDIA（通过 nvtop），Mali 没有对应后端，所以看不到 GPU；网络页依赖 NetworkManager 的 D-Bus 对象，镜像没有安装 NM，因此没有网络项；容器内没有 `hwmon`，风扇/温度页也不出现。CPU、内存、磁盘、进程、服务页正常；驱动器列表来自宿主共享的 sysfs（sda–sdd），不代表容器自己的磁盘。
 
-## 8. 关联项目
+## 8. GPU / 零拷贝实现基线（必读，2026-11-15）
+
+完整方案、文件路径、历史根因与验收命令见 [`docs/gpu-zero-copy.md`](docs/gpu-zero-copy.md)。这里只列不得丢失的结论：
+
+- **通用启用**：Arch niri 会话由 `session-gpu-env.sh` 注入 kopper Mesa + zink + `droidbridge-format.json` + `VKBRIDGE_SOCKET`，niri spawn 的 Qt/GTK4/kitty/Noctalia 默认继承；Chrome/Electron/WebKit/Xwayland 由 `zc-run` 或专用 wrapper 切换到发行版 Mesa/垫片。
+- **应用矩阵**：Qt6/Qt5、GTK4、kitty `create_immed>0`/`pool=0`；Chromium `gpu_compositing=enabled` + 窗口 dmabuf；Electron 42 窗口尺寸 `create_immed`；WebKitGTK/Tauri 需 `libdrmfake` + `WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/card0` + `DISABLE_GBM=1`；Zen 需 `zc-run --class gecko` + user.js；Xwayland 用 GPU 优先 wrapper。
+- **硬规则**：不建 `renderD128`；`/etc/environment` 不写 `WAYLAND_DISPLAY`；Chromium/Electron/Xwayland 不用 kopper Mesa；不覆盖 `zc-run` 符号链接；不在 live 会话跑 WebKit 整屏动画（bridge per-client 2GB 预算会崩）。
+- **事故背景**：23:50 WebKit 动画测试打满 2GB 预算，`vkbridge-server` 在 `vkBindBufferMemory` 空指针 SIGSEGV，niri DEVICE_LOST 崩溃；bridge 未恢复时不要重启 desktop-session。
+
+## 9. 关联项目
 
 | 项目 | 关系 |
 | --- | --- |
