@@ -246,6 +246,21 @@ IPAddressDeny=
 EOF
 chmod 0644 "$rootfs/etc/systemd/system/upower.service.d/container.conf"
 
+# PipeWire 的 libpipewire-module-rt 会按 realtime portal 的返回值重写整个
+# 进程的 RLIMIT_RTTIME；本机 portal 报 0，于是任何 RT 线程一运行就收到
+# SIGKILL。niri 启动时会创建 PipeWire 客户端，实测 desktop-session 因此
+# 每隔几分钟以 9/KILL 退出并重启（Noctalia 也会被一起带走）。在客户端
+# 配置里禁用 module-rt 即可保留普通音频路径，同时不再改动 rlimit。
+install -d -m 0755 "$rootfs/etc/pipewire/client.conf.d"
+cat > "$rootfs/etc/pipewire/client.conf.d/99-no-rt.conf" <<'EOF'
+# RLIMIT_RTTIME must stay unlimited in this container: the realtime portal
+# reports rt.time = 0, and module-rt would then set the whole process to 0.
+context.properties = {
+    module.rt = false
+}
+EOF
+chmod 0644 "$rootfs/etc/pipewire/client.conf.d/99-no-rt.conf"
+
 # 桌面专属环境必须在 Dockerfile 完成 /etc/environment 后配置。
 if [[ "$desktop" != none ]]; then
     profile="$profile_dir/$desktop.sh"
