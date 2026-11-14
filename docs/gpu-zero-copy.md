@@ -164,3 +164,33 @@ tail -5 /opt/mb-sock/server.log | grep 'mem:'
 3. Fedora WebKit 仍被 `WEBKIT_DISABLE_DMABUF_RENDERER=1` 强制 SHM；应改为 `0` + `WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/card0` + `DISABLE_GBM=1`。
 4. `vkbridge-server` 预算拒绝路径空指针、supervisor 不自动重启、per-client 2 GB 偏小；在修好前不要跑 WebKit 动画压力测试。
 5. L-C（合成器→Android scanout）未做 fence/trace 取证；不要把 L-B 说成全链路零拷贝。
+
+## 9. 音频链路与常见“没声音”排查
+
+Anland 音频是独立于 GPU 的链路，不能用 GPU/桥接状态推断：
+
+- 默认 sink 必须是 `anland-speaker`，`wpctl`/`pactl` 显示 `Anland remote speaker`，vol 1.00；Android `STREAM_MUSIC` 不能为 0 或被 mute；Anland consumer 持有 audio focus。
+- 验证命令（容器内、会话用户）：
+  ```sh
+  export XDG_RUNTIME_DIR=/run/user/1000
+  pactl info | grep -E 'Default Sink|Server Name'
+  pactl list short sinks
+  pactl list short sink-inputs
+  paplay /usr/share/sounds/freedesktop/stereo/bell.oga; echo rc=$?
+  ```
+- Chrome 音频自检：用 WebAudio 页面或带 AAC 音轨的 MP4；播放时 `pactl list short sink-inputs` 应出现 `Google Chrome` 流，sink 为 `RUNNING`。2026-11-15 实测 WebAudio 与 MP4 AAC 均通过。
+- 如果浏览器视频画面在走但无 sink-input：先看视频是否**暂停**（播放键为三角形）、标签是否静音、站点播放器音量是否为 0；再看 Chrome 音频服务是否存活：
+  ```sh
+  pgrep -af 'utility-sub-type=audio.mojom.AudioService'
+  ```
+  杀掉该 utility 后重新播放会重建音频服务（不要杀浏览器主进程）。
+- Chrome wrapper 在启动前最多等 10 s 等默认 sink 出现，并固定 `PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native`，避免浏览器在 Anland 音频引擎就绪前启动后永久缓存“无输出设备”。
+- 不要设置 `ANLAND_DISABLE_AUDIO=1`；它会让 Anland remote speaker/microphone 消失，只剩 `auto_null`。
+
+## 10. Chrome 的 `Vulkan: Disabled` 是预期值
+
+`chrome://gpu` 的 `featureStatus.vulkan=disabled_off` 不代表没有 GPU：
+
+- zc-run 给 Chromium/Electron 选择的是 **ANGLE OpenGL over 系统 Mesa zink**；zink 内部通过 Vulkan 调 MaliBridge，GPU0 显示 `ANGLE (Mesa, zink Vulkan 1.4(Mali-...))`。
+- 真正的验收字段是 `gpu_compositing=enabled`（Compositing: Hardware accelerated）与 `create_immed` 窗口缓冲。
+- Chrome 的原生 Vulkan 后端在 Ozone Wayland 下不兼容（`wayland_surface_factory.cc` 明确拒绝），`--enable-features=Vulkan` 只会触发 surface 创建失败并回退，不要用它来“点亮”该字段。
