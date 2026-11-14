@@ -44,7 +44,6 @@ configure_environment() {
                 ANLAND_SOCKET=/run/display.sock
                 ANLAND_DRM_DEVICE=/dev/dri/card0
                 ANLAND_SKIP_IMPLICIT_SYNC_WAIT=1
-                ANLAND_DISABLE_AUDIO=1
                 KWIN_RENDER_NODES=/dev/dri/card0
                 XWAYLAND_GBM_DEVICE=/dev/dri/card0
                 XDG_SESSION_TYPE=wayland

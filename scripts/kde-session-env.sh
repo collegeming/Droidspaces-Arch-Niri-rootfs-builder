@@ -46,9 +46,12 @@ if [ -f "${xring_kde_stack}/lib/libgbm.so.1" ] && [ -f "$xring_kde_icd" ]; then
 fi
 
 export ANLAND_SKIP_IMPLICIT_SYNC_WAIT=1
-# Upstream notes a busy loop in the Anland audio engine on this platform; KDE
-# audio is not part of the first Fedora validation.
-export ANLAND_DISABLE_AUDIO="${ANLAND_DISABLE_AUDIO:-1}"
+# Anland audio must stay enabled: the remote speaker/microphone PipeWire
+# devices are created by the Anland audio engine. The previous validation
+# disabled it as ANLAND_DISABLE_AUDIO=1, which left Fedora with only the
+# auto_null virtual sink. Arch already ran without this variable and exposed
+# Anland remote speaker/microphone correctly.
+unset ANLAND_DISABLE_AUDIO
 export QT_QPA_PLATFORM=wayland
 export GDK_BACKEND=wayland
 export XDG_SESSION_TYPE=wayland
