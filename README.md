@@ -296,7 +296,8 @@ journalctl -b -u desktop-session | grep -i 'anland\|egl\|gl'
 - **应用矩阵**：Qt6/Qt5、GTK4、kitty `create_immed>0`/`pool=0`；Chromium `gpu_compositing=enabled` + 窗口 dmabuf；Electron 42 窗口尺寸 `create_immed`；WebKitGTK/Tauri 需 `libdrmfake` + `WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/card0` + `DISABLE_GBM=1`；Zen 需 `zc-run --class gecko` + user.js；Xwayland 用 GPU 优先 wrapper。
 - **2026-11-15 复测**：Qt6/kitty `immed=3/pool=0`；Electron 42 `immed=5/pool=2`（仅光标池）；WebKitGTK 静态页 `immed=8/pool=0`；Chrome `gpu_compositing=enabled`；Xwayland `glxinfo` zink Mali/Accelerated yes。裸 shell 启动 Qt/kitty 需显式导出会话 GPU env，niri spawn 的应用自动继承。
 - **硬规则**：不建 `renderD128`；`/etc/environment` 不写 `WAYLAND_DISPLAY`；Chromium/Electron/Xwayland 不用 kopper Mesa；不覆盖 `zc-run` 符号链接；不在 live 会话跑 WebKit 整屏动画（bridge per-client 2GB 预算会崩）。
-- **事故背景**：23:50 WebKit 动画测试打满 2GB 预算，`vkbridge-server` 在 `vkBindBufferMemory` 空指针 SIGSEGV，niri DEVICE_LOST 崩溃；bridge 未恢复时不要重启 desktop-session。
+- **Xwayland 启动探测**：`xwayland-satellite-soft` 对 `--test-listenfd-support` 必须直接透传，不得在该路径连接 Wayland（`wayland-info`）做探测；niri 启动早期会同步 `wait4` 等它退出，任何 Wayland 探测都会互锁，表现为黑屏、Noctalia 不启动。
+- **事故背景**：23:50 WebKit 动画测试打满 2GB 预算，`vkbridge-server` 在 `vkBindBufferMemory` 空指针 SIGSEGV，niri DEVICE_LOST 崩溃；bridge 未恢复时不要重启 desktop-session。null-guard 候选已隔离验证通过（4 条 bind 路径返回 `VK_ERROR_OUT_OF_DEVICE_MEMORY`，旧版同场景 SIGSEGV；live 已部署 `16c464ef…`）。
 
 ## 9. 关联项目
 
