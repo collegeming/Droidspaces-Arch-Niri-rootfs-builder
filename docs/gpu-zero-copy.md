@@ -163,7 +163,7 @@ tail -5 /opt/mb-sock/server.log | grep 'mem:'
 
 1. niri 自动 spawn `xwayland-satellite-soft` 的 GPU 路径已于 2026-11-15 r102 会话复验：satellite 启动后 Xwayland `:2`/`:3` 的 `glxinfo -B` 为 zink Vulkan Mali、`Accelerated: yes`。
 2. Arch 镜像未预装 `webkitgtk-6.0`；`zc-run` 对未知 Tauri 应用需强制 `class=webkit`。
-3. Fedora WebKit 仍被 `WEBKIT_DISABLE_DMABUF_RENDERER=1` 强制 SHM；应改为 `0` + `WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/card0` + `DISABLE_GBM=1`。
+3. Fedora WebKit：已安装 `epiphany 51.2` 与 `webkitgtk6.0-devel` 提供的 MiniBrowser；`/etc/environment.d/99-fedora-webview.conf` 仍是 `WEBKIT_DISABLE_DMABUF_RENDERER=1`，不要改成全局 `LD_PRELOAD`。应做单应用 wrapper（libdrmfake + 设备文件 + `DISABLE_GBM=1`）。
 4. 预算拒绝路径空指针已由 null-guard 候选修复并隔离验证：`vkBindBufferMemory`/`BindBufferMemory2`/`BindImageMemory`/`BindImageMemory2` 四条路径对 null handle 返回 `VK_ERROR_OUT_OF_DEVICE_MEMORY`，旧版同场景在 `libGLES_mali.so` SIGSEGV；live 已部署 `16c464ef…`，supervisor 自动重启已实现，预算 6144/3072 MB。仍不建议在 live 跑整屏 WebKit 动画压力测试（带宽与预算）。
 5. L-C（合成器→Android scanout）未做 fence/trace 取证；不要把 L-B 说成全链路零拷贝。
 6. 已发布的 r102 镜像内 `xwayland-satellite-soft` 仍是旧探测版，首次启动会黑屏；live rootfs 已打补丁（`usr/local/bin/xwayland-satellite-soft.bak-r102` 为旧版备份），重建/重装镜像时必须确认第 4.7 节修复已包含。
@@ -211,3 +211,19 @@ Anland 音频是独立于 GPU 的链路，不能用 GPU/桥接状态推断：
 - `Arch-Niri-Backup0`：由 r102 运行期 rootfs 整体迁移而来（含 wrapper 修复），配置名/路径/IP/UUID 已改写；用于回滚，不随 Arch 一起启动。
 - bridge：`Arch-Niri/host/start-bridge.sh` 默认优先使用脚本同目录的 `host.env`；`/data/local/tmp/xring-o3-host/host.env` 已改名 `.bak-20261115`，防止再启动第二个指向错误 rootfs 的 server。
 - 安装归档在部署验证后删除；`Arch-Niri/rootfs.old-r101`（13 GB）与 `archniri` 旧目录仍是待清理候选，删除前确认不再需要。
+
+## 12. Fedora WebKit 验证记录（2026-11-15）
+
+- 应用：Fedora rootfs 已安装 `epiphany-51.2` 与 `webkitgtk6.0-devel` 提供的 `/usr/libexec/webkitgtk-6.0/MiniBrowser`；未改 `/etc/environment.d/99-fedora-webview.conf`（仍为 `WEBKIT_DISABLE_DMABUF_RENDERER=1`）。
+- 架构建议：按应用 wrapper，而不是全局 `LD_PRELOAD`：
+  ```sh
+  export LD_PRELOAD=/opt/mali-stack/2026.11.12-v1/lib/libdrmfake.so
+  export WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/card0
+  export WEBKIT_DMABUF_RENDERER_DISABLE_GBM=1
+  export WEBKIT_DISABLE_DMABUF_RENDERER=0
+  export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+  exec /usr/bin/epiphany "$@"
+  ```
+- 隔离运行时验证未通过：`kwin_wayland --virtual` 能创建 `wayland-test` socket，但客户端只发出 `get_registry/sync`、收不到任何 global（KWin 主循环未服务客户端）；`sway` headless + `WLR_RENDERER=gles2` 报 `Failed to find any DRM render node`，即使 `LD_PRELOAD=libdrmfake.so` + `WLR_RENDER_DRM_DEVICE=/dev/dri/card0` 仍报 `card0 is not a DRM render node`。
+- 结论：Fedora WebKit 的 dmabuf 验收必须在正常 Fedora KDE/Anland 会话里跑 MiniBrowser/Epiphany；不要在无 renderD 的 headless 合成器上强测。届时用 `WAYLAND_DEBUG=1` 统计 `create_immed` 与 `wl_shm.create_pool`，并把 Fluent 窗口尺寸与池大小对照。
+- 对照：Arch r103 的 DBX（Tauri/WebKitGTK）已实测 `create_immed=3`（1800×2168，steady state），启动阶段有 2 个窗口尺寸 SHM 帧后销毁，仅剩 2304 B 光标池；说明 Arch 配方本身有效。
