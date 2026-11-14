@@ -159,15 +159,21 @@ install_asset fastfetch/ff-sdks /usr/local/bin/ff-sdks 0755
 
 # ---------------------------------------------------------------- browsers / WebView
 # Chromium：Fedora 自带 aarch64 包；容器禁用 userns，必须 --no-sandbox。
-# Wayland + Vulkan 参数已在 chrome://gpu 验证：硬件光栅化 + ANGLE/zink，页面可见。
+# chrome://gpu 实测（Chromium 156 + 无 renderD）：
+#   - Wayland 下 Vulkan 合成不被支持（wayland_surface_factory.cc:249），
+#     --use-vulkan/--enable-features=Vulkan 只会多两次 Vulkan surface 失败，
+#     Compositing 仍是 disabled_software；
+#   - --use-gl=angle --use-angle=vulkan 可让 Canvas/Raster/WebGL 走
+#     ANGLE Vulkan → MaliBridge（GaneshGL + ARM Mali），且不触发上述失败。
+# 因此默认选 ANGLE Vulkan；软件合成是平台边界，不是 flag 能解决的。
 install -d -m 0755 "$rootfs/usr/local/bin" "$rootfs/usr/local/share/applications"
 cat > "$rootfs/usr/local/bin/chromium" <<'EOF'
 #!/bin/sh
 exec /usr/sbin/chromium-browser \
     --no-sandbox \
     --ozone-platform=wayland \
-    --use-vulkan \
-    --enable-features=Vulkan \
+    --use-gl=angle \
+    --use-angle=vulkan \
     --disable-dev-shm-usage \
     "$@"
 EOF
