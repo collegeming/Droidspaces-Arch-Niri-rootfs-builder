@@ -102,6 +102,7 @@ XWAYLAND_GBM_DEVICE=/dev/dri/card0
 4. **Noctalia invalid object**：Mesa Kopper displaytarget 延迟销毁 + 指针复用；必须叠加 dt-retire Mesa 与 ICD wl-gone hook。
 5. **niri v3 不是故障**：无 EGL render node 时 dmabuf feedback 降级 v3，仍支持 `create_immed`；不要为了 v5 创建假 renderD128。
 6. **Xwayland 不是无解**：Anland 版 Xwayland 在 dmabuf v3 下读取 `XWAYLAND_GBM_DEVICE`；wrapper 显式给 card0 + 发行版 Mesa 即可 GPU。不要用 kopper 环境，也不要建 renderD128。
+7. **Xwayland wrapper 的启动探测会死锁 niri**（2026-11-15，r102 首启黑屏）：niri 启动早期会同步执行 `xwayland-satellite-soft :0 --test-listenfd-support` 并用 `wait4()` 等它退出；此时 niri 主循环还没跑，wrapper 里的 `wayland-info` 连接 niri 的 Wayland socket 会永远等不到 roundtrip。现象是 niri 进程存活、`/proc/<niri>/wchan` 为 `do_wait`、子进程停在 `wayland-info`，output/IPC 已创建但 `niri msg` 无响应，Noctalia 等 `spawn-at-startup` 不执行，整屏黑。修复：能力探测参数（`--test-listenfd-support`/`--version`/`--help`）直接 `exec` 透传；正常路径不要连接 Wayland 做探测，只用静态检查 + `timeout 8 eglinfo`（surfaceless）。
 
 ## 5. 不得破坏的规则
 
@@ -113,6 +114,7 @@ XWAYLAND_GBM_DEVICE=/dev/dri/card0
 6. 不在 live 会话跑整屏 WebKit 动画/压力测试：bridge per-client 预算 2048 MB，可触发 `vkBindBufferMemory` 空指针崩溃并带崩 niri。
 7. bridge 未监听 `mali.sock`/`control.sock` 时不要重启 desktop-session；先启动 bridge，否则会话无 GPU、Noctalia 会 `eglInitialize failed`。
 8. Xwayland wrapper 必须保留“GPU 探测 + llvmpipe 回退”；不要无条件强制 zink。
+9. Xwayland wrapper 不得在 `--test-listenfd-support` 路径做任何 Wayland 连接或阻塞探测；该调用发生在 niri 主循环启动前，任何 `wayland-info`/`wl_display_roundtrip` 都会让 niri 卡在 `wait4`，表现为黑屏。
 
 ## 6. 文件与构建挂载点
 
@@ -159,11 +161,12 @@ tail -5 /opt/mb-sock/server.log | grep 'mem:'
 
 ## 8. 当前未完成项
 
-1. niri 自动 spawn `xwayland-satellite-soft` 的 GPU 路径需在下次会话复验；当前 :93 隔离验证已通过。
+1. niri 自动 spawn `xwayland-satellite-soft` 的 GPU 路径已于 2026-11-15 r102 会话复验：satellite 启动后 Xwayland `:2`/`:3` 的 `glxinfo -B` 为 zink Vulkan Mali、`Accelerated: yes`。
 2. Arch 镜像未预装 `webkitgtk-6.0`；`zc-run` 对未知 Tauri 应用需强制 `class=webkit`。
 3. Fedora WebKit 仍被 `WEBKIT_DISABLE_DMABUF_RENDERER=1` 强制 SHM；应改为 `0` + `WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/dri/card0` + `DISABLE_GBM=1`。
 4. `vkbridge-server` 预算拒绝路径空指针、supervisor 不自动重启、per-client 2 GB 偏小；在修好前不要跑 WebKit 动画压力测试。
 5. L-C（合成器→Android scanout）未做 fence/trace 取证；不要把 L-B 说成全链路零拷贝。
+6. 已发布的 r102 镜像内 `xwayland-satellite-soft` 仍是旧探测版，首次启动会黑屏；live rootfs 已打补丁（`usr/local/bin/xwayland-satellite-soft.bak-r102` 为旧版备份），重建/重装镜像时必须确认第 4.7 节修复已包含。
 
 ## 9. 音频链路与常见“没声音”排查
 
