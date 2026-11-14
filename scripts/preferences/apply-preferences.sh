@@ -1377,6 +1377,9 @@ step_fish() {
     install_asset "$USER_HOME/.config/fish/conf.d/reef.fish" fish/conf.d/reef.fish 0644 || return 1
     install_asset "$USER_HOME/.config/fish/conf.d/mirrors.fish" fish/conf.d/mirrors.fish 0644 || return 1
     install_asset "$USER_HOME/.config/fastfetch/config.jsonc" fastfetch/config.jsonc 0644 || return 1
+    # config.jsonc 的 logo.type=file 指向这个 30 列 Arch ASCII 图；缺文件时
+    # fastfetch 会退回默认 logo，宽度重新超出 87 列终端并触发裁切。
+    install_asset "$USER_HOME/.config/fastfetch/arch-medium.txt" fastfetch/arch-medium.txt 0644 || return 1
     # fastfetch 的 command 模块直接调用这两个脚本，缺失会在每次登录多打两行失败。
     install_asset /usr/local/bin/ff-shell-stack fastfetch/ff-shell-stack 0755 || return 1
     install_asset /usr/local/bin/ff-sdks fastfetch/ff-sdks 0755 || return 1
@@ -3095,6 +3098,7 @@ step_skel() {
         "gtk-4.0/gtk.css|.config/gtk-4.0/gtk.css" \
         "kitty/themes/frappe.conf|.config/kitty/themes/frappe.conf" \
         "fastfetch/config.jsonc|.config/fastfetch/config.jsonc" \
+        "fastfetch/arch-medium.txt|.config/fastfetch/arch-medium.txt" \
         "fontconfig/fonts.conf|.config/fontconfig/fonts.conf" \
         "environment.d/gtk.conf|.config/environment.d/gtk.conf" \
         "environment.d/input.conf|.config/environment.d/input.conf" \
