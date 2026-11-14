@@ -143,6 +143,22 @@ ZC_EGL_VENDOR_JSON=/usr/share/glvnd/egl_vendor.d/50_mesa.json
 VKBRIDGE_DRM_RENDER=226:0
 LD_LIBRARY_PATH=/usr/lib
 export ZC_MESA_DIR ZC_EGL_VENDOR_JSON VKBRIDGE_DRM_RENDER LD_LIBRARY_PATH
+# Audio: Chrome must not start before the Anland/PipeWire default sink exists.
+# A session restart recreates the sink after niri starts; Chrome's audio service
+# otherwise caches "no output device" until the browser is restarted. Wait up to
+# 10 s and pin the Pulse socket to the session runtime directory.
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+export PULSE_SERVER="${PULSE_SERVER:-unix:${XDG_RUNTIME_DIR}/pulse/native}"
+_i=0
+while [ "$_i" -lt 20 ]; do
+    if command -v pactl >/dev/null 2>&1 \
+        && pactl info >/dev/null 2>&1 \
+        && pactl list short sinks 2>/dev/null | grep -q .; then
+        break
+    fi
+    _i=$((_i + 1))
+    sleep 0.5
+done
 # 2026-11-09 实测：niri 会给 spawn 的应用注入 DISPLAY，但容器里的 Xwayland 可能
 # 挂死（socket 能 connect、X 握手永不响应）。Chrome 会在 xdg_surface.configure
 # 之后不 ack、不 attach：没有窗口、没有 dmabuf，只剩光标 shm 池。Chrome 走
