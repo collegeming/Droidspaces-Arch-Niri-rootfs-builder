@@ -14,6 +14,20 @@ configure_environment() {
     local assignment key
     local -a assignments=(XCURSOR_SIZE=48 XDG_SESSION_CLASS=user)
 
+    # KDE 的 fcitx5 由 KWin 作为 Wayland 输入法进程启动（见 configure-desktop
+    # 写入的 [Wayland] InputMethod）。Qt/GTK 客户端仍通过 immodule 接入 fcitx5，
+    # 这里给整个会话补齐前端变量；Wayland 原生 text-input 客户端（kitty/foot）
+    # 由 KWin 的 input-method-v1 通道处理，不依赖这些变量。
+    if [[ -x "${ROOTFS_DIR:-}/usr/bin/fcitx5" ]]; then
+        assignments+=(
+            QT_IM_MODULE=fcitx
+            GTK_IM_MODULE=fcitx
+            SDL_IM_MODULE=fcitx
+            XMODIFIERS=@im=fcitx
+            INPUT_METHOD=fcitx
+        )
+    fi
+
     case "$backend" in
         anland-wayland)
             # ANLAND_SOCKET 是宿主 display daemon 的 socket；KWin 的 anland
@@ -65,16 +79,22 @@ install_fedora() {
         dbus-x11 xrandr xset xrdb xhost \
         google-noto-cjk-fonts google-noto-emoji-color-fonts \
         plasma-desktop plasma-workspace kwin kscreen plasma-pa powerdevil \
-        kio-extras xdg-user-dirs konsole dolphin kate kinfocenter \
+        kio-extras xdg-user-dirs kate kinfocenter \
         plasma-systemmonitor kfind filelight systemsettings kscreenlocker \
         kf6-kimageformats plasma-browser-integration breeze-icon-theme plasma-breeze \
         qt6-qtsvg kf6-kirigami \
         pipewire pipewire-alsa pipewire-pulseaudio wireplumber \
         glx-utils pulseaudio-utils vulkan-tools clinfo dmidecode libdisplay-info \
         wayland-utils xorg-x11-server-Xwayland \
-        dolphin-plugins ffmpegthumbs kdegraphics-thumbnailers \
+        ffmpegthumbs kdegraphics-thumbnailers \
         gstreamer1-plugins-base gstreamer1-plugins-good sound-theme-freedesktop \
-        mesa-libgbm mesa-dri-drivers
+        mesa-libgbm mesa-dri-drivers \
+        kitty kitty-kitten kitty-shell-integration kitty-terminfo \
+        fish foot nemo nemo-extensions nemo-python nemo-search-helpers folder-color-switcher-nemo \
+        xdg-terminal-exec wl-clipboard kdotool \
+        fcitx5 fcitx5-qt fcitx5-gtk fcitx5-rime fcitx5-configtool \
+        librime-lua librime-octagram librime-predict librime-tools \
+        unzip fontconfig
 }
 
 install_profile() {

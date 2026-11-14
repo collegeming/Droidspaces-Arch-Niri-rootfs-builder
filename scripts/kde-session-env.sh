@@ -32,7 +32,12 @@ if [ -f "${xring_kde_stack}/lib/libgbm.so.1" ] && [ -f "$xring_kde_icd" ]; then
     export VKBRIDGE_SOCKET="$xring_kde_socket"
     export VKBRIDGE_LOG_LEVEL="${VKBRIDGE_LOG_LEVEL:-1}"
     export MESA_LOADER_DRIVER_OVERRIDE=zink
-    export GALLIUM_DRIVER=zink
+    # 不要给客户端会话设置 GALLIUM_DRIVER=zink：容器没有 renderD，Mesa 的
+    # Wayland EGL 会落到 swrast 平台；zink 在 swrast 上需要
+    # VK_EXT_external_memory_host 才能写回 wl_shm，而 MaliBridge 的 hostptr
+    # 自检失败，客户端 buffer 会保持全 0（kitty/es2gears 全透明）。
+    # KWin 自己需要 zink，由 configure-desktop 写入的
+    # plasma-kwin_wayland.service.d/10-gpu.conf 单独提供。
     export KWIN_RENDER_NODES="${KWIN_RENDER_NODES:-$xring_kde_drm}"
     export ANLAND_DRM_DEVICE="${ANLAND_DRM_DEVICE:-$xring_kde_drm}"
     export XWAYLAND_GBM_DEVICE="${XWAYLAND_GBM_DEVICE:-$xring_kde_drm}"

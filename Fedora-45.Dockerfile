@@ -25,6 +25,11 @@ ARG ANLAND_RELEASE_REPOSITORY=Goldzxcbug/droidspaces-package
 ARG ANLAND_KDE_RELEASE_REPOSITORY=collegeming/Droidspaces-Arch-Niri-rootfs-builder
 ARG ANLAND_KDE_RELEASE_TAG=anland-kde-packages
 ARG ANLAND_PACKAGE_REVISION=unknown
+# Mark Shot 0.2.0-preview.7 的 Fedora aarch64 RPM（GitHub Release）。
+# 主程序与录屏/GIF 媒体库都要求 GLIBC_2.44，Fedora 45 满足；Arch 侧使用
+# 同版本的 native pacman 包，不能拿这个 RPM 直接跑在 Arch 上。
+ARG MARK_SHOT_RPM_URL=https://github.com/jswysnemc/mark-shot/releases/download/native-v0.2.0-preview.7/mark-shot-0.2.0.preview.7-1.fc45.aarch64.rpm
+ARG MARK_SHOT_RPM_SHA256=8baf14ebe752ddd81639443d6c5168a57683ca06b52e8a29da9a1734de16d4f5
 # XRING-O3 设备脚本从复刻包按固定 commit 拉取，builder 不再保存副本。
 ARG XRING_O3_KIT_REPO=https://github.com/collegeming/xring-o3-droidspaces-package.git
 ARG XRING_O3_KIT_REF=24fc5f6cf621fef277731de6a600d1f3260d6922
@@ -64,6 +69,8 @@ COPY scripts/tui/install-anland-kde.sh /usr/local/sbin/install-anland-kde
 COPY scripts/install-anland-desktop.sh /usr/local/sbin/install-anland-desktop
 COPY scripts/install-desktop.sh /usr/local/sbin/install-desktop
 COPY scripts/configure-desktop.sh /usr/local/sbin/configure-desktop
+COPY scripts/configure-fedora-kde.sh /usr/local/sbin/configure-fedora-kde
+COPY scripts/preferences/ /usr/local/lib/droidspaces/preferences/
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/kde-session-env.sh /usr/local/lib/droidspaces/kde-session-env.sh
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
@@ -82,6 +89,7 @@ RUN echo '%_install_langs all' > /etc/rpm/macros.image-language-conf && \
 
 RUN chmod +x /usr/local/sbin/install-anland-kde /usr/local/sbin/install-anland-desktop \
         /usr/local/sbin/install-desktop /usr/local/sbin/configure-desktop \
+        /usr/local/sbin/configure-fedora-kde \
         /usr/local/bin/start-desktop-session /usr/local/lib/droidspaces/desktops/*.sh && \
     chmod 0644 /usr/local/lib/droidspaces/kde-session-env.sh
 
@@ -127,6 +135,16 @@ RUN if [ "$DISPLAY_BACKEND" = "anland-wayland" ]; then \
         ANLAND_KDE_RELEASE_REPOSITORY="$ANLAND_KDE_RELEASE_REPOSITORY" \
         ANLAND_KDE_RELEASE_TAG="$ANLAND_KDE_RELEASE_TAG" \
         /usr/local/sbin/install-anland-desktop "$DESKTOP" --1; \
+    fi
+
+# Mark Shot 0.2.0-preview.7：F1 区域截图 / F3 贴图快捷键在 configure-desktop
+# 中注册；RPM 自带 /usr/bin 与 /usr/sbin 的 mark-shot 入口。
+RUN if [ -n "$MARK_SHOT_RPM_URL" ]; then \
+        echo "--> 安装 Mark Shot（$MARK_SHOT_RPM_URL）..." && \
+        curl -fL --retry 3 --retry-delay 2 -o /tmp/mark-shot.rpm "$MARK_SHOT_RPM_URL" && \
+        printf '%s  %s\n' "$MARK_SHOT_RPM_SHA256" /tmp/mark-shot.rpm | sha256sum -c - && \
+        dnf install -y --nogpgcheck /tmp/mark-shot.rpm && \
+        rm -f /tmp/mark-shot.rpm; \
     fi
 
 # 强制 iptables-legacy（Android 内核兼容）
@@ -201,28 +219,15 @@ RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
 # 初始化环境变量；KDE 会话变量由 configure-desktop 调用的 kde.sh 写入。
 RUN : > /etc/environment
 
-# 输入法自启动 + 会话配置 + desktop-session unit。
+# 会话配置 + desktop-session unit。
+# 不创建 fcitx5 自启动：KDE 下由 KWin 根据 [Wayland] InputMethod 启动
+# fcitx5，并通过私有 WAYLAND_SOCKET 暴露 input-method-v1；再启动一个
+# systemd autostart 实例会争抢 org.fcitx.Fcitx5 总线名并导致原生输入法失效。
 RUN <<'EOF_RUN'
-if [ "$ENABLE_srf_ARG" = "true" ]; then
-    mkdir -p /home/${USERNAME}/.config/autostart
-    cat > /home/${USERNAME}/.config/autostart/fcitx5.desktop <<'EOF'
-[Desktop Entry]
-Name=Fcitx5
-GenericName=Input Method
-Comment=Start Input Method
-Exec=fcitx5 -d
-Icon=fcitx
-Terminal=false
-Type=Application
-Categories=System;Utility;
-StartupNotify=false
-NoDisplay=true
-EOF
-    printf '%s\n' 'XMODIFIERS=@im=fcitx' 'INPUT_METHOD=fcitx' >> /etc/environment
-fi
 echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> /home/${USERNAME}/.bashrc
 OUTPUT_SCALE="${OUTPUT_SCALE:-2}" OUTPUT_MODE="${OUTPUT_MODE:-native}" \
     /usr/local/sbin/configure-desktop "$DESKTOP" "$DISPLAY_BACKEND" "$DESKTOP_AUTOSTART" "$USERNAME"
+/usr/local/sbin/configure-fedora-kde "$USERNAME"
 rm -rf /tmp/droidspaces-start
 EOF_RUN
 
@@ -324,8 +329,10 @@ RUN if [ "$APPLY_PREFERENCES" = "true" ]; then \
 # 清理一次性构建脚本与缓存。
 RUN rm -f /usr/local/sbin/configure-desktop /usr/local/sbin/install-desktop \
         /usr/local/sbin/install-anland-desktop /usr/local/sbin/install-droidspaces-usb-manager \
-        /usr/local/sbin/systemd257 /usr/local/sbin/install-anland-kde && \
-    rm -rf /usr/local/lib/droidspaces/desktops /usr/local/sbin/configure-chrome && \
+        /usr/local/sbin/systemd257 /usr/local/sbin/install-anland-kde \
+        /usr/local/sbin/configure-fedora-kde && \
+    rm -rf /usr/local/lib/droidspaces/desktops /usr/local/lib/droidspaces/preferences \
+        /usr/local/sbin/configure-chrome && \
     rm -rf /var/cache/dnf /var/lib/dnf/history.sqlite* /tmp/* 2>/dev/null || true
 
 # 阶段 2：导出完整 rootfs

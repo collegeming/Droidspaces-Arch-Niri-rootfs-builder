@@ -351,8 +351,8 @@ RUN /usr/local/lib/droidspaces/device/xring-o3/card0.sh --install && \
 # 安装并配置原生 ARM64 Google Chrome。
 RUN /usr/local/sbin/configure-chrome "$DESKTOP" "$DISPLAY_BACKEND"
 
-# 安装 AUR mark-shot-arch-bin（Arch/ALARM 双架构预编译包）：依赖对齐 FFmpeg 9，
-# 自带 libmark-shot-layer-shell.so，无需本地编译或 soname 旁路。
+# 安装 Mark Shot 0.2.0-preview.7 上游原生 pacman 包：Rust 重写，
+# 自带录屏/GIF 媒体库，不再需要 AUR 的 Qt/layer-shell 预编译包。
 RUN /usr/local/sbin/configure-mark-shot "$DESKTOP" "$DISPLAY_BACKEND"
 
 # 修正构建阶段已安装的 Chromium/Electron sandbox helper 权限；用户后续安装
