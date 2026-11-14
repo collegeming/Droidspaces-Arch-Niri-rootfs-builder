@@ -430,7 +430,11 @@ jobs:
           BUILD_ID_INPUT: ${{ inputs.build_id }}
         run: |
           BUILD_DATE=$(date +'%Y-%m-%d %H:%M:%S')
-          BUILD_ID="${BUILD_ID_INPUT:-v$(date +'%Y%m%d-%H%M%S')}"
+          # 同一秒触发的 Fedora/Arch 构建曾生成相同 BUILD_ID，后完成的发布会
+          # 尝试修改已发布 Release 的 target_commitish 而失败（immutable release）。
+          # 在时间戳后追加 workflow run number，保证跨运行唯一。
+          BUILD_RUN_SUFFIX="${GITHUB_RUN_NUMBER:-$(date +%s)}"
+          BUILD_ID="${BUILD_ID_INPUT:-v$(date +'%Y%m%d-%H%M%S')-r${BUILD_RUN_SUFFIX}}"
           echo "build_date=$BUILD_DATE" >> "$GITHUB_OUTPUT"
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
           if [ "$UI_LANGUAGE" = zh ]; then
