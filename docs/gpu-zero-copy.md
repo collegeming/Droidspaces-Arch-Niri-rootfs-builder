@@ -78,6 +78,22 @@ XWAYLAND_GBM_DEVICE=/dev/dri/card0
 | Xwayland / X11 | `xwayland-satellite-soft` | card0 + 发行版 Mesa + zink + format ICD；无 renderD、无 mknod | `glxinfo` zink Mali / `Accelerated: yes`；glxgears 窗口可见 | 已实测（:93）；主会话 wrapper 已部署 |
 | niri 合成器 | `/usr/bin/niri-anland` | 会话 env（kopper Mesa + zink + format ICD） | maps 含 libgallium + libvulkan_droidbridge；bridge dma-buf 3408×2272 | 已实测 GPU 合成 |
 
+### 3.1 2026-11-15 低负载复测记录
+
+同一 Arch-Niri 会话内，按“启动→8 s 采样→杀进程组”串行执行；WebKit 只加载静态 HTML，不跑动画。
+
+| 用例 | create_immed | wl_shm.create_pool | 说明 |
+| --- | --- | --- | --- |
+| Qt6 `qml6` | 3 | 0 | 必须先导出会话 GPU env；niri spawn 的应用自动继承 |
+| kitty | 3 | 0 | 同上 |
+| Electron 42（`zc-run --class chromium`） | 5（窗口尺寸 1888×1488 等） | 2（仅 2304/9216 光标池） | GPU 进程存活，无 exit 11 |
+| WebKitGTK MiniBrowser（libdrmfake 配方，静态页） | 8 | 0 | 不跑动画，避免触发 bridge 2GB per-client 预算 |
+| Chromium 157 `chrome://gpu` | 历史 9 | 历史 0 | `Compositing: Hardware accelerated`；CDP `gpu_compositing=enabled` |
+| Xwayland `:93` glxinfo/glxgears | — | — | zink Vulkan Mali，Accelerated yes；窗口在 niri 内可见 |
+
+注意：直接在容器 shell（非 niri spawn）启动 Qt/kitty 时必须显式导出第 2.2 节的会话 env；否则只会得到 `immed=0/pool=3` 的 wl_shm 结果。这不是实现退化。
+
+
 ## 4. 历史根因与已解决陷阱
 
 1. **Chrome 双 libgallium**：`zc-run` 默认把 kopper Mesa 26.3 注入 Chrome，同时系统 GBM 后端加载 26.2.6，导致 pdev 失败/GPU 进程 exit 11。解决：Chrome `ZC_MESA_DIR=/usr` + `ZC_EGL_VENDOR_JSON=.../50_mesa.json` + `LD_LIBRARY_PATH=/usr/lib`。
