@@ -80,6 +80,7 @@ install_niri_arch() {
         brightnessctl playerctl \
         pipewire pipewire-alsa pipewire-pulse wireplumber upower \
         mesa-utils vulkan-tools vulkan-icd-loader libdrm zstd clinfo dmidecode wayland-utils \
+        webkitgtk-6.0 \
         xdg-user-dirs glmark2 vkmark \
         gst-plugins-base gst-plugins-good libcanberra sound-theme-freedesktop \
         noto-fonts noto-fonts-cjk noto-fonts-emoji
