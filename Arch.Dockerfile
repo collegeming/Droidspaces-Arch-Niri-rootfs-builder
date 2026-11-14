@@ -121,7 +121,7 @@ RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/
     install -d -m 0755 /usr/local/lib/droidspaces/device && \
     cp -a /tmp/xring-o3-kit/rootfs/device/xring-o3 /usr/local/lib/droidspaces/device/ && \
     install -d -m 0755 /usr/local/share/droidspaces/noctalia-plugins && \
-    cp -a /tmp/xring-o3-kit/src/noctalia-mali-gpu /usr/local/share/droidspaces/noctalia-plugins/ && \
+    cp -a /tmp/xring-o3-kit/src/noctalia-mali-gpu /usr/local/share/droidspaces/noctalia-plugins/mali-gpu && \
     rm -rf /tmp/xring-o3-kit && \
     chmod +x /usr/local/lib/droidspaces/device/xring-o3/*.sh && \
     /usr/local/lib/droidspaces/device/xring-o3/profile.sh --install && \
