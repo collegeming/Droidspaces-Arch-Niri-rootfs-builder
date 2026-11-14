@@ -53,5 +53,8 @@ export QT_QPA_PLATFORM=wayland
 export GDK_BACKEND=wayland
 export XDG_SESSION_TYPE=wayland
 export XDG_SESSION_CLASS=user
+# Qt Quick 客户端使用 Vulkan RHI → MaliBridge（dmabuf）；KWin 与 plasmashell
+# 的 systemd drop-in 会分别覆盖为 opengl/software。
+export QSG_RHI_BACKEND=vulkan
 
 unset xring_kde_stack xring_kde_icd xring_kde_socket xring_kde_drm xring_kde_egl_json

@@ -316,6 +316,7 @@ EOF
     cat > "$rootfs/etc/systemd/user/plasma-kwin_wayland.service.d/10-gpu.conf" <<'EOF'
 [Service]
 Environment=GALLIUM_DRIVER=zink
+Environment=QSG_RHI_BACKEND=opengl
 EOF
     chmod 0644 "$rootfs/etc/systemd/user/plasma-kwin_wayland.service.d/10-gpu.conf"
     gpu_env_file="$rootfs/etc/environment.d/90-xring-gpu.conf"
@@ -330,6 +331,7 @@ EOF
     cat > "$rootfs/etc/systemd/user/plasma-plasmashell.service.d/10-software-qml.conf" <<'EOF'
 [Service]
 Environment=QT_QUICK_BACKEND=software
+Environment=QSG_RHI_BACKEND=opengl
 EOF
     chmod 0644 "$rootfs/etc/systemd/user/plasma-plasmashell.service.d/10-software-qml.conf"
 
