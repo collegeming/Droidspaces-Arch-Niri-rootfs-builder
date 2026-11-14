@@ -293,6 +293,32 @@ EOF
     if [[ -n "$rootfs" ]]; then
         chmod 0644 "$rootfs/home/$username/.config/kwinrc"
     fi
+
+    # Plasma 的 QML 表面（桌面壁纸、面板）在 zink → MaliBridge 下会整块
+    # 透明/黑色，只剩光标和客户端窗口可见；把 plasmashell 的 Qt Quick
+    # 后端切到 software 后壁纸和面板恢复正常，KWin 合成仍是 GPU。
+    install -d -m 0755 "$rootfs/etc/systemd/user/plasma-plasmashell.service.d"
+    cat > "$rootfs/etc/systemd/user/plasma-plasmashell.service.d/10-software-qml.conf" <<'EOF'
+[Service]
+Environment=QT_QUICK_BACKEND=software
+EOF
+    chmod 0644 "$rootfs/etc/systemd/user/plasma-plasmashell.service.d/10-software-qml.conf"
+
+    # KDE 锁屏 greeter 同样走 QML；当前 GPU 栈下会显示成黑屏/巨型 logo，
+    # 且遮住桌面。先关闭自动锁屏，避免用户误以为桌面没有启动。
+    install -d -m 0755 "$rootfs/etc/xdg"
+    cat > "$rootfs/etc/xdg/kscreenlockerrc" <<'EOF'
+[Daemon]
+Autolock=false
+LockOnResume=false
+EOF
+    chmod 0644 "$rootfs/etc/xdg/kscreenlockerrc"
+    cat > "$rootfs/home/$username/.config/kscreenlockerrc" <<'EOF'
+[Daemon]
+Autolock=false
+LockOnResume=false
+EOF
+    chmod 0644 "$rootfs/home/$username/.config/kscreenlockerrc"
 fi
 
 if [[ -z "$rootfs" ]]; then
