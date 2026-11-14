@@ -5,10 +5,10 @@ center = [ "workspaces", "taskbar" ]
 end = [
     "media",
     "tray",
+    "clipboard",
     "status",
     "wallpaper",
     "notifications",
-    "clipboard",
     "bluetooth",
     "volume",
     "brightness",
