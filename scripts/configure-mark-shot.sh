@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# 安装 AUR mark-shot-arch-bin（Arch/ALARM 双架构预编译包）。
+# 安装 Mark Shot 0.2.0-preview.7 的 Arch/ALARM 原生 pacman 包。
 #
-# 与旧的 mark-shot-bin 相比：
-# - 包由本项目的 aur-release 工作流按 Arch Linux / Arch Linux ARM 分别构建，
-#   依赖对齐各发行版的 FFmpeg（ALARM 为 FFmpeg 9），不需要 soname 旁路；
-# - aarch64 包自带 libmark-shot-layer-shell.so，截图覆盖层和贴图窗口使用
-#   layer-shell，tiling 合成器不会再把它当普通窗口重排；
-# - 安装仍然只下载预编译 .pkg.tar.zst，不在镜像构建里编译 Qt。
+# 0.2.0 是 Rust 原生重写：
+#   - 上游直接发布 aarch64 .pkg.tar.zst，不再需要 AUR 的 Qt 预编译包；
+#   - 包内布局为 /usr/bin/mark-shot -> ../lib/mark-shot/mark-shot，
+#     录屏/GIF 媒体库在 /usr/lib/mark-shot/media/；
+#   - 不再提供 0.1.62 的 libmark-shot-layer-shell.so 和 3 个旧 desktop 文件。
+# 因此这里不能沿用旧的“检查 layer-shell 插件/desktop 文件”断言。
 set -euo pipefail
 
 desktop="${1:-}"
 display_backend="${2:-}"
 rootfs="${ROOTFS_DIR:-}"
 binary="${rootfs}/usr/bin/mark-shot"
-layer_shell="${rootfs}/usr/lib/mark-shot/libmark-shot-layer-shell.so"
+media_lib="${rootfs}/usr/lib/mark-shot/media/libmarkshot-media.so"
 
 # mark-shot 依赖 Wayland + layer-shell，只在 niri/anland-wayland 组合下安装。
 if [[ "$display_backend" != anland-wayland ]]; then
@@ -36,13 +36,10 @@ if [[ "${ID:-}" != arch && "${ID:-}" != archarm && "${ID:-}" != archlinux ]]; th
     exit 0
 fi
 
-# 已装任意一个 mark-shot 提供者时跳过（三者 provides/conflicts 同名）。
-for pkg in mark-shot mark-shot-bin mark-shot-arch-bin; do
-    if pacman -Qq "$pkg" >/dev/null 2>&1; then
-        echo "$pkg 已安装，跳过 mark-shot-arch-bin"
-        exit 0
-    fi
-done
+MARK_SHOT_VERSION=0.2.0_preview.7
+MARK_SHOT_PKG="mark-shot-bin-${MARK_SHOT_VERSION}-1-aarch64.pkg.tar.zst"
+MARK_SHOT_URL="https://github.com/jswysnemc/mark-shot/releases/download/native-v0.2.0-preview.7/${MARK_SHOT_PKG}"
+MARK_SHOT_SHA256=f19f5d3a0d735682c9572f862ce935ad34ee0329a937c238ee10395fa16661d1
 
 # 与仓库其它下载一致：GitHub 直连在部分网络下不可用，默认走镜像前缀。
 GH_MIRROR_PREFIX=${GH_MIRROR_PREFIX:-https://gh-proxy.com/}
@@ -50,42 +47,23 @@ GH_MIRROR_PREFIX=${GH_MIRROR_PREFIX:-https://gh-proxy.com/}
 work=$(mktemp -d /tmp/mark-shot.XXXXXX)
 trap 'rm -rf "$work"' EXIT
 
-pacman -S --needed --noconfirm git libarchive >/dev/null
+pacman -S --needed --noconfirm curl libarchive openssl-3 >/dev/null
 
-# AUR 的 TLS 连接会偶发中断；重试几次再放弃。
-cloned=false
-for _ in 1 2 3; do
-    if git clone --depth=1 https://aur.archlinux.org/mark-shot-arch-bin.git "$work/aur" >/dev/null 2>&1; then
-        cloned=true
-        break
+# 旧 0.1.62 可能是 mark-shot、mark-shot-bin 或 mark-shot-arch-bin；三者互相
+# 冲突，直接覆盖安装会停在冲突提示。这里只移除旧包，不用 -Rns，避免连带删掉
+# 仍被其他应用使用的 Qt/图形依赖。
+for old_pkg in mark-shot mark-shot-arch-bin mark-shot-bin; do
+    if pacman -Qq "$old_pkg" >/dev/null 2>&1; then
+        pacman -R --noconfirm "$old_pkg"
     fi
-    rm -rf "$work/aur"
-    sleep 3
 done
-[[ "$cloned" == true ]] || { echo "AUR mark-shot-arch-bin 克隆失败" >&2; exit 1; }
 
-srcinfo="$work/aur/.SRCINFO"
-[[ -f "$srcinfo" ]] || { echo "缺少 .SRCINFO" >&2; exit 1; }
-if ! grep -Eq '^[[:space:]]*arch = .*aarch64' "$srcinfo"; then
-    echo "AUR mark-shot-arch-bin 不再声明 aarch64，跳过安装" >&2
-    exit 0
-fi
-
-asset_url=$(sed -n 's/^[[:space:]]*source_aarch64 = //p' "$srcinfo" | head -n1)
-# AUR 的 source 允许 "文件名::URL" 形式，下载只取 URL 部分。
-asset_url=${asset_url#*::}
-asset_sha=$(sed -n 's/^[[:space:]]*sha256sums_aarch64 = //p' "$srcinfo" | head -n1)
-[[ -n "$asset_url" && -n "$asset_sha" ]] || {
-    echo "AUR 配方缺少 aarch64 产物 URL 或校验和" >&2
-    exit 1
-}
-
-package_file="$work/mark-shot-arch-bin.pkg.tar.zst"
+package_file="$work/$MARK_SHOT_PKG"
 downloaded=false
 # 镜像可能返回 200 的错误页，所以每个源都做完整 sha256 校验，失败换下一个。
-for candidate in "${GH_MIRROR_PREFIX%/}/${asset_url}" "$asset_url"; do
+for candidate in "${GH_MIRROR_PREFIX%/}/${MARK_SHOT_URL}" "$MARK_SHOT_URL"; do
     if curl -fsSL --retry 2 --retry-delay 2 --max-time 300 -o "$package_file" "$candidate" && \
-        printf '%s  %s\n' "$asset_sha" "$package_file" | sha256sum -c - >/dev/null 2>&1; then
+        printf '%s  %s\n' "$MARK_SHOT_SHA256" "$package_file" | sha256sum -c - >/dev/null 2>&1; then
         downloaded=true
         break
     fi
@@ -93,50 +71,22 @@ for candidate in "${GH_MIRROR_PREFIX%/}/${asset_url}" "$asset_url"; do
 done
 [[ "$downloaded" == true ]] || { echo "mark-shot 下载失败" >&2; exit 1; }
 
-[[ "$(pacman -Qqp "$package_file")" = "mark-shot-arch-bin" ]]
+[[ "$(pacman -Qqp "$package_file")" = "mark-shot-bin" ]]
 LC_ALL=C pacman -Qip "$package_file" | grep -Eq '^Architecture[[:space:]]*: aarch64$'
 
-# 依赖由 .PKGINFO 给出。正常情况全是包名（可带版本约束）；只有配方回退到
-# 上游产物时才可能出现 soname，这类依赖用 --assume-installed 兜底，避免整次
-# 构建因单个 soname 失败。mark-shot-arch-bin 的依赖应与 ALARM 完全对齐。
-assume=()
-deps=()
-while IFS= read -r dep; do
-    [[ -n "$dep" ]] || continue
-    name="${dep%%[<>=]*}"
-    if pacman -T "$dep" >/dev/null 2>&1; then
-        continue
-    fi
-    if [[ "$name" == *".so"* ]]; then
-        assume+=(--assume-installed "$dep")
-        echo "mark-shot: 依赖 $dep 无法由仓库满足，按 assume-installed 放行" >&2
-    else
-        deps+=("$name")
-    fi
-done < <(bsdtar -xOf "$package_file" .PKGINFO | sed -n 's/^depend = //p')
+# 0.2.0 的 PKGINFO 只声明 openssl，但二进制实际需要 libssl.so.3/libcrypto.so.3；
+# Arch 的 openssl 4.x 只提供 .so.4，因此显式保证 openssl-3 存在。
+pacman -S --needed --noconfirm openssl-3 >/dev/null
 
-if [[ ${#deps[@]} -gt 0 ]]; then
-    mapfile -t deps < <(printf '%s\n' "${deps[@]}" | sort -u)
-    pacman -S --noconfirm --needed --asdeps "${deps[@]}"
-fi
-
-# CI 的基础镜像把 LocalFileSigLevel 设成 Required，未签名的 AUR -bin 包会被
-# 拒绝（`package missing required signature`）。用临时 pacman 配置只放宽本
-# 次安装，不改系统策略。
+# CI 的基础镜像把 LocalFileSigLevel 设成 Required，未签名的上游包会被拒绝；
+# 用临时 pacman 配置只放宽本次安装，不改系统策略。
 pacman_conf=/tmp/pacman-mark-shot.conf
 sed -e '/^[[:space:]]*LocalFileSigLevel[[:space:]]*=/d' \
     -e '/^\[options\][[:space:]]*$/a LocalFileSigLevel = Optional' \
     /etc/pacman.conf > "$pacman_conf"
-pacman --config "$pacman_conf" -U --noconfirm --needed "${assume[@]}" "$package_file"
+pacman --config "$pacman_conf" -U --noconfirm --needed "$package_file"
 rm -f "$pacman_conf"
 
 [[ -x "$binary" ]] || { echo "mark-shot 安装后未找到：$binary" >&2; exit 1; }
-[[ -f /usr/share/applications/mark-shot.desktop ]] || {
-    echo "mark-shot 安装后缺少桌面入口" >&2
-    exit 1
-}
-[[ -f "$layer_shell" ]] || {
-    echo "mark-shot 安装后缺少 layer-shell 插件：$layer_shell" >&2
-    exit 1
-}
-echo "--> [enabled] mark-shot-arch-bin 已安装（含 layer-shell 插件，依赖对齐 ALARM）"
+[[ -f "$media_lib" ]] || { echo "mark-shot 安装后缺少媒体库：$media_lib" >&2; exit 1; }
+echo "--> [enabled] mark-shot-bin ${MARK_SHOT_VERSION} 已安装（native，含录屏/GIF 媒体库）"

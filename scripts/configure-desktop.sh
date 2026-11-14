@@ -290,8 +290,37 @@ Backend=OpenGL
 OpenGLIsUnsafe=false
 LatencyPolicy=Low
 EOF
+    # KWin 的 [Wayland] InputMethod 是 **fcitx5 的 .desktop 文件路径**，不是
+    # 可执行文件路径。KWin 会自己拉起 fcitx5，并通过私有 WAYLAND_SOCKET 把
+    # zwp_input_method_v1/zwp_input_panel_v1 只暴露给这个进程；普通客户端（包括
+    # systemd 自启动的 fcitx5）看不到这两个全局，Wayland text-input 客户端
+    # （kitty/foot）会退化成只能输入 ASCII。不要同时启用 fcitx5 自启动，否则
+    # 两个实例会争抢 org.fcitx.Fcitx5 总线名，KWin 启动的实例反而拿不到名字。
+    if [[ -f "$rootfs/usr/share/applications/org.fcitx.Fcitx5.desktop" ]]; then
+        cat >> "$rootfs/home/$username/.config/kwinrc" <<'EOF'
+
+[Wayland]
+InputMethod=/usr/share/applications/org.fcitx.Fcitx5.desktop
+EOF
+    fi
     if [[ -n "$rootfs" ]]; then
         chmod 0644 "$rootfs/home/$username/.config/kwinrc"
+    fi
+
+    # KWin 自己保留 zink（surfaceless EGL + MaliBridge）；客户端会话不能再带
+    # GALLIUM_DRIVER=zink，否则 Mesa 在无 renderD 的容器里会走 swrast 平台，
+    # zink 无法写回 wl_shm（缺 VK_EXT_external_memory_host），kitty/es2gears
+    # 等 Wayland GL 客户端 buffer 全 0、窗口全透明。把 zink 限定在 KWin
+    # service 的 Environment 里，plasmashell/终端/浏览器沿会话环境走 llvmpipe。
+    install -d -m 0755 "$rootfs/etc/systemd/user/plasma-kwin_wayland.service.d"
+    cat > "$rootfs/etc/systemd/user/plasma-kwin_wayland.service.d/10-gpu.conf" <<'EOF'
+[Service]
+Environment=GALLIUM_DRIVER=zink
+EOF
+    chmod 0644 "$rootfs/etc/systemd/user/plasma-kwin_wayland.service.d/10-gpu.conf"
+    gpu_env_file="$rootfs/etc/environment.d/90-xring-gpu.conf"
+    if [[ -f "$gpu_env_file" ]]; then
+        sed -i '/^GALLIUM_DRIVER=/d' "$gpu_env_file"
     fi
 
     # Plasma 的 QML 表面（桌面壁纸、面板）在 zink → MaliBridge 下会整块
@@ -319,6 +348,47 @@ Autolock=false
 LockOnResume=false
 EOF
     chmod 0644 "$rootfs/home/$username/.config/kscreenlockerrc"
+
+    # Mark Shot 0.2.x：KDE 没有 niri 的 F1/F3 直接绑定，改用 KGlobalAccel 的
+    # 命令快捷键。desktop 文件必须带 X-KDE-GlobalAccel-CommandShortcut=true，
+    # kglobalshortcutsrc 里只需保存 [services][<desktop 文件名>] 的 _launch。
+    # 只追加缺失的组，保留 KGlobalAccel 自动生成/用户已有的其他快捷键。
+    if [[ -e "$rootfs/usr/sbin/mark-shot" || -e "$rootfs/usr/bin/mark-shot" ]]; then
+        install -d -m 0755 "$rootfs/home/$username/.local/share/applications"
+        cat > "$rootfs/home/$username/.local/share/applications/mark-shot-region.desktop" <<'EOF'
+[Desktop Entry]
+Exec=/usr/sbin/mark-shot
+Name=Mark Shot Region
+NoDisplay=true
+StartupNotify=false
+Type=Application
+X-KDE-GlobalAccel-CommandShortcut=true
+EOF
+        cat > "$rootfs/home/$username/.local/share/applications/mark-shot-pin.desktop" <<'EOF'
+[Desktop Entry]
+Exec=/usr/sbin/mark-shot --pin-clipboard
+Name=Mark Shot Pin
+NoDisplay=true
+StartupNotify=false
+Type=Application
+X-KDE-GlobalAccel-CommandShortcut=true
+EOF
+        chmod 0644 "$rootfs/home/$username/.local/share/applications/mark-shot-region.desktop" \
+            "$rootfs/home/$username/.local/share/applications/mark-shot-pin.desktop"
+        kglobal="$rootfs/home/$username/.config/kglobalshortcutsrc"
+        touch "$kglobal"
+        if ! grep -q '^\[services\]\[mark-shot-region\.desktop\]' "$kglobal"; then
+            cat >> "$kglobal" <<'EOF'
+
+[services][mark-shot-region.desktop]
+_launch=F1
+
+[services][mark-shot-pin.desktop]
+_launch=F3
+EOF
+        fi
+        chmod 0644 "$kglobal"
+    fi
 fi
 
 if [[ -z "$rootfs" ]]; then

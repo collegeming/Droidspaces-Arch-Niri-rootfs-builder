@@ -246,7 +246,16 @@ if [ "$DESKTOP" = "none" ]; then
 else
   DISPLAY_LABEL="$(display_backend_label "$DISPLAY_BACKEND")"
 fi
-FINAL_NAME="${PREFIX}-${DESKTOP}-${DISPLAY_LABEL}-Droidspaces-rootfs-${ARCH}-${VERSION}.tar.xz"
+# xring-o3 设备分支使用稳定、可读的镜像名：Arch-Niri / Fedora-KDE。
+# 旧归档由发布侧保留为 <name>-BackupN，不再把版本号塞进产品名。
+IMAGE_NAME=
+if [ "${DROIDSPACES_DEVICE_PROFILE:-}" = "xring-o3" ]; then
+  case "$PREFIX:$DESKTOP" in
+    Arch:niri) IMAGE_NAME="Arch-Niri" ;;
+    Fedora-45:kde) IMAGE_NAME="Fedora-KDE" ;;
+  esac
+fi
+FINAL_NAME="${IMAGE_NAME:-${PREFIX}-${DESKTOP}-${DISPLAY_LABEL}}-Droidspaces-rootfs-${ARCH}-${VERSION}.tar.xz"
 
 echo "正在运行 Docker Build (原生模式)..."
 
