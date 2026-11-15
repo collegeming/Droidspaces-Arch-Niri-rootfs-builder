@@ -13,6 +13,24 @@
 
 本仓库 fork 自 [Goldzxcbug/Droidspaces-rootfs-Desktop-builder](https://github.com/Goldzxcbug/Droidspaces-rootfs-Desktop-builder)，默认分支 **`xring-o3-mali`**，在保留通用多发行版构建的同时增加 `xring-o3` 设备档案。宿主脚本、KSU 模块、Mali 栈 bundle 与补丁在配套仓库 [collegeming/xring-o3-droidspaces-package](https://github.com/collegeming/xring-o3-droidspaces-package)。
 
+## 0. 前置说明（XRING-O3 上实施 Droidspaces 的前提）
+
+本仓库产出的 rootfs 只解决“容器里装什么”，不解决“设备能不能跑容器”。在 XRING-O3（小米平板 9 Pro Max / M367FC / Android 17）上，出厂 GKI 内核没有向用户态开放 Droidspaces 需要的 namespace、cgroup 与挂载能力；直接导入 rootfs 会在容器启动阶段失败。设备侧必须先完成下面两步，这两步都不在本仓库的构建流水线内。
+
+### 0.1 前提一：取得临时 root
+
+用 CVE-2026-98260 取得设备的临时 root 权限。该权限只用于加载内核模块、准备容器挂载点与启动 Droidspaces；不修改 boot 分区、不刷内核、不做永久 root。设备重启后临时 root 失效，需要重新执行取得 root 的流程。
+
+### 0.2 前提二：加载 lkm4ctr 的 KSU 模块
+
+在临时 root 下刷入并加载 [cyanmint/lkm4ctr](https://github.com/cyanmint/lkm4ctr) 提供的 KSU 模块。该模块补齐 Droidspaces 依赖的 LKM 能力，使容器可以在不刷内核的前提下启动。模块加载后，先确认 `/dev`、cgroup、mount 等接口可用，再启动容器；模块未加载时，Droidspaces 缺少所需内核能力，容器无法正常启动。
+
+### 0.3 两步之间的关系
+
+CVE-2026-98260 提供“能加载模块”的临时权限，lkm4ctr 提供“Droidspaces 需要的内核能力”，两者缺一不可。镜像构建、rootfs 导入、桌面会话和 GPU 栈都以这两步已经完成为前提；本文档后续章节不再重复说明。
+
+> 设备侧宿主脚本、KSU 模块安装与 Mali 栈 bundle 在配套仓库 [collegeming/xring-o3-droidspaces-package](https://github.com/collegeming/xring-o3-droidspaces-package)。
+
 ## 1. 目标与产物
 
 一次构建产出一个 rootfs 归档：

@@ -10,6 +10,15 @@ Build ARM64 Linux RootFS images for Droidspaces on Android with GitHub Actions. 
 
 Subscribe to the rolling desktop feed in Droidspaces: [Chinese RootFS (GitHub)](https://github.com/Goldzxcbug/Droidspaces-rootfs-Desktop-builder/releases/download/droidspaces-rootfs-all-wayland/rootfs_zh.json), [Chinese RootFS (CNB)](https://cnb.cool/goldzxcbug/droidspaces-package/-/releases/download/droidspaces-rootfs-all-wayland/rootfs_zh.json), or [English RootFS (GitHub)](https://github.com/Goldzxcbug/Droidspaces-rootfs-Desktop-builder/releases/download/droidspaces-rootfs-all-wayland/rootfs_en.json).
 
+## Prerequisites on XRING-O3
+
+This builder produces the RootFS only; it does not make the device capable of running Droidspaces. On XRING-O3 (Xiaomi Pad 9 Pro Max / M367FC / Android 17), the stock GKI kernel does not expose the namespace, cgroup, and mount capabilities Droidspaces needs. Directly importing a RootFS fails at container startup.
+
+1. **Obtain temporary root with CVE-2026-98260.** Use it only to load kernel modules and prepare the container. It does not modify boot, flash the kernel, or provide permanent root; it is lost on reboot and must be repeated.
+2. **Load the KSU module from [cyanmint/lkm4ctr](https://github.com/cyanmint/lkm4ctr).** The module supplies the LKM capabilities Droidspaces needs, so containers can run without flashing a custom kernel. Verify `/dev`, cgroup, and mount interfaces before starting the container.
+
+Both steps are device-side prerequisites, not part of this repository's image build. Host scripts, KSU module installation, and Mali stack bundles live in [collegeming/xring-o3-droidspaces-package](https://github.com/collegeming/xring-o3-droidspaces-package).
+
 ## What it provides
 
 - Seven distribution targets, with X11 and Anland Wayland support depending on the selected profile and distribution.
