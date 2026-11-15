@@ -245,3 +245,13 @@ Magpie（Wails v3）在本栈启动白屏：DOM/JS 正常，但 WebKit 的 layou
 - WebKitWebProcess 仍加载 `libvulkan_droidbridge`/kopper Mesa 并占用 bridge 内存，说明 GPU 调用本身正常；白屏是 WebKit 策略/布局问题。
 - 要同时保留 Wails 应用的零拷贝，需要上游修复 Wails v3 的 Linux WebKit 后端或 WebKitGTK 的 ALWAYS/NEVER viewport 0×0；本地 shim 只是平台兼容兜底。
 - 不要把该 shim 只放进 Magpie 专用 wrapper；按平台会话预加载才能覆盖所有 Wails v3 应用，同时因为只拦截显式策略调用，不会改变不调用该 setter 的 DBX 等 WebKit 应用。
+
+## 14. 滚轮/触摸板 v120 与触摸边界（2026-11-15）
+
+Anland consumer 的 `INPUT_TYPE_POINTER_AXIS` 始终带 `discrete = 0`（native_consumer.c），niri Anland 后端原先把 `amount_v120()` 返回 `Some(0.0)`，于是 Smithay 同时发送 `axis(value)` 和 `axis_value120(0)`。Gecko（Zen）和 winit 类应用（OxideTerm）优先使用 v120，看到 0 后不滚动；kitty/GTK 等使用传统 axis 的应用正常。
+
+修复（niri-anland 26.4.0，滚动 release `anland-niri-packages`）：
+
+- `amount_v120()` 在 `discrete == 0` 时返回 `None`，不再发送零值 v120；客户端回退到 `axis`。
+- 验证：启用 `warp-mouse-to-focus` 后对 `WAYLAND_DEBUG=1 kitty` 注入滚轮，收到 `axis_source(0)` + `axis(..., ±30.0)`，**没有** `axis_value120`。
+- 触摸：niri 已正确转发 `TouchDown/Motion/Up/Frame` 并按输出尺寸缩放；OxideTerm 等 winit 终端不实现 `wl_touch` 到点击的映射，触摸无效属于应用侧限制，不是合成器丢失事件。
