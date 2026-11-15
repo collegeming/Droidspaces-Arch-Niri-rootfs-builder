@@ -228,24 +228,19 @@ Anland 音频是独立于 GPU 的链路，不能用 GPU/桥接状态推断：
 - 结论：Fedora WebKit 的 dmabuf 验收必须在正常 Fedora KDE/Anland 会话里跑 MiniBrowser/Epiphany；不要在无 renderD 的 headless 合成器上强测。届时用 `WAYLAND_DEBUG=1` 统计 `create_immed` 与 `wl_shm.create_pool`，并把 Fluent 窗口尺寸与池大小对照。
 - 对照：Arch r103 的 DBX（Tauri/WebKitGTK）已实测 `create_immed=3`（1800×2168，steady state），启动阶段有 2 个窗口尺寸 SHM 帧后销毁，仅剩 2304 B 光标池；说明 Arch 配方本身有效。
 
-## 13. Wails/WebKit 白屏与通用策略 shim（2026-11-15）
+## 13. Wails/WebKit 白屏：启动环境问题（2026-11-15，更正）
 
-Magpie（Wails v3）在本栈启动白屏：DOM/JS 正常，但 WebKit 的 layout viewport 为 0×0，只绘制 body 背景。策略矩阵：`ALWAYS` 与 `NEVER` 都是 0×0，只有 `ON_DEMAND` 能完成布局。根因是 Wails v3 强制 `WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS` 与 WebKitGTK 2.54 + Wayland/niri-anland 的交互，不是 MaliBridge 崩溃或 KO。
+Magpie（Wails v3）白屏的根因**不是** `WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS`。同一会话内实测：
 
-镜像通用修复（r104 起）：
+- 直接 `/usr/bin/magpie app`（无 zc-run、无 libdrmfake）→ 白屏。
+- `zc-run --class webkit /usr/bin/magpie app`（策略仍是 Wails 的 ALWAYS）→ UI 正常；`WAYLAND_DEBUG` 收到 `create_immed=3`（1784×2272），稳态只 attach dmabuf buffer，初始两个约 16.2 MB 的 SHM 池随后 destroy → L-B 零拷贝成立。
+- 关键差异是 zc-run 注入的 `libdrmfake`/WebKit 设备环境，不是硬件加速策略。dsh 的 `zc-magpie` 同时加入了 zc-run，策略 shim 的作用被混淆；单独强制 ON_DEMAND 会让 WebKit 退回 SHM，反而丢失零拷贝。
 
-- `scripts/webkit-accel-ondemand.c` 编译为 `/usr/local/lib/libwebkit-accel-ondemand.so`；shim 不包含/链接 WebKit 头文件，只用 `dlsym(RTLD_NEXT)` 拦截 `webkit_settings_set_hardware_acceleration_policy`，因此同时兼容 webkit2gtk 4.1/6.0，也可安全地预加载到非 WebKit 进程。
-- `start-desktop-session` 在进入桌面会话前把该 shim 加入 `LD_PRELOAD`；niri/KWin 派生的应用（包括 Wails 应用）自动生效。`zc-run --class webkit` 会把 `libdrmfake` 继续前置，两者共存。
-- 关闭开关：`ZC_WEBKIT_ACCEL_POLICY=off`。
-- 不再需要 Magpie 专用的 `~/.local/bin/zc-magpie` 或用户级 desktop 覆盖；系统 desktop 的 `zc-run --class webkit /usr/bin/magpie app` 即可。
+修复规则：
 
-代价与边界：
-
-- `ON_DEMAND` 下 Magpie 的窗口缓冲实测 `create_immed=0`，出现两个约 16.2 MB 的 `wl_shm` 池，即 **GPU 渲染 + SHM 回读**；L-B 零拷贝不成立。
-- WebKitWebProcess 仍加载 `libvulkan_droidbridge`/kopper Mesa 并占用 bridge 内存，说明 GPU 调用本身正常；白屏是 WebKit 策略/布局问题。
-- 要同时保留 Wails 应用的零拷贝，需要上游修复 Wails v3 的 Linux WebKit 后端或 WebKitGTK 的 ALWAYS/NEVER viewport 0×0；本地 shim 只是平台兼容兜底。
-- 不要把该 shim 只放进 Magpie 专用 wrapper；按平台会话预加载才能覆盖所有 Wails v3 应用，同时因为只拦截显式策略调用，不会改变不调用该 setter 的 DBX 等 WebKit 应用。
-
+- Wails/WebKit 应用的 desktop/启动器必须走 `zc-run --class webkit`；不要用用户级 desktop 覆盖成 `/usr/bin/magpie`。Magpie 的系统 desktop 已是该命令，用户级覆盖必须删除或同步。
+- 不要再给会话全局预加载 ON_DEMAND 策略 shim；当前镜像不包含该 shim。
+- 需要验证零拷贝时，看 `create_immed` 是否为窗口尺寸，以及稳态是否只 attach dmabuf buffer；初始 SHM 帧后池被 destroy 属正常启动过程。
 ## 14. 滚轮/触摸板 v120 与触摸边界（2026-11-15）
 
 Anland consumer 的 `INPUT_TYPE_POINTER_AXIS` 始终带 `discrete = 0`（native_consumer.c），niri Anland 后端原先把 `amount_v120()` 返回 `Some(0.0)`，于是 Smithay 同时发送 `axis(value)` 和 `axis_value120(0)`。Gecko（Zen）和 winit 类应用（OxideTerm）优先使用 v120，看到 0 后不滚动；kitty/GTK 等使用传统 axis 的应用正常。
