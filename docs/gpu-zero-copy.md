@@ -238,7 +238,8 @@ Magpie（Wails v3）白屏的根因**不是** `WEBKIT_HARDWARE_ACCELERATION_POLI
 
 修复规则：
 
-- Wails/WebKit 应用的 desktop/启动器必须走 `zc-run --class webkit`；不要用用户级 desktop 覆盖成 `/usr/bin/magpie`。Magpie 的系统 desktop 已是该命令，用户级覆盖必须删除或同步。
+- Wails/WebKit 应用的 desktop/启动器必须走 `zc-run --class webkit`。
+- Magpie 启动时会重写用户级 `~/.local/share/applications/magpie.desktop` 为 `Exec=/usr/bin/magpie %u`，覆盖系统条目的 zc-run。只改 desktop 文件不够；rootfs 必须安装 `/usr/bin/magpie` 包装器（原二进制改名 `magpie.real`），对 `app`、空参数和 `ccswitch://` URI 转发到 `zc-run --class webkit`，并加 pacman 钩子在 `magpie-bin` 升级后重装。细节见配套文档 `06-运维与手册/07-Magpie-WebKit零拷贝与启动包装.md`（本地 DroidSpaces 文档树）。
 - 不要再给会话全局预加载 ON_DEMAND 策略 shim；当前镜像不包含该 shim。
 - 需要验证零拷贝时，看 `create_immed` 是否为窗口尺寸，以及稳态是否只 attach dmabuf buffer；初始 SHM 帧后池被 destroy 属正常启动过程。
 ## 14. 滚轮/触摸板 v120 与触摸边界（2026-11-15）
