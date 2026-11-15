@@ -227,3 +227,21 @@ Anland 音频是独立于 GPU 的链路，不能用 GPU/桥接状态推断：
 - 隔离运行时验证未通过：`kwin_wayland --virtual` 能创建 `wayland-test` socket，但客户端只发出 `get_registry/sync`、收不到任何 global（KWin 主循环未服务客户端）；`sway` headless + `WLR_RENDERER=gles2` 报 `Failed to find any DRM render node`，即使 `LD_PRELOAD=libdrmfake.so` + `WLR_RENDER_DRM_DEVICE=/dev/dri/card0` 仍报 `card0 is not a DRM render node`。
 - 结论：Fedora WebKit 的 dmabuf 验收必须在正常 Fedora KDE/Anland 会话里跑 MiniBrowser/Epiphany；不要在无 renderD 的 headless 合成器上强测。届时用 `WAYLAND_DEBUG=1` 统计 `create_immed` 与 `wl_shm.create_pool`，并把 Fluent 窗口尺寸与池大小对照。
 - 对照：Arch r103 的 DBX（Tauri/WebKitGTK）已实测 `create_immed=3`（1800×2168，steady state），启动阶段有 2 个窗口尺寸 SHM 帧后销毁，仅剩 2304 B 光标池；说明 Arch 配方本身有效。
+
+## 13. Wails/WebKit 白屏与通用策略 shim（2026-11-15）
+
+Magpie（Wails v3）在本栈启动白屏：DOM/JS 正常，但 WebKit 的 layout viewport 为 0×0，只绘制 body 背景。策略矩阵：`ALWAYS` 与 `NEVER` 都是 0×0，只有 `ON_DEMAND` 能完成布局。根因是 Wails v3 强制 `WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS` 与 WebKitGTK 2.54 + Wayland/niri-anland 的交互，不是 MaliBridge 崩溃或 KO。
+
+镜像通用修复（r104 起）：
+
+- `scripts/webkit-accel-ondemand.c` 编译为 `/usr/local/lib/libwebkit-accel-ondemand.so`；shim 不包含/链接 WebKit 头文件，只用 `dlsym(RTLD_NEXT)` 拦截 `webkit_settings_set_hardware_acceleration_policy`，因此同时兼容 webkit2gtk 4.1/6.0，也可安全地预加载到非 WebKit 进程。
+- `start-desktop-session` 在进入桌面会话前把该 shim 加入 `LD_PRELOAD`；niri/KWin 派生的应用（包括 Wails 应用）自动生效。`zc-run --class webkit` 会把 `libdrmfake` 继续前置，两者共存。
+- 关闭开关：`ZC_WEBKIT_ACCEL_POLICY=off`。
+- 不再需要 Magpie 专用的 `~/.local/bin/zc-magpie` 或用户级 desktop 覆盖；系统 desktop 的 `zc-run --class webkit /usr/bin/magpie app` 即可。
+
+代价与边界：
+
+- `ON_DEMAND` 下 Magpie 的窗口缓冲实测 `create_immed=0`，出现两个约 16.2 MB 的 `wl_shm` 池，即 **GPU 渲染 + SHM 回读**；L-B 零拷贝不成立。
+- WebKitWebProcess 仍加载 `libvulkan_droidbridge`/kopper Mesa 并占用 bridge 内存，说明 GPU 调用本身正常；白屏是 WebKit 策略/布局问题。
+- 要同时保留 Wails 应用的零拷贝，需要上游修复 Wails v3 的 Linux WebKit 后端或 WebKitGTK 的 ALWAYS/NEVER viewport 0×0；本地 shim 只是平台兼容兜底。
+- 不要把该 shim 只放进 Magpie 专用 wrapper；按平台会话预加载才能覆盖所有 Wails v3 应用，同时因为只拦截显式策略调用，不会改变不调用该 setter 的 DBX 等 WebKit 应用。
