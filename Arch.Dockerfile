@@ -82,6 +82,7 @@ COPY scripts/etc/pacman.d/hooks/98-unsupported-filecaps.hook /etc/pacman.d/hooks
 COPY scripts/bashrc.sh /etc/profile.d/ds-aliases.sh
 COPY scripts/start-desktop-session.sh /usr/local/bin/start-desktop-session
 COPY scripts/xwayland-satellite-soft.sh /usr/local/bin/xwayland-satellite-soft
+COPY scripts/webkit-accel-ondemand.c /usr/local/lib/libwebkit-accel-ondemand.c
 COPY scripts/noctalia-location-sync.sh /usr/local/bin/noctalia-location-sync
 COPY scripts/desktops/ /usr/local/lib/droidspaces/desktops/
 COPY scripts/etc/niri-default-config.kdl /usr/local/share/droidspaces/niri-default-config.kdl
@@ -518,6 +519,22 @@ RUN if [ "$ENABLE_systemd257_ARG" = "true" ]; then \
     else \
         echo "--> [跳过] 未启用 systemd 257 旧内核兼容"; \
     fi
+
+# 通用 WebKit 兼容 shim：Wails v3 强制 ALWAYS 策略时，当前 WebKitGTK +
+# Wayland/niri-anland 栈的 layout viewport 会停在 0x0。start-desktop-session
+# 会把该 shim 加入会话 LD_PRELOAD；shim 不链接 WebKit，兼容 4.1/6.0。
+RUN set -eux; \
+    remove_gcc=0; \
+    if ! pacman -Qq gcc >/dev/null 2>&1; then \
+        pacman -S --noconfirm --needed gcc; \
+        remove_gcc=1; \
+    fi; \
+    cc -shared -fPIC -O2 -Wall -Wextra \
+        -o /usr/local/lib/libwebkit-accel-ondemand.so \
+        /usr/local/lib/libwebkit-accel-ondemand.c -ldl; \
+    chmod 0644 /usr/local/lib/libwebkit-accel-ondemand.so \
+        /usr/local/lib/libwebkit-accel-ondemand.c; \
+    if [ "$remove_gcc" = 1 ]; then pacman -Rns --noconfirm gcc || true; fi
 
 # 彻底清理 pacman 缓存
 # 打包前删除仅用于构建的一次性脚本；TUI 和运行时脚本保留。
