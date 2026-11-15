@@ -91,4 +91,18 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -S "/run/user/$(id -u)/bus" ]; th
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
 fi
 
+# 通用 WebKit 兼容：Wails v3 会把 WebKitGTK 的硬件加速策略设为 ALWAYS；在当前
+# WebKitGTK 2.54 + Wayland/niri-anland 栈下，ALWAYS 与 NEVER 都会让页面 layout
+# viewport 停在 0x0（DOM/JS 正常，只画出 body 背景，即白屏），只有 ON_DEMAND
+# 能完成布局。shim 只拦截这一个 WebKit 符号，不链接 WebKit，可同时用于
+# webkit2gtk 4.1/6.0，也不会影响非 WebKit 进程。ZC_WEBKIT_ACCEL_POLICY=off 关闭。
+webkit_accel_shim=/usr/local/lib/libwebkit-accel-ondemand.so
+if [ -r "$webkit_accel_shim" ]; then
+    if [ -n "${LD_PRELOAD:-}" ]; then
+        export LD_PRELOAD="$webkit_accel_shim:$LD_PRELOAD"
+    else
+        export LD_PRELOAD="$webkit_accel_shim"
+    fi
+fi
+
 exec /bin/bash -lc "$command_line"
