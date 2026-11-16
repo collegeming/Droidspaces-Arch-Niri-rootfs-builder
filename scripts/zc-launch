@@ -32,6 +32,68 @@ passthrough() {
     exec "${args[@]}"
 }
 
+# xring-wrap-desktop (the existing install-time wrapper) produces
+#   zc-run --class chromium "/opt/Foo Bar/foo" ...
+# which still hits the Electron zygote path-space bug.  When Noctalia passes
+# such an entry through zc-launch, add the two flags to the zc-run argv.
+# Returns 1 when nothing needs changing so the caller can pass through.
+fix_zcrun_pathspace() {
+    local -a a=("$@")
+    local cls="" cmdpath="" i=1
+    while [ "$i" -lt "${#a[@]}" ]; do
+        case "${a[$i]}" in
+            --class)
+                cls=${a[$((i + 1))]:-}
+                i=$((i + 2))
+                ;;
+            --class=*)
+                cls=${a[$i]#--class=}
+                i=$((i + 1))
+                ;;
+            --no-shim|--print-env|--verbose)
+                i=$((i + 1))
+                ;;
+            --)
+                i=$((i + 1))
+                break
+                ;;
+            -*)
+                i=$((i + 1))
+                ;;
+            *)
+                cmdpath=${a[$i]}
+                break
+                ;;
+        esac
+    done
+    [ -n "$cmdpath" ] || return 1
+    if [ -z "$cls" ] && [ -n "${classifier:-}" ] && [ -x "$classifier" ]; then
+        cls=$("$classifier" "$cmdpath" 2>/dev/null || true)
+    fi
+    [ "$cls" = chromium ] || return 1
+    case "$cmdpath" in
+        *[[:space:]]*) ;;
+        *) return 1 ;;
+    esac
+    local has_ns=0 has_nz=0 x
+    for x in "${a[@]}"; do
+        [ "$x" = --no-sandbox ] && has_ns=1
+        [ "$x" = --no-zygote ] && has_nz=1
+    done
+    if [ "$has_ns" = 1 ] && [ "$has_nz" = 1 ]; then
+        return 1
+    fi
+    [ "$has_ns" = 1 ] || a+=(--no-sandbox)
+    [ "$has_nz" = 1 ] || a+=(--no-zygote)
+    if [ "${ZC_LAUNCH_DRY_RUN:-0}" = 1 ]; then
+        printf '%q ' "${prefix[@]}" "${a[@]}"
+        printf '\n'
+        exit 0
+    fi
+    log "zc-run-pathspace cmd=$cmdpath action=append-flags"
+    exec "${prefix[@]}" "${a[@]}"
+}
+
 # Skip an optional env(1) prefix so the real command can be classified.
 idx=0
 if [ "${args[0]}" = "env" ]; then
@@ -59,10 +121,30 @@ if [ -z "$resolved" ] || [ ! -e "$resolved" ]; then
 fi
 base=$(basename -- "$resolved")
 
+classifier=${ZC_CLASSIFY:-}
+if [ -z "$classifier" ] || [ ! -x "$classifier" ]; then
+    classifier=
+    for candidate in \
+        /opt/mali-stack/current/lib/zc-run/zc-classify \
+        /usr/local/lib/zc-run/zc-classify; do
+        if [ -x "$candidate" ]; then
+            classifier=$candidate
+            break
+        fi
+    done
+fi
+
 # Exact wrapper paths must not be wrapped again.  Matching only the basename
 # would also skip the real binaries (e.g. "/opt/Kimi Code/kimi-code").
 case "$resolved" in
-    /usr/local/bin/zc-run|/usr/local/bin/zc-launch|/usr/local/bin/google-chrome|/usr/local/bin/google-chrome-stable|/usr/local/bin/kimi-code|/usr/local/bin/dbx|/usr/local/bin/dbx-dmabuf|/usr/local/bin/zen|/usr/local/bin/zen-browser|/usr/bin/magpie|/usr/local/bin/magpie|/usr/local/bin/noctalia-dt|/usr/local/bin/gpu-app-bridge)
+    /usr/local/bin/zc-run|/opt/mali-stack/current/bin/zc-run)
+        # Existing xring-wrap-desktop entries can carry a Chromium path with
+        # spaces; add the non-zygote flags before passing through.
+        fix_zcrun_pathspace "$resolved" "${cmd_args[@]}" || true
+        log "handled path=$resolved action=passthrough"
+        passthrough
+        ;;
+    /usr/local/bin/zc-launch|/usr/local/bin/google-chrome|/usr/local/bin/google-chrome-stable|/usr/local/bin/kimi-code|/usr/local/bin/dbx|/usr/local/bin/dbx-dmabuf|/usr/local/bin/zen|/usr/local/bin/zen-browser|/usr/bin/magpie|/usr/local/bin/magpie|/usr/local/bin/noctalia-dt|/usr/local/bin/gpu-app-bridge)
         log "handled path=$resolved action=passthrough"
         passthrough
         ;;
@@ -77,18 +159,6 @@ if [ -f "$resolved" ] && head -c 2 "$resolved" 2>/dev/null | grep -q '#!' \
     passthrough
 fi
 
-classifier=${ZC_CLASSIFY:-}
-if [ -z "$classifier" ] || [ ! -x "$classifier" ]; then
-    classifier=
-    for candidate in \
-        /opt/mali-stack/current/lib/zc-run/zc-classify \
-        /usr/local/lib/zc-run/zc-classify; do
-        if [ -x "$candidate" ]; then
-            classifier=$candidate
-            break
-        fi
-    done
-fi
 if [ -z "$classifier" ]; then
     log "classifier-missing base=$base action=passthrough"
     passthrough
