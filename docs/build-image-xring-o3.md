@@ -17,7 +17,7 @@
 | `output_mode` | `native` | 不写 mode，使用 Anland 首选模式 |
 | `mali_stack_bundle_url` | release 资产 URL | 必须与 sha256 成对提供 |
 | `mali_stack_bundle_sha256` | 对应 sha256 | 缺失会硬失败 |
-| `mali_stack_version` | `2026.11.08` | 版本标识 |
+| `mali_stack_version` | `2026.11.12-v1` | 版本标识 |
 
 `custom_username`、`device_profile`、`apply_preferences` 在 workflow 里有默认值，手工触发时可以省略；其余按上表显式传入。
 
@@ -27,8 +27,8 @@
 gh workflow run build-rootfs-releases.yml \
   -f build_target=Arch -f desktop=Niri \
   -f output_scale=2 -f output_mode=native \
-  -f mali_stack_bundle_url='https://github.com/collegeming/xring-o3-droidspaces-package/releases/download/xring-o3-mali-2026.11.08/xring-o3-mali-stack-2026.11.08-v2.tar.zst' \
-  -f mali_stack_bundle_sha256='159ddd879241df78baa2f476e38ac1756e1a9b44c778bd0b8b7c18e50389c08d'
+  -f mali_stack_bundle_url='https://github.com/collegeming/xring-o3-droidspaces-package/releases/download/xring-o3-mali-stack-2026.11.12/xring-o3-mali-stack-2026.11.12-v1.tar.zst' \
+  -f mali_stack_bundle_sha256='b628b688ccd287a4d7c953c4ae93743b9a79d4e0e6f1cdaac15a2f7e047d3e06'
 ```
 
 ## 产物验收
