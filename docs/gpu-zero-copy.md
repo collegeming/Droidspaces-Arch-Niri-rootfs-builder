@@ -303,3 +303,12 @@ Gecko 的 user.js 是必要条件：没有 `gfx.webrender.all=true`、`gfx.webre
 - Flatpak/AppImage 的内部启动方式可能需要单独处理；
 - 路径空格自动 flags 仅针对 Chromium 类；Gecko/WebKit 的路径问题另测；
 - `--no-sandbox` 是 Electron 45 路径空格 zygote bug 的必要绕过，容器仍是隔离边界。
+
+### 15.5 r108 构建结果（2026-11-17）
+
+- Build run `43920709635` 成功，Release `v20261116-173950-r108`，归档 SHA-256 `99408a9b531548166472c7516cb37ca2ac7627bc5659368180da1306b75d9c5d`，`xz -t` 通过。
+- 镜像内 `zc-launch` `c1b9160f…`、`zc-desktop-normalize` `88cfbcef…` 与本仓库源码一致；Noctalia `launch_apps_custom_command` 已写入 home/skel/preferences asset。
+- 现有 `xring-wrap-desktop` `ee093029…`、`zc-run` `ec5f38fe…` 与 live 一致，未被替换；Xwayland wrapper、`start-desktop-session`、Noctalia 插件、Chrome wrapper 的 hash 也与 live 一致。
+- niri `e7b76f6c…`（v120），mark-shot `0.2.0-1`；无 WebKit 策略 shim、无 `.zc-launch.bak`。
+- 构建期 `zc-desktop-normalize --apply` 为 `changes=0`：现有 xring/per-app 条目已被覆盖，新层没有改写既有条目；它只在将来包安装/用户条目出现漏项时兜底。
+- 附带修复：上游 mark-shot 旧 Release tag `native-v0.2.0-preview.7` 已 404，脚本改用 `v0.2.0` 的 `mark-shot-bin-0.2.0-1-aarch64.pkg.tar.zst`（SHA `9a2a987e…`）并补齐新增依赖。
