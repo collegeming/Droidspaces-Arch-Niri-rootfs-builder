@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/applications/*.desktop
+
+[Action]
+Description = Normalizing Electron/WebKit/Gecko desktop entries to zc-launch...
+When = PostTransaction
+Exec = /usr/local/bin/zc-desktop-normalize --apply

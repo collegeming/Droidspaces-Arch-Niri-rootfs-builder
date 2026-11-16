@@ -251,3 +251,53 @@ Anland consumer 的 `INPUT_TYPE_POINTER_AXIS` 始终带 `discrete = 0`（native_
 - `amount_v120()` 在 `discrete == 0` 时返回 `None`，不再发送零值 v120；客户端回退到 `axis`。
 - 验证：启用 `warp-mouse-to-focus` 后对 `WAYLAND_DEBUG=1 kitty` 注入滚轮，收到 `axis_source(0)` + `axis(..., ±30.0)`，**没有** `axis_value120`。
 - 触摸：niri 已正确转发 `TouchDown/Motion/Up/Frame` 并按输出尺寸缩放；OxideTerm 等 winit 终端不实现 `wl_touch` 到点击的映射，触摸无效属于应用侧限制，不是合成器丢失事件。
+
+## 15. 通用应用启动层（2026-11-17）
+
+逐应用 wrapper（`google-chrome`、`dbx-dmabuf`、`zen-browser`、`magpie`、`kimi-code`）继续保留；新增的 `zc-launch` 只做分类和转发，不替换它们。
+
+### 15.1 启动路径
+
+Noctalia 配置：
+
+```toml
+[shell]
+launch_apps_custom_command = "/usr/local/bin/zc-launch $CMD"
+```
+
+启动器、dock、任务栏的每次启动都经过 `zc-launch`：
+
+- `zc-classify` 判定为 `chromium`、`webkit`、`gecko` 时，分别调用已有 `zc-run --class <class>`；
+- Chromium 类且真实路径含空白时，自动追加 `--no-sandbox --no-zygote`；
+- 已在专用 wrapper（`zc-run`、`google-chrome`、`dbx-dmabuf`、`zen-browser`、`magpie`、`kimi-code` 等）里的命令直接透传，不重复注入；
+- Qt/GTK/X11/终端/unknown 原样透传。
+
+`zc-desktop-normalize` 作为非 Noctalia 启动路径的兜底：只把 `chromium`/`webkit`/`gecko` 条目的 `Exec=` 前缀为 `zc-launch`，其他条目不动；pacman 钩子在 desktop 文件安装/升级后重跑。当前 live 归一化了 Zen 4 个动作、Zen 用户条目、Chrome PWA 和 DBX handler，重复扫描为 0 变更。
+
+### 15.2 live 实测（2026-11-17）
+
+| 类型 | 应用/路径 | create_immed | 启动期 SHM | 结论 |
+| --- | --- | --- | --- | --- |
+| Electron/Chromium，路径含空格 | Kimi Code，`zc-launch /opt/Kimi Code/kimi-code` | 3（1864×2252） | 2 个池：2304、9216 B（仅光标） | L-B 成立；dmabuf 事件 845 |
+| WebKit/Tauri | DBX，`zc-launch /usr/bin/dbx` | 3（1680×2168） | 2 个 14,568,960 B 池，启动后 destroy | L-B 成立；稳态 attach dmabuf |
+| Gecko | Zen，`zc-launch /opt/zen-browser-bin/zen-bin` + user.js | 9（1680×2168、3330×2168） | 启动期大池随后回收 | L-B 成立；`no dma-buf presentation` 为 0 |
+| 终端 passthrough | kitty，`zc-launch /usr/bin/kitty` | 3（1680×2168） | 0 | L-B 成立 |
+| 已包装透传 | `zc-run`、`kimi-code`、`google-chrome` | 未重复注入 | — | dry-run 直接透传；原有 Chrome/Electron 证据不变 |
+
+Gecko 的 user.js 是必要条件：没有 `gfx.webrender.all=true`、`gfx.webrender.software=false`、`widget.dmabuf.force-enabled=true` 时，Zen 的 `create_immed=0`，窗口走大块 wl_shm 池。live 已写入当前 profile 的 `user.js`；`install-zen.sh` 在构建 Zen 时会写 `distribution/policies.json`，对新建 profile 同样生效。
+
+### 15.3 构建集成
+
+- `scripts/zc-launch`、`scripts/zc-desktop-normalize.py`、`scripts/98-zc-desktop-normalize.hook`、`scripts/install-generic-launch.sh` 由 `Arch.Dockerfile` 在 preferences 之后安装；
+- Noctalia 默认配置 asset 增加 `launch_apps_custom_command`；
+- `zc-launch` 的分类器优先 `/opt/mali-stack/current/lib/zc-run/zc-classify`，回退 `/usr/local/lib/zc-run/zc-classify`；`zc-run` 优先 `/usr/local/bin/zc-run`；
+- 归一化只在构建末尾运行一次，不在镜像里留下 `.zc-launch.bak`。
+
+### 15.4 边界
+
+- D-Bus 激活的应用可能绕过 desktop Exec，不经过 `zc-launch`；
+- `zc-classify` 未识别的框架按 unknown 透传；
+- 应用自身关闭 GPU 合成、需要专有 flag、缺依赖、locale 问题仍需单独立项；
+- Flatpak/AppImage 的内部启动方式可能需要单独处理；
+- 路径空格自动 flags 仅针对 Chromium 类；Gecko/WebKit 的路径问题另测；
+- `--no-sandbox` 是 Electron 45 路径空格 zygote bug 的必要绕过，容器仍是隔离边界。

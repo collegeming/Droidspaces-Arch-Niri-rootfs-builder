@@ -102,7 +102,7 @@ RUN chmod +x /usr/local/sbin/install-anland-* /usr/local/sbin/install-mesa /usr/
     pacman -Su --noconfirm && \
     pacman -S --noconfirm --needed \
     # 核心工具组件
-    bash jq dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd pam fastfetch logrotate \
+    bash jq python dialog coreutils file findutils grep sed gawk curl wget ca-certificates bash-completion dbus systemd pam fastfetch logrotate \
     # 用户请求的基础开发/编辑工具
     git nano sudo \
     # 网络与 SSH 工具
@@ -539,6 +539,16 @@ RUN APPLY_PREFERENCES="${APPLY_PREFERENCES}" \
     PREFERENCES_PROFILE="${PREFERENCES_PROFILE}" \
     PREFERENCES_STRICT="${PREFERENCES_STRICT}" \
     sh /usr/local/lib/droidspaces/preferences/apply-preferences.sh
+
+# 通用应用启动层：Noctalia 启动边界统一走 zc-launch；desktop 条目归一化作为
+# 非 Noctalia 启动路径的兜底。必须放在所有 desktop 包和 preferences 之后，
+# 这样归一化能看到最终的 Exec 行。zc-launch 复用已有 zc-run/zc-classify，
+# 不改变 Chrome/ZCode/OpenChamber/Magpie/DBX/Zen 的既有专用 wrapper。
+COPY scripts/zc-launch /tmp/zc-launch
+COPY scripts/zc-desktop-normalize.py /tmp/zc-desktop-normalize.py
+COPY scripts/98-zc-desktop-normalize.hook /tmp/98-zc-desktop-normalize.hook
+COPY scripts/install-generic-launch.sh /tmp/install-generic-launch.sh
+RUN USERNAME="${USERNAME}" bash /tmp/install-generic-launch.sh
 
 # 阶段 2：将完整的根文件系统导出到 scratch（空白层），以便外部直接提取或打包成 tarfs
 FROM scratch AS export

@@ -27,6 +27,22 @@ src_dir=$(dirname "$app_ini")
 install -d -m 0755 "$DEST"
 cp -a "$src_dir/." "$DEST/"
 
+# Gecko 的 dmabuf 呈现需要 WebRender + dmabuf force。policies.json 位于安装
+# 目录，Firefox/Zen 对所有 profile 生效，不依赖首次运行后才生成 profile，
+# 避免把 prefs 写进某个随机命名的 profile 目录。
+install -d -m 0755 "$DEST/distribution"
+cat > "$DEST/distribution/policies.json" <<'EOF'
+{
+  "policies": {
+    "Preferences": {
+      "gfx.webrender.all": true,
+      "gfx.webrender.software": false,
+      "widget.dmabuf.force-enabled": true
+    }
+  }
+}
+EOF
+
 cat > /usr/local/bin/zen-browser <<'EOF'
 #!/bin/sh
 exec /usr/local/bin/zc-run --class gecko /opt/zen/zen "$@"

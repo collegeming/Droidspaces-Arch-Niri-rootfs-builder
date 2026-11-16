@@ -1,0 +1,143 @@
+#!/bin/bash
+# zc-launch: generic desktop application dispatcher.
+#
+# Noctalia is configured with:
+#   launch_apps_custom_command = "/usr/local/bin/zc-launch $CMD"
+# so every app launched from the launcher, dock, or taskbar passes through
+# this script.  It classifies the real binary with zc-classify and only wraps
+# Chromium/Electron, WebKit and Gecko apps with zc-run; everything else is
+# exec'd untouched.
+#
+# It also handles the Electron path-with-space zygote bug generically: when a
+# Chromium-class binary lives under a path containing whitespace, add
+# --no-sandbox --no-zygote unless the caller already supplied them.
+#
+# ZC_LAUNCH_DRY_RUN=1 prints the resolved command instead of executing it.
+set -u
+
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}
+log_file=$state_dir/zc-launch.log
+mkdir -p "$state_dir" 2>/dev/null || true
+log() { printf '%s %s\n' "$(date '+%F %T%z')" "$*" >>"$log_file" 2>/dev/null || true; }
+
+args=("$@")
+[ "${#args[@]}" -gt 0 ] || exit 0
+
+passthrough() {
+    if [ "${ZC_LAUNCH_DRY_RUN:-0}" = 1 ]; then
+        printf '%q ' "${args[@]}"
+        printf '\n'
+        exit 0
+    fi
+    exec "${args[@]}"
+}
+
+# Skip an optional env(1) prefix so the real command can be classified.
+idx=0
+if [ "${args[0]}" = "env" ]; then
+    idx=1
+    while [ "$idx" -lt "${#args[@]}" ]; do
+        case "${args[$idx]}" in
+            [A-Za-z_]*=*) idx=$((idx + 1)) ;;
+            -*) idx=$((idx + 1)) ;;
+            *) break ;;
+        esac
+    done
+fi
+cmd=${args[$idx]:-}
+[ -n "$cmd" ] || exec "${args[@]}"
+cmd_args=("${args[@]:$((idx + 1))}")
+prefix=("${args[@]:0:$idx}")
+
+resolved=$cmd
+if [[ "$cmd" != */* ]]; then
+    resolved=$(command -v -- "$cmd" 2>/dev/null || true)
+fi
+if [ -z "$resolved" ] || [ ! -e "$resolved" ]; then
+    log "missing cmd=$cmd action=passthrough"
+    passthrough
+fi
+base=$(basename -- "$resolved")
+
+# Exact wrapper paths must not be wrapped again.  Matching only the basename
+# would also skip the real binaries (e.g. "/opt/Kimi Code/kimi-code").
+case "$resolved" in
+    /usr/local/bin/zc-run|/usr/local/bin/zc-launch|/usr/local/bin/google-chrome|/usr/local/bin/google-chrome-stable|/usr/local/bin/kimi-code|/usr/local/bin/dbx|/usr/local/bin/dbx-dmabuf|/usr/local/bin/zen|/usr/local/bin/zen-browser|/usr/bin/magpie|/usr/local/bin/magpie|/usr/local/bin/noctalia-dt|/usr/local/bin/gpu-app-bridge)
+        log "handled path=$resolved action=passthrough"
+        passthrough
+        ;;
+esac
+
+# A script that already invokes zc-run/zc-launch is a wrapper; pass it through.
+# Only inspect scripts (shebang), not ELF binaries that may contain the same
+# strings in their embedded resources.
+if [ -f "$resolved" ] && head -c 2 "$resolved" 2>/dev/null | grep -q '#!' \
+    && head -n 40 "$resolved" 2>/dev/null | grep -aqE 'zc-run|zc-launch'; then
+    log "wrapper base=$base action=passthrough"
+    passthrough
+fi
+
+classifier=${ZC_CLASSIFY:-}
+if [ -z "$classifier" ] || [ ! -x "$classifier" ]; then
+    classifier=
+    for candidate in \
+        /opt/mali-stack/current/lib/zc-run/zc-classify \
+        /usr/local/lib/zc-run/zc-classify; do
+        if [ -x "$candidate" ]; then
+            classifier=$candidate
+            break
+        fi
+    done
+fi
+if [ -z "$classifier" ]; then
+    log "classifier-missing base=$base action=passthrough"
+    passthrough
+fi
+class=$("$classifier" "$resolved" 2>/dev/null || echo unknown)
+case "$class" in
+    chromium|webkit|gecko) ;;
+    *)
+        log "class=$class base=$base action=passthrough"
+        passthrough
+        ;;
+esac
+
+zc_run=/usr/local/bin/zc-run
+[ -x "$zc_run" ] || zc_run=/opt/mali-stack/current/bin/zc-run
+final=("${prefix[@]}" "$zc_run" --class "$class" "$resolved" "${cmd_args[@]}")
+flags=""
+
+has_arg() {
+    local needle=$1 arg
+    for arg in "${cmd_args[@]}"; do
+        [ "$arg" = "$needle" ] && return 0
+    done
+    return 1
+}
+
+# Electron/Chromium zygote splits the executable path on spaces.  Paths such
+# as "/opt/Kimi Code/kimi-code" need the non-zygote launch path; Electron
+# requires --no-sandbox together with --no-zygote.
+case "$resolved" in
+    *[[:space:]]*)
+        if [ "$class" = chromium ]; then
+            if ! has_arg --no-sandbox; then
+                final+=(--no-sandbox)
+                flags="$flags,no-sandbox"
+            fi
+            if ! has_arg --no-zygote; then
+                final+=(--no-zygote)
+                flags="$flags,no-zygote"
+            fi
+        fi
+        ;;
+esac
+
+if [ "${ZC_LAUNCH_DRY_RUN:-0}" = 1 ]; then
+    printf '%q ' "${final[@]}"
+    printf '\n'
+    exit 0
+fi
+
+log "class=$class base=$base action=zc-run$flags"
+exec "${final[@]}"

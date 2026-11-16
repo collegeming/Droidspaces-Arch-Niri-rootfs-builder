@@ -1,6 +1,9 @@
 [shell]
 # Noctalia 外壳用无衬线 CJK，终端/编辑器用 Maple。
 font_family = "Noto Sans CJK SC"
+# 所有从 Noctalia 启动的应用先经过 zc-launch：Chromium/Electron、WebKit、
+# Gecko 自动套 zc-run；路径含空格的 Chromium 自动补 no-sandbox/no-zygote。
+launch_apps_custom_command = "/usr/local/bin/zc-launch $CMD"
 
 [bar.default]
 # 对应 Nyxuri §5，P1 试验项：胶囊顶栏。顶栏本体完全透明，只画胶囊。

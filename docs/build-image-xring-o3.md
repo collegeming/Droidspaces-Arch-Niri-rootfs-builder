@@ -37,4 +37,5 @@ gh workflow run build-rootfs-releases.yml \
 2. 解出 `usr/local/share/droidspaces/niri-default-config.kdl`，断言含 `output "anland-0"` 与 `scale 2`。
 3. 解出 `etc/systemd/system/desktop-session.service`，断言含 root `ExecStartPre` 创建 `/dev/dri/card0`。
 4. 解出 `home/colle/.config/niri/config.kdl`，断言 Noctalia 启动项为 `noctalia-dt`（不带子命令）。
-5. 目标容器启动后：`wayland-info | grep -w zwp_linux_dmabuf_v1` 版本 ≥ 4；Zen 无 `no dma-buf presentation`；Chromium `create_immed` 且 `wl_shm.create_pool=0`。
+5. 解出 `usr/local/bin/zc-launch`、`usr/local/bin/zc-desktop-normalize`、`etc/pacman.d/hooks/98-zc-desktop-normalize.hook`，并断言 `home/colle/.config/noctalia/config.toml` 含 `launch_apps_custom_command = "/usr/local/bin/zc-launch $CMD"`。
+6. 目标容器启动后：`wayland-info | grep -w zwp_linux_dmabuf_v1` 版本 ≥ 4；Zen 无 `no dma-buf presentation`；Chromium `create_immed` 且 `wl_shm.create_pool=0`。
