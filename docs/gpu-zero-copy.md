@@ -274,6 +274,8 @@ launch_apps_custom_command = "/usr/local/bin/zc-launch $CMD"
 
 `zc-desktop-normalize` 作为非 Noctalia 启动路径的兜底：只把 `chromium`/`webkit`/`gecko` 条目的 `Exec=` 前缀为 `zc-launch`，其他条目不动；pacman 钩子在 desktop 文件安装/升级后重跑。当前 live 归一化了 Zen 4 个动作、Zen 用户条目、Chrome PWA 和 DBX handler，重复扫描为 0 变更。
 
+与现有安装期机制的关系：镜像已有 `95-xring-desktop-wrap.hook` → `/usr/local/bin/xring-wrap-desktop`，它继续负责 pacman 事务后的 desktop 条目包装（chromium/webkit/gecko/flutter 的第一个 `Exec=` → `zc-run --class <cls>`）。本次没有替换它；`zc-launch` 只在 Noctalia 启动边界做运行时分类，`zc-desktop-normalize` 只补 xring 解析不了的条目（带引号的空格路径、多 `Exec=` 动作、用户级条目），遇到 `zc-run`/`zc-launch` 直接跳过。xring 的 `awk '{print $1}'` 对 `Exec="/opt/Kimi Code/kimi-code" %U` 会得到 `"/opt/Kimi` 并跳过，这正是补充层要处理的漏项；`zc-launch` 对 xring 生成的 `zc-run --class chromium "/opt/Foo Bar/..."` 条目也会在透传前补 `--no-sandbox --no-zygote`。
+
 ### 15.2 live 实测（2026-11-17）
 
 | 类型 | 应用/路径 | create_immed | 启动期 SHM | 结论 |
