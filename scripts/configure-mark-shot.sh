@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 安装 Mark Shot 0.2.0-preview.7 的 Arch/ALARM 原生 pacman 包。
+# 安装 Mark Shot 0.2.0 的 Arch/ALARM 原生 pacman 包。
 #
 # 0.2.0 是 Rust 原生重写：
 #   - 上游直接发布 aarch64 .pkg.tar.zst，不再需要 AUR 的 Qt 预编译包；
@@ -36,10 +36,10 @@ if [[ "${ID:-}" != arch && "${ID:-}" != archarm && "${ID:-}" != archlinux ]]; th
     exit 0
 fi
 
-MARK_SHOT_VERSION=0.2.0_preview.7
+MARK_SHOT_VERSION=0.2.0
 MARK_SHOT_PKG="mark-shot-bin-${MARK_SHOT_VERSION}-1-aarch64.pkg.tar.zst"
-MARK_SHOT_URL="https://github.com/jswysnemc/mark-shot/releases/download/native-v0.2.0-preview.7/${MARK_SHOT_PKG}"
-MARK_SHOT_SHA256=f19f5d3a0d735682c9572f862ce935ad34ee0329a937c238ee10395fa16661d1
+MARK_SHOT_URL="https://github.com/jswysnemc/mark-shot/releases/download/v0.2.0/${MARK_SHOT_PKG}"
+MARK_SHOT_SHA256=9a2a987e6ee8c1f3f3141db547bce9d4200790982d84df9db0357d9ef43ce12c
 
 # 与仓库其它下载一致：GitHub 直连在部分网络下不可用，默认走镜像前缀。
 GH_MIRROR_PREFIX=${GH_MIRROR_PREFIX:-https://gh-proxy.com/}
@@ -47,7 +47,8 @@ GH_MIRROR_PREFIX=${GH_MIRROR_PREFIX:-https://gh-proxy.com/}
 work=$(mktemp -d /tmp/mark-shot.XXXXXX)
 trap 'rm -rf "$work"' EXIT
 
-pacman -S --needed --noconfirm curl libarchive openssl-3 >/dev/null
+pacman -S --needed --noconfirm curl libarchive openssl-3 \
+    libxcb libxkbcommon-x11 libva libpulse pipewire libdrm mesa >/dev/null
 
 # 旧 0.1.62 可能是 mark-shot、mark-shot-bin 或 mark-shot-arch-bin；三者互相
 # 冲突，直接覆盖安装会停在冲突提示。这里只移除旧包，不用 -Rns，避免连带删掉
