@@ -1,0 +1,26 @@
+layout {
+    focus-ring {
+        width 2
+        active-color "{{ colors.primary.default.hex }}"
+        inactive-color "transparent"
+        urgent-color "{{ colors.error.default.hex }}"
+    }
+    shadow {
+        on
+        softness 28
+        spread 6
+        offset x=0 y=0
+        draw-behind-window false
+        color "{{ colors.primary.default.hex }}95"
+        inactive-color "#00000045"
+    }
+    tab-indicator {
+        active-color "{{ colors.primary.default.hex }}"
+        inactive-color "{{ colors.primary_container.default.hex }}"
+        urgent-color "{{ colors.error.default.hex }}"
+    }
+    insert-hint {
+        color "{{ colors.primary.default.hex }}80"
+    }
+}
+

@@ -1,0 +1,43 @@
+# P3 动态取色：壁纸驱动 Material You 色板（Nyxuri 模板移植）
+# 模板源文件在 ~/.config/nyxuri/templates/，由 Noctalia 渲染到各应用配置。
+[theme]
+mode = "auto"
+source = "wallpaper"
+wallpaper_scheme = "m3-content"
+# GTK4/libadwaita 的 @media (prefers-color-scheme) 与 Noctalia 明暗保持同步。
+sync_color_scheme = true
+
+[theme.templates]
+# kitty 走 Noctalia 内置模板（渲染 themes/noctalia.conf 并追加 include、热重载）。
+# qt 未启用：镜像内没有 qt5ct/qt6ct 的 colors 目录，写了也不生效。
+builtin_ids = ["kitty"]
+community_ids = []
+
+# GTK3 Material You（直接渲染到 gtk.css；原手写 Frappé 已备份）
+[theme.templates.user.nyxuri_gtk3]
+input_path = "/home/colle/.config/nyxuri/templates/gtk-3.0.css"
+output_path = "/home/colle/.config/gtk-3.0/gtk.css"
+enabled = true
+
+# GTK4 Material You（@media 双模式，随 color-scheme 即时切换）
+[theme.templates.user.nyxuri_gtk4]
+input_path = "/home/colle/.config/nyxuri/templates/gtk-4.0.css"
+output_path = "/home/colle/.config/gtk-4.0/gtk.css"
+enabled = true
+
+# niri 焦点环/阴影/标签指示器动态配色，由 config.kdl 末尾 include 引入
+[theme.templates.user.nyxuri_niri_glow_material_you]
+input_path = "/home/colle/.config/nyxuri/templates/niri-glow-material-you.kdl"
+output_path = "/home/colle/.config/niri/colors.kdl"
+post_hook = "niri msg action load-config-file >/dev/null 2>&1 || true"
+enabled = true
+
+# 统一色板导出，供周边脚本读取
+[theme.templates.user.nyxuri_palette]
+input_path = "/home/colle/.config/nyxuri/templates/palette.toml"
+output_path = "/home/colle/.cache/nyxuri/palette.toml"
+enabled = true
+
+[wallpaper]
+directory = "/home/colle/图片/Wallpapers"
+fill_mode = "crop"

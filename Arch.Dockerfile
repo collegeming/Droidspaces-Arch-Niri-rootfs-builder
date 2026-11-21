@@ -550,6 +550,19 @@ COPY scripts/98-zc-desktop-normalize.hook /tmp/98-zc-desktop-normalize.hook
 COPY scripts/install-generic-launch.sh /tmp/install-generic-launch.sh
 RUN USERNAME="${USERNAME}" bash /tmp/install-generic-launch.sh
 
+# 壁纸驱动 Material You 取色：把 Nyxuri 的模板池装进镜像（只写 /usr/local，
+# 不动用户家目录）。用户按 /usr/local/share/droidspaces/themes/README.txt 自行
+# 注册；预生成一套可直接合并的 Noctalia 配置片段。
+COPY scripts/nyxuri-templates/ /tmp/nyxuri-templates/
+COPY scripts/noctalia-theme-dynamic.toml /tmp/noctalia-theme-dynamic.toml
+COPY scripts/install-static-wallpapers.sh /tmp/install-static-wallpapers.sh
+COPY scripts/niri-add-colors-include.sh /tmp/niri-add-colors-include.sh
+COPY scripts/install-material-you-theme.sh /tmp/install-material-you-theme.sh
+RUN USERNAME="${USERNAME}" bash /tmp/install-material-you-theme.sh && \
+    rm -rf /tmp/nyxuri-templates /tmp/noctalia-theme-dynamic.toml \
+           /tmp/install-static-wallpapers.sh /tmp/niri-add-colors-include.sh \
+           /tmp/install-material-you-theme.sh
+
 # 阶段 2：将完整的根文件系统导出到 scratch（空白层），以便外部直接提取或打包成 tarfs
 FROM scratch AS export
 COPY --from=customizer / /

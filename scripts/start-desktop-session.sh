@@ -91,4 +91,21 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -S "/run/user/$(id -u)/bus" ]; th
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
 fi
 
+# systemd 用户单元有自己的环境块，不会自动继承这里导出的变量。缺少
+# WAYLAND_DISPLAY 时，xdg-desktop-portal-gtk 无法连接合成器、启动即退出
+# （status=1/FAILURE），于是 xdg-desktop-portal 没有后端可用，GTK4 的
+# @media (prefers-color-scheme) 收不到设置，深色分支永远不生效（实测表现
+# 为窗口背景仍是亮色）。在合成器起来之后把这两个变量补进用户环境。
+# 用后台等待：此时合成器还没启动，直接 import 会因为服务尚未可达而失败。
+(
+    for _ in $(seq 1 60); do
+        if [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/${WAYLAND_DISPLAY:-wayland-1}" ]; then
+            break
+        fi
+        sleep 1
+    done
+    systemctl --user import-environment WAYLAND_DISPLAY 2>/dev/null || true
+    systemctl --user restart xdg-desktop-portal-gtk 2>/dev/null || true
+) >/dev/null 2>&1 &
+
 exec /bin/bash -lc "$command_line"
