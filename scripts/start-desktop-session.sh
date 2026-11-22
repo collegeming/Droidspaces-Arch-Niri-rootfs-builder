@@ -108,4 +108,12 @@ fi
     systemctl --user restart xdg-desktop-portal-gtk 2>/dev/null || true
 ) >/dev/null 2>&1 &
 
+# 用户自装的 WebKit 应用可能把自己的真实可执行路径写回用户级 desktop 条目，
+# 绕过 zc-run 后菜单启动会白屏（Magpie 实测如此）。这里只在用户已经装了
+# Magpie 时把它的用户条目恢复成指向 zc-run 的规范文件；没装则整段跳过。
+if [ -x /usr/local/bin/fix-magpie-user-desktop ] &&
+    [ -d "$HOME/.local/share/applications" ]; then
+    /usr/local/bin/fix-magpie-user-desktop --ensure >/dev/null 2>&1 || true
+fi
+
 exec /bin/bash -lc "$command_line"

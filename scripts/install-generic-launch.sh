@@ -12,6 +12,14 @@ install -m 0755 /tmp/zc-launch /usr/local/bin/zc-launch
 install -m 0755 /tmp/zc-desktop-normalize.py /usr/local/bin/zc-desktop-normalize
 install -Dm0644 /tmp/98-zc-desktop-normalize.hook /etc/pacman.d/hooks/98-zc-desktop-normalize.hook
 
+# Magpie 每次启动会把自己真实可执行文件的路径写回用户级 desktop 条目，
+# 因此那条 Exec 行无法靠一次性改写保住。装一个守护脚本，由桌面会话在启动
+# 时把用户条目恢复成指向 zc-run 的规范文件；未安装 Magpie 的镜像里它不做
+# 任何事。
+if [ -f /tmp/fix-magpie-user-desktop.sh ]; then
+    install -m 0755 /tmp/fix-magpie-user-desktop.sh /usr/local/bin/fix-magpie-user-desktop
+fi
+
 if ! command -v python3 >/dev/null 2>&1; then
     pacman -Sy --noconfirm --needed python
 fi
@@ -32,6 +40,7 @@ fi
 /usr/local/bin/zc-desktop-normalize --apply --no-backup || true
 
 rm -f /tmp/zc-launch /tmp/zc-desktop-normalize.py \
-    /tmp/98-zc-desktop-normalize.hook /tmp/install-generic-launch.sh
+    /tmp/98-zc-desktop-normalize.hook /tmp/install-generic-launch.sh \
+    /tmp/fix-magpie-user-desktop.sh
 rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
 echo "generic launch layer installed"

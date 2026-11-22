@@ -548,6 +548,7 @@ COPY scripts/zc-launch /tmp/zc-launch
 COPY scripts/zc-desktop-normalize.py /tmp/zc-desktop-normalize.py
 COPY scripts/98-zc-desktop-normalize.hook /tmp/98-zc-desktop-normalize.hook
 COPY scripts/install-generic-launch.sh /tmp/install-generic-launch.sh
+COPY scripts/magpie/fix-magpie-user-desktop.sh /tmp/fix-magpie-user-desktop.sh
 RUN USERNAME="${USERNAME}" bash /tmp/install-generic-launch.sh
 
 # 壁纸驱动 Material You 取色：把 Nyxuri 的模板池装进镜像（只写 /usr/local，
